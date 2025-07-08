@@ -1,0 +1,124 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dr. Bruno Thomás Michels | Perícia Médica Judicial</title>
+  <meta name="description" content="Perito médico judicial em São José do Rio Preto. Laudos técnicos, assistência técnica e avaliações médicas. Dr. Bruno Thomás Michels CRM-SP 245235.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<a href="#inicio" class="top-btn" title="Voltar ao topo">&#9650;</a>
+
+<header>
+  <div class="container navbar">
+    <img src="logo.png" alt="Logo Dr Bruno">
+    <nav class="nav-links">
+      <a href="#inicio">Início</a>
+      <a href="#sobre">Sobre</a>
+      <a href="#servicos">Serviços</a>
+      <a href="#processo">Processo</a>
+      <a href="#contato">Contato</a>
+    </nav>
+    <div class="hamburger">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero" id="inicio">
+  <div class="container hero-inner">
+    <div class="hero-content">
+      <h1>Perícia Médica Judicial<br>com Excelência</h1>
+      <p>Laudos técnicos precisos e embasados em evidências médicas, garantindo imparcialidade e rigor científico para auxiliar a Justiça.</p>
+      <a href="#contato" class="btn">Solicitar Orçamento</a>
+      <a href="#processo" class="btn outline">Entender o Processo</a>
+    </div>
+    <div class="hero-img">
+      <img src="profile.jpg" alt="Dr. Bruno Thomás Michels">
+    </div>
+  </div>
+</section>
+
+<!-- About -->
+<section id="sobre">
+  <div class="container">
+    <h2>Sobre o Dr. Bruno</h2>
+    <p>Sou o <strong>Dr. Bruno Thomás Michels</strong> (CRM‑SP <strong>245235</strong>), médico formado pela FACERES (Turma XI, 2023). Atuo em prontos-socorros e como perito médico judicial, unindo experiência clínica à imparcialidade exigida pelo Judiciário.</p>
+    <div class="timeline">
+      <div class="timeline-item"><strong>2023</strong> — Graduação em Medicina (FACERES)</div>
+      <div class="timeline-item"><strong>2024</strong> — Início das atividades na emergência hospitalar</div>
+      <div class="timeline-item"><strong>2025</strong> — Nomeações como Perito Judicial no TJSP, TRF3 e Justiça do Trabalho</div>
+    </div>
+  </div>
+</section>
+
+<!-- Services -->
+<section id="servicos">
+  <div class="container">
+    <h2>Serviços</h2>
+    <div class="services-grid">
+      <div class="service-card">
+        <h3><i class="fa-solid fa-gavel"></i> Perícia Médica Judicial</h3>
+        <p>Análise dos autos, exame clínico presencial ou remoto, emissão de laudo e esclarecimentos complementares.</p>
+      </div>
+      <div class="service-card">
+        <h3><i class="fa-solid fa-user-shield"></i> Assistência Técnica</h3>
+        <p>Suporte estratégico a advogados: elaboração de quesitos, impugnações e pareceres médicos direcionados.</p>
+      </div>
+      <div class="service-card">
+        <h3><i class="fa-solid fa-file-medical"></i> Laudos Médicos</h3>
+        <p>Relatórios detalhados para seguradoras, planos de saúde, benefício previdenciário e avaliações particulares.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Process -->
+<section id="processo">
+  <div class="container">
+    <h2>Processo de Trabalho</h2>
+    <ul class="process-list">
+      <li>Análise preliminar dos documentos</li>
+      <li>Contato com as partes e agendamento</li>
+      <li>Exame clínico ou teleperícia conforme Provimento TJSP</li>
+      <li>Elaboração do laudo técnico</li>
+      <li>Entrega e suporte pós-laudo</li>
+    </ul>
+  </div>
+</section>
+
+<!-- Contact -->
+<section id="contato">
+  <div class="container">
+    <h2>Contato</h2>
+    <p>Será um prazer atendê-lo. Preencha o formulário ou fale diretamente pelo WhatsApp.</p>
+    <p><strong>E-mail:</strong> <a href="mailto:brunoomichels@gmail.com">brunoomichels@gmail.com</a></p>
+    <p><strong>WhatsApp:</strong> <a href="https://wa.me/5546974009785" target="_blank">(46) 97400‑9785</a></p>
+
+    <form action="https://formspree.io/f/mqabvdgd" method="POST">
+      <input type="text" name="Nome" placeholder="Nome" required>
+      <input type="email" name="Email" placeholder="E-mail" required>
+      <input type="text" name="Whatsapp" placeholder="Whatsapp" required>
+      <input type="text" name="Processo" placeholder="Número do Processo (opcional)">
+      <textarea name="Mensagem" placeholder="Mensagem" required></textarea>
+      <button type="submit" class="btn">Enviar Mensagem</button>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <p>&copy; <span id="year"></span> Dr. Bruno Thomás Michels – CRM‑SP 245235. Todos os direitos reservados.</p>
+</footer>
+
+<script src="main.js"></script>
+<script>document.getElementById('year').textContent=new Date().getFullYear();</script>
+</body>
+</html>
