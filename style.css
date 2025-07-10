@@ -176,8 +176,8 @@ footer a{color:var(--gold);}
   position:absolute;          /* CORRIGIDO */
   right:1.2rem;
   bottom:4.5rem;              /* fica acima do botão “top-btn” */
-  width:55px;                 /* círculo maior que o ícone */
-  height:55px;
+  width:2rem;                 /* círculo maior que o ícone */
+  height:2rem;
   background:#25d366;
   color:#fff;
   border-radius:50%;
