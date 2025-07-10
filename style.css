@@ -191,10 +191,10 @@ footer a{color:var(--gold);}
   z-index:999;
 }
 .whatsapp-btn:hover{
-  transform:scale(1.11);
+  transform:scale(1.3);
   opacity:.9;
 }
-a.whatsapp-btn{text-decoration:none;}
+a {text-decoration:none;}
 /* Ajuste responsivo em telas muito pequenas */
 @media(max-width:480px){
   .whatsapp-btn{
