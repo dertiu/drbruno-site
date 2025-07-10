@@ -177,8 +177,8 @@ footer a{color:var(--gold);}
   box-sizing:border-box;
   right:1.2rem;
   bottom:4.5rem;              /* fica acima do botão “top-btn” */
-  width:3rem;                 /* círculo maior que o ícone */
-  height:3rem;
+  width:4rem;                 /* círculo maior que o ícone */
+  height:4rem;
   background:#25d366;
   color:#fff;
   border-radius:50%;
@@ -192,7 +192,7 @@ footer a{color:var(--gold);}
   z-index:999;
 }
 .whatsapp-btn:hover{
-  transform:scale(1.1);
+  transform:scale(1.5);
   opacity:.9;
 }
 
