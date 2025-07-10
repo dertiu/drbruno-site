@@ -173,7 +173,7 @@ footer{
 footer a{color:var(--gold);}
 /* Botão flutuante WhatsApp */
 .whatsapp-btn{
-  position:absolute;          /* CORRIGIDO */
+  position:fixed;          /* CORRIGIDO */
   right:1.2rem;
   bottom:4.5rem;              /* fica acima do botão “top-btn” */
   width:2rem;                 /* círculo maior que o ícone */
