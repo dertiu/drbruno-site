@@ -173,11 +173,11 @@ footer{
 footer a{color:var(--gold);}
 /* Botão flutuante WhatsApp */
 .whatsapp-btn{
-  position:fixed;
+  position:absolut;
   right:1.2rem;
   bottom:4.5rem;      /* fica acima do botão de voltar-ao-topo */
-  width:55px;
-  height:55px;
+  width:2rem;
+  height:2rem;
   background:#25d366; /* verde WhatsApp */
   color:#fff;
   border-radius:50%;
