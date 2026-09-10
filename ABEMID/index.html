@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculadora ABEMID - Avaliação de Complexidade Assistencial</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #1e3a8a;
+      --primary-hover: #1e40af;
+      --secondary-color: #3b82f6;
+      --accent-color: #10b981;
+      --accent-hover: #059669;
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #cbd5e1;
+      --danger-color: #ef4444;
+      --danger-bg: #fef2f2;
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      margin: 0;
+      padding: 16px 8px;
+      color: var(--text-main);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 18px 22px;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      border-top: 5px solid var(--primary-color);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 12px;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 1.2em;
+      color: var(--primary-color);
+      margin: 0 0 3px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      font-size: 0.85em;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .section {
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      background-color: #ffffff;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .section.has-error {
+      border-color: var(--danger-color) !important;
+      background-color: #fffafa;
+      box-shadow: 0 0 0 1px var(--danger-color);
+    }
+
+    .section-title {
+      font-weight: 700;
+      font-size: 0.88em;
+      margin-bottom: 6px;
+      color: var(--primary-color);
+      border-bottom: 1.5px solid var(--border-color);
+      padding-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-title .hint {
+      font-weight: 400;
+      font-size: 0.8em;
+      color: var(--text-muted);
+      text-transform: none;
+    }
+
+    /* GRID IDENTIFICAÇÃO (4 COLUNAS) */
+    .identificacao-grid {
+      display: grid;
+      grid-template-columns: 2fr 0.8fr 1.2fr 1.8fr;
+      gap: 12px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group label {
+      font-weight: 600;
+      margin-bottom: 3px;
+      color: var(--primary-color);
+      font-size: 0.78em;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 5px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      font-size: 0.85em;
+      background-color: #fff;
+      color: var(--text-main);
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--secondary-color);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .form-group input.input-error {
+      border-color: var(--danger-color) !important;
+      background-color: var(--danger-bg);
+    }
+
+    .form-group input:disabled {
+      background-color: #f1f5f9;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    /* OPÇÕES MULTI-CHECK E RADIO */
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px 10px;
+    }
+
+    .abemid-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 12px;
+    }
+
+    .question-card {
+      background: #f8fafc;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+    }
+
+    .question-card.has-error {
+      border-color: var(--danger-color);
+      background-color: var(--danger-bg);
+    }
+
+    .question-card label.q-title {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 0.83em;
+      color: var(--primary-color);
+    }
+
+    .options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+    }
+
+    .custom-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      font-size: 0.8em;
+      user-select: none;
+    }
+
+    .custom-option input[type="radio"], .custom-option input[type="checkbox"] {
+      accent-color: var(--primary-color);
+      width: 13px;
+      height: 13px;
+      cursor: pointer;
+    }
+
+    /* BOTOES */
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      justify-content: flex-end;
+    }
+
+    button {
+      padding: 8px 16px;
+      font-size: 0.88em;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-calc { background-color: var(--accent-color); color: white; }
+    .btn-calc:hover { background-color: var(--accent-hover); }
+
+    .btn-clear { background-color: #64748b; color: white; }
+    .btn-clear:hover { background-color: #475569; }
+
+    .btn-print { background-color: var(--secondary-color); color: white; }
+    .btn-print:hover { background-color: #2563eb; }
+
+    /* MENSAGEM DE ERROS / VALIDAÇÃO */
+    #error-summary {
+      display: none;
+      background-color: var(--danger-bg);
+      border: 1px solid var(--danger-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      margin-top: 10px;
+      color: #991b1b;
+    }
+
+    #error-summary h4 {
+      margin: 0 0 4px 0;
+      font-size: 0.88em;
+      font-weight: 700;
+    }
+
+    #error-summary ul {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 0.82em;
+    }
+
+    /* PAINEL DE RESULTADO: BRANCO, BORDA PRETA E TEXTO PRETO */
+    #resultado {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      font-weight: 500;
+      display: none;
+      font-size: 0.85em;
+      line-height: 1.35;
+      background-color: #ffffff !important;
+      color: #000000 !important;
+      border: 1.5px solid #000000 !important;
+    }
+
+    /* REGRAS ESPECÍFICAS PARA IMPRESSÃO EM 1 PÁGINA */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 3mm 5mm;
+      }
+
+      html, body {
+        background-color: #fff;
+        padding: 0;
+        margin: 0;
+        font-size: 8.5pt;
+        line-height: 1.18;
+      }
+
+      .container {
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+        border-top: none;
+      }
+
+      header {
+        margin-bottom: 4px;
+        padding-bottom: 2px;
+        border-bottom: 1px solid #000;
+      }
+
+      h1 {
+        font-size: 1.05em;
+        margin-bottom: 1px;
+      }
+
+      .subtitle {
+        font-size: 0.75em;
+      }
+
+      .section {
+        margin-bottom: 4px;
+        padding: 4px 6px;
+        border: 1px solid #94a3b8;
+        border-radius: 4px;
+        background-color: #fff !important;
+        page-break-inside: avoid;
+      }
+
+      .section-title {
+        font-size: 0.78em;
+        margin-bottom: 3px;
+        padding-bottom: 2px;
+        border-bottom: 1px solid #cbd5e1;
+      }
+
+      .identificacao-grid { gap: 4px; }
+
+      .form-group label {
+        font-size: 0.7em;
+        margin-bottom: 1px;
+      }
+
+      .form-group input {
+        padding: 2px 4px;
+        font-size: 0.8em;
+        border: 1px solid #cbd5e1;
+      }
+
+      .checkbox-grid { gap: 2px 6px; }
+      .abemid-grid { gap: 3px 8px; }
+
+      .question-card {
+        padding: 3px 5px;
+        background: #fff !important;
+      }
+
+      .question-card label.q-title {
+        font-size: 0.75em;
+        margin-bottom: 1px;
+      }
+
+      .custom-option { font-size: 0.73em; }
+
+      .btn-group, #error-summary { display: none !important; }
+
+      #resultado {
+        margin-top: 4px;
+        padding: 5px 8px;
+        font-size: 0.78em;
+        border: 1px solid #000 !important;
+        background-color: #fff !important;
+        color: #000 !important;
+        page-break-inside: avoid;
+      }
+
+      hr { margin: 3px 0 !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Tabela de Avaliação de Complexidade Assistencial – ABEMID</h1>
+    <div class="subtitle"></div>
+  </header>
+
+  <form id="formAbemid" novalidate>
+
+    <!-- IDENTIFICAÇÃO -->
+    <div class="section" id="sec-identificacao">
+      <div class="section-title">Identificação</div>
+      <div class="identificacao-grid">
+        <div class="form-group">
+          <label for="periciado">Periciando(a):</label>
+          <input type="text" id="periciado" name="periciado" placeholder="Nome completo">
+        </div>
+        <div class="form-group">
+          <label for="idade">Idade:</label>
+          <input type="number" id="idade" name="idade" placeholder="Anos">
+        </div>
+        <div class="form-group">
+          <label for="data_pericia">Data Perícia:</label>
+          <input type="date" id="data_pericia" name="data_pericia">
+        </div>
+        <div class="form-group">
+          <label>Perito Responsável:</label>
+          <input type="text" value="DR. BRUNO THOMÁS MICHELS | CRM-SP 245235" disabled>
+        </div>
+      </div>
+    </div>
+
+    <!-- ITEM 1: SUPORTE TERAPÊUTICO (MULTIPLE CHECK - PONTOS SE SOMAM) -->
+    <div class="section" id="sec-suporte">
+      <div class="section-title">
+        1. Suporte Terapêutico
+        <span class="hint">(Os pontos se somam cumulativamente neste item)</span>
+      </div>
+      <div class="checkbox-grid">
+        <label class="custom-option"><input type="checkbox" name="suporte" value="1"> Sonda Vesical Permanente (1)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="2"> Sonda Vesical Intermitente (2)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="2"> Traqueostomia sem Aspiração (2)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="5"> Traqueostomia com Aspiração (5)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="3"> Aspiração Vias Aéreas Sup. (3)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="5"> Acesso Venoso Prof. Contínuo (5)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="4"> Acesso Venoso Intermitente (4)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="5"> A. Venoso Periférico Contínuo (5)</label>
+        <label class="custom-option"><input type="checkbox" name="suporte" value="5"> Diálise Domiciliar (5)</label>
+      </div>
+    </div>
+
+    <!-- ITENS 2 A 7: SELEÇÃO ÚNICA -->
+    <div class="section" id="sec-categorias">
+      <div class="section-title">
+        2 a 7. Categorias Clínicas e Funcionais
+        <span class="hint">(Apenas uma opção por item; prevalece a de maior valor)</span>
+      </div>
+      <div class="abemid-grid">
+
+        <div class="question-card" id="box-quimioterapia">
+          <label class="q-title">2. Quimioterapia:</label>
+          <div class="options">
+            <label class="custom-option"><input type="radio" name="quimioterapia" value="0"> (0) Nenhum / N/A</label>
+            <label class="custom-option"><input type="radio" name="quimioterapia" value="1"> (1) Oral</label>
+            <label class="custom-option"><input type="radio" name="quimioterapia" value="3"> (3) Subcutânea</label>
+            <label class="custom-option"><input type="radio" name="quimioterapia" value="5"> (5) Intravenosa</label>
+            <label class="custom-option"><input type="radio" name="quimioterapia" value="5"> (5) Intratecal</label>
+          </div>
+        </div>
+
+        <div class="question-card" id="box-ventilatorio">
+          <label class="q-title">3. Suporte Ventilatório:</label>
+          <div class="options">
+            <label class="custom-option"><input type="radio" name="ventilatorio" value="0"> (0) Nenhum / N/A</label>
+            <label class="custom-option"><input type="radio" name="ventilatorio" value="2"> (2) O² Intermitente</label>
+            <label class="custom-option"><input type="radio" name="ventilatorio" value="3"> (3) O² Contínuo</label>
+            <label class="custom-option"><input type="radio" name="ventilatorio" value="4"> (4) VM Intermitente</label>
+            <label class="custom-option"><input type="radio" name="ventilatorio" value="5"> (5) VM Contínua</label>
+          </div>
+        </div>
+
+        <div class="question-card" id="box-lesao">
+          <label class="q-title">4. Lesão Vascular / Cutânea:</label>
+          <div class="options">
+            <label class="custom-option"><input type="radio" name="lesao" value="0"> (0) Nenhuma / N/A</label>
+            <label class="custom-option"><input type="radio" name="lesao" value="2"> (2) Úlcera Grau I</label>
+            <label class="custom-option"><input type="radio" name="lesao" value="3"> (3) Úlcera Grau II</label>
+            <label class="custom-option"><input type="radio" name="lesao" value="4"> (4) Úlcera Grau III</label>
+            <label class="custom-option"><input type="radio" name="lesao" value="5"> (5) Úlcera Grau IV</label>
+          </div>
+        </div>
+
+        <div class="question-card" id="box-katz">
+          <label class="q-title">5. Grau de AVBD (Cuidados Técnicos):</label>
+          <div class="options">
+            <label class="custom-option"><input type="radio" name="katz" value="0"> (0) Independente</label>
+            <label class="custom-option"><input type="radio" name="katz" value="2"> (2) Semi-Dependente</label>
+            <label class="custom-option"><input type="radio" name="katz" value="5"> (5) Dependente Total</label>
+          </div>
+        </div>
+
+        <div class="question-card" id="box-reabilitacao">
+          <label class="q-title">6. Dependência de Reabilitação (Fisio/Fono):</label>
+          <div class="options">
+            <label class="custom-option"><input type="radio" name="reabilitacao" value="0"> (0) Independente</label>
+            <label class="custom-option"><input type="radio" name="reabilitacao" value="2"> (2) Dependente (Sessões Diárias)</label>
+          </div>
+        </div>
+
+        <div class="question-card" id="box-nutricional">
+          <label class="q-title">7. Terapia Nutricional:</label>
+          <div class="options">
+            <label class="custom-option"><input type="radio" name="nutricional" value="0"> (0) Nenhuma / N/A</label>
+            <label class="custom-option"><input type="radio" name="nutricional" value="1"> (1) Supl. Oral</label>
+            <label class="custom-option"><input type="radio" name="nutricional" value="2"> (2) Gastrostomia</label>
+            <label class="custom-option"><input type="radio" name="nutricional" value="3"> (3) SNE</label>
+            <label class="custom-option"><input type="radio" name="nutricional" value="3"> (3) Jejunostomia</label>
+            <label class="custom-option"><input type="radio" name="nutricional" value="5"> (5) Nutrição Parenteral Total</label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PAINEL DE ERROS -->
+    <div id="error-summary">
+      <h4>⚠️ Atenção: Não foi possível calcular o laudo ABEMID</h4>
+      <p style="margin: 0 0 3px 0; font-size: 0.85em;">Preencha os seguintes campos obrigatórios pendentes:</p>
+      <ul id="error-list"></ul>
+    </div>
+
+    <!-- BOTOES DE AÇÃO -->
+    <div class="btn-group">
+      <button type="button" class="btn-calc" onclick="calcularABEMID()">Calcular Complexidade</button>
+      <button type="button" class="btn-clear" onclick="limparTudo()">Limpar</button>
+      <button type="button" class="btn-print" onclick="window.print()">Imprimir</button>
+    </div>
+  </form>
+
+  <!-- RESULTADO -->
+  <div id="resultado"></div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const dataInput = document.getElementById('data_pericia');
+    if (dataInput && !dataInput.value) {
+      const hoje = new Date().toISOString().split('T')[0];
+      dataInput.value = hoje;
+    }
+  });
+
+  function validarFormulario() {
+    let erros = [];
+    let primeiroElementoComErro = null;
+
+    document.querySelectorAll('.has-error').forEach(el => el.classList.remove('has-error'));
+    document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+
+    // 1. Identificação
+    const camposTexto = [
+      { id: 'periciado', label: 'Nome do Periciando(a)' },
+      { id: 'idade', label: 'Idade do Periciando' },
+      { id: 'data_pericia', label: 'Data da Perícia' }
+    ];
+
+    camposTexto.forEach(campo => {
+      const input = document.getElementById(campo.id);
+      if (!input || !input.value.trim()) {
+        erros.push(campo.label);
+        input.classList.add('input-error');
+        if (!primeiroElementoComErro) primeiroElementoComErro = input;
+      }
+    });
+
+    // 2. Categorias obrigatórias de 2 a 7
+    const radioCategories = [
+      { name: 'quimioterapia', boxId: 'box-quimioterapia', label: 'Item 2: Quimioterapia' },
+      { name: 'ventilatorio', boxId: 'box-ventilatorio', label: 'Item 3: Suporte Ventilatório' },
+      { name: 'lesao', boxId: 'box-lesao', label: 'Item 4: Lesão Vascular / Cutânea' },
+      { name: 'katz', boxId: 'box-katz', label: 'Item 5: Grau de AVBD (Cuidados Técnicos)' },
+      { name: 'reabilitacao', boxId: 'box-reabilitacao', label: 'Item 6: Dependência de Reabilitação' },
+      { name: 'nutricional', boxId: 'box-nutricional', label: 'Item 7: Terapia Nutricional' }
+    ];
+
+    radioCategories.forEach(item => {
+      const selected = document.querySelector(`input[name="${item.name}"]:checked`);
+      if (!selected) {
+        erros.push(item.label);
+        const box = document.getElementById(item.boxId);
+        if (box) box.classList.add('has-error');
+        if (!primeiroElementoComErro) primeiroElementoComErro = box;
+      }
+    });
+
+    return { erros, primeiroElementoComErro };
+  }
+
+  function calcularABEMID() {
+    const errorSummary = document.getElementById('error-summary');
+    const errorList = document.getElementById('error-list');
+    const divResultado = document.getElementById('resultado');
+
+    const { erros, primeiroElementoComErro } = validarFormulario();
+
+    if (erros.length > 0) {
+      divResultado.style.display = 'none';
+      errorList.innerHTML = erros.map(e => `<li>${e}</li>`).join('');
+      errorSummary.style.display = 'block';
+
+      if (primeiroElementoComErro) {
+        primeiroElementoComErro.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (primeiroElementoComErro.tagName === 'INPUT') {
+          primeiroElementoComErro.focus();
+        }
+      }
+      return;
+    }
+
+    errorSummary.style.display = 'none';
+
+    const periciado = document.getElementById('periciado').value.trim();
+    const idade = document.getElementById('idade').value;
+    const dataPericiaRaw = document.getElementById('data_pericia').value;
+    const dataFormatted = dataPericiaRaw.split('-').reverse().join('/');
+
+    let pontuacaoTotal = 0;
+    let numEscore5 = 0;
+
+    // Item 1: Suporte Terapêutico (Pontos somados)
+    const suportes = document.querySelectorAll('input[name="suporte"]:checked');
+    suportes.forEach(chk => {
+      const val = parseInt(chk.value, 10);
+      pontuacaoTotal += val;
+      if (val === 5) numEscore5++;
+    });
+
+    // Itens 2 a 7: Radios
+    const radioNames = ['quimioterapia', 'ventilatorio', 'lesao', 'katz', 'reabilitacao', 'nutricional'];
+    radioNames.forEach(name => {
+      const selected = document.querySelector(`input[name="${name}"]:checked`);
+      if (selected) {
+        const val = parseInt(selected.value, 10);
+        pontuacaoTotal += val;
+        if (val === 5) numEscore5++;
+      }
+    });
+
+    // Classificação base da tabela ABEMID
+    let classificacao = '';
+    let migracaoObs = '';
+
+    if (pontuacaoTotal <= 7) {
+      classificacao = 'NÃO ELEGÍVEL PARA INTERNAÇÃO DOMICILIAR';
+    } else if (pontuacaoTotal <= 12) {
+      classificacao = 'BAIXA COMPLEXIDADE';
+    } else if (pontuacaoTotal <= 18) {
+      classificacao = 'MÉDIA COMPLEXIDADE';
+    } else {
+      classificacao = 'ALTA COMPLEXIDADE';
+    }
+
+    // Regras de Migração Automática por Escore 5
+    if (numEscore5 >= 2 && classificacao !== 'ALTA COMPLEXIDADE') {
+      classificacao = 'ALTA COMPLEXIDADE';
+      migracaoObs = ' (Migração automática por apresentar 2 ou mais itens de escore 5)';
+    } else if (numEscore5 === 1 && (classificacao === 'NÃO ELEGÍVEL PARA INTERNAÇÃO DOMICILIAR' || classificacao === 'BAIXA COMPLEXIDADE')) {
+      classificacao = 'MÉDIA COMPLEXIDADE';
+      migracaoObs = ' (Migração automática por apresentar 1 item de escore 5)';
+    }
+
+    let cabecalhoIdentificacao = `
+      <div style="font-size: 0.95em; margin-bottom: 4px; line-height: 1.3;">
+        <strong>PERICIANDO(A):</strong> ${periciado.toUpperCase()} (${idade} anos) &nbsp;|&nbsp; <strong>DATA DA PERÍCIA:</strong> ${dataFormatted}<br>
+        <strong>PERITO RESPONSÁVEL:</strong> DR. BRUNO THOMÁS MICHELS | CRM-SP 245235
+      </div>
+      <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.12); margin: 4px 0;">
+    `;
+
+    divResultado.style.display = 'block';
+    divResultado.innerHTML = cabecalhoIdentificacao + `
+      <div style="margin-top: 4px;">
+        <strong>CONCLUSÃO (Escore ABEMID):</strong> Pontuação Total = <strong>${pontuacaoTotal} ponto(s)</strong> &nbsp;|&nbsp; <strong>Itens com Escore 5:</strong> ${numEscore5}<br>
+        <strong>CLASSIFICAÇÃO DO PACIENTE:</strong> <strong>${classificacao}</strong>${migracaoObs}
+      </div>
+      <div style="font-size: 0.78em; color: #222; margin-top: 6px; border-top: 1px dashed #bbb; padding-top: 4px; line-height: 1.3;">
+        <strong>Regras de Classificação ABEMID:</strong><br>
+        • Até 7 pontos: NÃO ELEGÍVEL PARA INTERNAÇÃO DOMICILIAR<br>
+        • De 8 a 12 pontos: BAIXA COMPLEXIDADE<br>
+        • 13 a 18 pontos: MÉDIA COMPLEXIDADE<br>
+        • Acima de 19 pontos: ALTA COMPLEXIDADE<br>
+        <em>Obs: Ao obter um score 5, o paciente migra automaticamente para Média Complexidade. Ao obter dois ou mais scores 5, migra para Alta Complexidade (independente dos pontos totais obtidos).</em>
+      </div>
+    `;
+    
+    divResultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function limparTudo() {
+    document.getElementById('formAbemid').reset();
+    document.querySelectorAll('.has-error').forEach(el => el.classList.remove('has-error'));
+    document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+    
+    document.getElementById('error-summary').style.display = 'none';
+    
+    const divResultado = document.getElementById('resultado');
+    divResultado.style.display = 'none';
+    divResultado.innerHTML = '';
+
+    const hoje = new Date().toISOString().split('T')[0];
+    document.getElementById('data_pericia').value = hoje;
+  }
+</script>
+
+</body>
+</html>
