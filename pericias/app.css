@@ -273,6 +273,39 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke
 .hist b{font-size:.88rem}
 .hist p{margin:2px 0 0;font-size:.84rem;color:var(--texto2);word-break:break-word}
 
+/* ---------- documentos (Drive) ---------- */
+.docs{margin-top:22px;padding-top:16px;border-top:1px solid var(--linha)}
+.docs-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.docs-topo h3{margin:0;font-size:1rem;color:var(--navy)}
+.docs-topo small{display:block;color:var(--suave);font-size:.8rem;margin-top:2px;word-break:break-word}
+.docs-topo .acoes{gap:6px}
+.arquivos{display:flex;flex-direction:column;border:1px solid var(--linha);border-radius:12px;overflow:hidden}
+.arq{display:flex;align-items:center;gap:10px;padding:9px 12px;border:0;border-top:1px solid var(--linha2);background:#fff;cursor:pointer;text-align:left;width:100%}
+.arq:first-child{border-top:0}
+.arq:hover{background:#f7f9fc}
+.arq .meio{flex:1;min-width:0}
+.arq .meio b{display:block;font-size:.88rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arq .meio small{display:block;color:var(--suave);font-size:.76rem}
+.tipo-arq{flex:0 0 46px;height:30px;border-radius:7px;display:grid;place-items:center;font-size:.62rem;font-weight:900;letter-spacing:.03em;background:#eef0f3;color:#4a5565}
+.tipo-arq.pdf{background:#fde4e4;color:#b42318}
+.tipo-arq.doc{background:#e3eefb;color:#1b5fae}
+.tipo-arq.img{background:#daf3e8;color:#0f6b4b}
+.tipo-arq.pasta{background:var(--gold-claro);color:#7a6232}
+.tipo-arq.planilha{background:#dcf5e3;color:#14773a}
+.linha-form{display:flex;gap:8px;align-items:flex-end;margin-top:10px}
+.linha-form .campo{flex:1;min-width:0}
+dialog.grande{width:min(1100px,calc(100vw - 16px));height:92vh}
+dialog.grande .modal-card{height:100%;max-height:none}
+dialog.grande .modal-corpo{flex:1;padding:0;display:flex;flex-direction:column;overflow:hidden}
+iframe.previa{flex:1;width:100%;border:0;background:#f3f4f6;min-height:300px}
+.dica-previa{margin:0;padding:6px 14px;font-size:.76rem;color:var(--suave);border-top:1px solid var(--linha)}
+.dica-gerador{font-size:.86rem;color:var(--texto2);margin:0 0 12px}
+h3.sub{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--suave);margin:16px 0 8px}
+.busca-modelo{width:100%;padding:9px 12px;border:1px solid #cfd4dc;border-radius:10px;margin-bottom:8px}
+.gerado{display:flex;gap:12px;align-items:center;padding:14px;border:1px solid var(--linha);border-radius:12px;margin-bottom:12px}
+.gerado b{display:block}
+.gerado small{color:var(--suave)}
+
 /* ---------- formulários ---------- */
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .campo.largo{grid-column:1/-1}
@@ -353,6 +386,12 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
   .cal-dia .dots{display:flex}
   .form-grid{grid-template-columns:1fr}
   .drawer-painel{width:100vw}
+  .ficha-rodape{gap:6px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));flex-wrap:nowrap}
+  .ficha-rodape .esp{display:none}
+  .ficha-rodape .btn{padding:8px 10px;font-size:.8rem;flex:1 1 auto}
+  .ficha-rodape .btn svg{display:none}
+  .ficha-corpo{padding:14px 16px 24px}
+  .docs-topo .acoes .btn{flex:1 1 auto}
   .toast{bottom:calc(76px + env(safe-area-inset-bottom))}
   .barra{grid-template-columns:96px 1fr 44px}
   .ferramentas select{flex:1 1 45%;max-width:none}

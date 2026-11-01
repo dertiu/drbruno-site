@@ -55,6 +55,12 @@ function appRotear_(req) {
     case 'discordCanais': return { ok: true, canais: appDiscordCanais_() };
     case 'discordEnviar': return appDiscordEnviar_(req, usuario);
     case 'discordRotina': return appDiscordRotina_(req.rotina, usuario);
+    case 'docs': return appDocs_(req);
+    case 'pastaVincular': return appComTrava_(() => appPastaVincular_(req, usuario));
+    case 'pastaCriar': return appComTrava_(() => appPastaCriar_(req, usuario));
+    case 'modelos': return appModelos_();
+    case 'gerarDoc': return appGerarDoc_(req, usuario);
+    case 'upload': return appUpload_(req, usuario);
     default: return { ok: false, erro: 'Ação desconhecida' };
   }
 }
@@ -462,4 +468,334 @@ function appDiscordRotina_(rotina, usuario) {
   fn();
   appLog_(usuario, '', 'Discord', 'Rotina enviada: ' + APP_ROTINAS[rotina]);
   return { ok: true };
+}
+
+// -------------------- DRIVE: pastas dos periciados e documentos --------------------
+// Estrutura do Drive: PERICIAS / CIDADE / Nome do periciado   (Núcleo 4.0 fica em "NUCLEO 4")
+const APP_PASTA_RAIZ = '1XMa_9GO2LV02XeFVZMEZORl-Jtv0h7yP';    // pasta PERICIAS
+const APP_PASTA_MODELOS = '1NVoquMrH-gGho87OkF7XgaWTrLPjRwqi'; // pasta Arquivos base
+const APP_UPLOAD_MAX = 15 * 1024 * 1024;
+const APP_MIME_PASTA = 'application/vnd.google-apps.folder';
+const APP_MIME_DOC = 'application/vnd.google-apps.document';
+
+// Rode UMA vez no editor (Executar) para autorizar o acesso ao Drive e ao Docs.
+function appAutorizarDrive() {
+  const raiz = DriveApp.getFolderById(APP_PASTA_RAIZ).getName();
+  const modelos = DriveApp.getFolderById(APP_PASTA_MODELOS).getName();
+  const doc = DocumentApp.create('teste de autorização (pode apagar)');
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
+  Logger.log('Drive e Docs autorizados: ' + raiz + ' / ' + modelos);
+}
+
+function appNorm_(s) { return appChave_(s).replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function appEhInstituicao_(n) { return /LTDA|S\/A|S\.A\b|INSTITUTO|UNIMED|MINISTERIO|PREFEITURA|FAZENDA|SANTA CASA|CENTRO|CLINICA|HOSPITAL|ASSOCIACAO|MUNICIPIO|SAUDE|SEGURO|CAIXA|BANCO|COOPERATIVA|ODONTOLOGIA/.test(appChave_(n)); }
+function appEhNucleo_(m) { return /NUCLEO/.test(appChave_(m['CIDADE'])) || /NUCLEO/.test(appChave_(m['FORUM'])); }
+// quem é examinado: na interdição costuma ser a parte requerida
+function appPericiado_(m) {
+  const interd = /INTERDI|CURATELA/.test(appChave_(m['TIPO'])) || /FAMILIA/.test(appChave_(m['FORUM']));
+  if (interd && m['REQUERIDA'] && !appEhInstituicao_(m['REQUERIDA'])) return m['REQUERIDA'];
+  return m['REQUERENTE'] || m['REQUERIDA'] || '';
+}
+function appCNJ_(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (d.length !== 20) return String(v || '').trim();
+  return d.slice(0, 7) + '-' + d.slice(7, 9) + '.' + d.slice(9, 13) + '.' + d[13] + '.' + d.slice(14, 16) + '.' + d.slice(16);
+}
+
+// lê a linha do processo e confere se ainda é o mesmo
+function appLinhaMapa_(req) {
+  const sh = appAba_(req.aba || 'PERICIAS');
+  const cab = appCabecalho_(sh);
+  const linha = Number(req.linha);
+  if (!(linha >= 2 && linha <= sh.getLastRow())) throw new Error('CONFLITO');
+  const v = sh.getRange(linha, 1, 1, cab.length).getDisplayValues()[0];
+  const m = {};
+  cab.forEach((h, i) => { m[appChave_(h)] = String(v[i]).trim(); });
+  if (m['PROCESSO'] !== String(req.processoEsperado || '').trim()) throw new Error('CONFLITO');
+  return m;
+}
+
+function appNomePastaCidade_(cidade) {
+  const k = appNorm_(cidade);
+  if (/^NUCLEO/.test(k)) return 'NUCLEO 4';
+  return k;
+}
+
+function appPastaCidade_(cidade, criar) {
+  const alvo = appNomePastaCidade_(cidade);
+  if (!alvo) return null;
+  const raiz = DriveApp.getFolderById(APP_PASTA_RAIZ);
+  const it = raiz.getFolders();
+  let parcial = null;
+  while (it.hasNext()) {
+    const f = it.next();
+    const k = appNorm_(f.getName());
+    if (k === alvo) return f;
+    if (!parcial && k.length >= 5 && alvo.length >= 5 && (k.indexOf(alvo) === 0 || alvo.indexOf(k) === 0)) parcial = f;
+  }
+  if (parcial) return parcial;
+  return criar ? raiz.createFolder(alvo) : null;
+}
+
+// 3 = nome igual; 2 = mesmo primeiro e último nome; 1 = pasta com um só nome igual ao primeiro nome
+function appNotaNome_(nomePasta, nomes) {
+  const k = appNorm_(nomePasta), pk = k.split(' ');
+  let nota = 0;
+  nomes.forEach(n => {
+    const a = appNorm_(n), pa = a.split(' ');
+    if (!a) return;
+    if (a === k) nota = Math.max(nota, 3);
+    else if (pa.length > 1 && pk.length > 1 && pa[0] === pk[0] && pa[pa.length - 1] === pk[pk.length - 1]) nota = Math.max(nota, 2);
+    else if (pk.length === 1 && pk[0].length >= 4 && pk[0] === pa[0]) nota = Math.max(nota, 1);
+  });
+  return nota;
+}
+
+function appDentroDaRaiz_(f) {
+  let atual = [f];
+  for (let nivel = 0; nivel < 4; nivel++) {
+    const prox = [];
+    for (const x of atual) {
+      const it = x.getParents();
+      while (it.hasNext()) { const p = it.next(); if (p.getId() === APP_PASTA_RAIZ) return true; prox.push(p); }
+    }
+    if (!prox.length) return false;
+    atual = prox;
+  }
+  return false;
+}
+
+function appNomesDoProcesso_(m) {
+  return [appPericiado_(m), m['REQUERENTE'], m['REQUERIDA']].filter(n => n && !appEhInstituicao_(n));
+}
+
+function appEncontrarPasta_(m) {
+  const props = PropertiesService.getScriptProperties();
+  const chaveProp = 'PASTA_' + String(m['PROCESSO']).replace(/\D/g, '');
+  const salvo = props.getProperty(chaveProp);
+  if (salvo) {
+    try { const f = DriveApp.getFolderById(salvo); if (!f.isTrashed()) return { pasta: f }; } catch (e) {}
+    props.deleteProperty(chaveProp);
+  }
+  const nomes = appNomesDoProcesso_(m);
+  const cidade = appPastaCidade_(m['CIDADE'], false);
+  const candidatas = [];
+  if (cidade) {
+    const it = cidade.getFolders();
+    let melhor = null, nota = 0, empate = false;
+    while (it.hasNext()) {
+      const f = it.next();
+      const s = appNotaNome_(f.getName(), nomes);
+      if (s > nota) { melhor = f; nota = s; empate = false; } else if (s && s === nota) empate = true;
+      candidatas.push({ id: f.getId(), nome: f.getName() });
+    }
+    if (melhor && !empate) { props.setProperty(chaveProp, melhor.getId()); return { pasta: melhor }; }
+  }
+  // pode estar em outra cidade (ex.: A OUTROS): procura pelo nome exato dentro de PERICIAS
+  for (const n of nomes) {
+    const it = DriveApp.searchFolders("title = '" + n.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "' and trashed = false");
+    while (it.hasNext()) {
+      const f = it.next();
+      if (f.getId() !== APP_PASTA_RAIZ && appDentroDaRaiz_(f)) { props.setProperty(chaveProp, f.getId()); return { pasta: f }; }
+    }
+  }
+  return { pasta: null, cidade: cidade, candidatas: candidatas.sort((a, b) => a.nome.localeCompare(b.nome)) };
+}
+
+function appInfoPasta_(f) {
+  const pais = f.getParents();
+  const pai = pais.hasNext() ? pais.next().getName() : '';
+  return { id: f.getId(), nome: f.getName(), url: f.getUrl(), caminho: (pai ? pai + ' / ' : '') + f.getName() };
+}
+
+function appArquivos_(pasta) {
+  const out = [];
+  const it = pasta.getFiles();
+  while (it.hasNext() && out.length < 300) {
+    const f = it.next();
+    out.push({ id: f.getId(), nome: f.getName(), mime: f.getMimeType(), url: f.getUrl(), tam: f.getSize(), mod: f.getLastUpdated().getTime() });
+  }
+  const sp = pasta.getFolders();
+  while (sp.hasNext()) {
+    const f = sp.next();
+    out.push({ id: f.getId(), nome: f.getName(), mime: APP_MIME_PASTA, url: f.getUrl(), tam: 0, mod: f.getLastUpdated().getTime() });
+  }
+  return out.sort((a, b) => b.mod - a.mod);
+}
+
+function appDocs_(req) {
+  const m = appLinhaMapa_(req);
+  const r = appEncontrarPasta_(m);
+  if (r.pasta) return { ok: true, pasta: appInfoPasta_(r.pasta), arquivos: appArquivos_(r.pasta) };
+  return {
+    ok: true, pasta: null,
+    sugestao: { cidade: r.cidade ? r.cidade.getName() : appNomePastaCidade_(m['CIDADE']), cidadeExiste: !!r.cidade, nome: appPericiado_(m) },
+    candidatas: r.candidatas
+  };
+}
+
+function appPastaVincular_(req, usuario) {
+  const m = appLinhaMapa_(req);
+  const f = DriveApp.getFolderById(req.pastaId);
+  if (!appDentroDaRaiz_(f)) return { ok: false, erro: 'Essa pasta não está dentro de PERICIAS.' };
+  PropertiesService.getScriptProperties().setProperty('PASTA_' + m['PROCESSO'].replace(/\D/g, ''), f.getId());
+  appLog_(usuario, m['PROCESSO'], 'Drive: pasta vinculada', appInfoPasta_(f).caminho);
+  return appDocs_(req);
+}
+
+function appPastaCriar_(req, usuario) {
+  const m = appLinhaMapa_(req);
+  const nome = String(req.nome || appPericiado_(m)).replace(/[\/\\]/g, '-').trim();
+  if (!nome) return { ok: false, erro: 'Informe o nome da pasta.' };
+  const cidade = appPastaCidade_(m['CIDADE'] || 'A OUTROS', true);
+  let f = null;
+  const it = cidade.getFoldersByName(nome);
+  if (it.hasNext()) f = it.next(); else f = cidade.createFolder(nome);
+  PropertiesService.getScriptProperties().setProperty('PASTA_' + m['PROCESSO'].replace(/\D/g, ''), f.getId());
+  appLog_(usuario, m['PROCESSO'], 'Drive: pasta criada', cidade.getName() + ' / ' + nome);
+  return appDocs_(req);
+}
+
+function appModelos_() {
+  const cache = CacheService.getScriptCache();
+  const url = 'https://drive.google.com/drive/folders/' + APP_PASTA_MODELOS;
+  const c = cache.get('APP_MODELOS');
+  if (c) return { ok: true, modelos: JSON.parse(c), url: url };
+  const it = DriveApp.getFolderById(APP_PASTA_MODELOS).getFilesByType(MimeType.GOOGLE_DOCS);
+  const out = [];
+  while (it.hasNext()) {
+    const f = it.next();
+    if (/^c[oó]pia de /i.test(f.getName())) continue;
+    out.push({ id: f.getId(), nome: f.getName(), mod: f.getLastUpdated().getTime() });
+  }
+  out.sort((a, b) => a.nome.localeCompare(b.nome));
+  cache.put('APP_MODELOS', JSON.stringify(out), 600);
+  return { ok: true, modelos: out, url: url };
+}
+
+function appUpload_(req, usuario) {
+  const m = appLinhaMapa_(req);
+  const r = appEncontrarPasta_(m);
+  if (!r.pasta) return { ok: false, erro: 'Crie ou vincule a pasta do periciado antes de enviar arquivos.' };
+  const bytes = Utilities.base64Decode(String(req.dados || ''));
+  if (!bytes.length) return { ok: false, erro: 'Arquivo vazio.' };
+  if (bytes.length > APP_UPLOAD_MAX) return { ok: false, erro: 'Arquivo grande demais para o app (máximo 15 MB). Envie pelo Drive.' };
+  const nome = String(req.nome || 'arquivo').replace(/[\/\\]/g, '-').slice(0, 200);
+  const f = r.pasta.createFile(Utilities.newBlob(bytes, req.mime || 'application/octet-stream', nome));
+  appLog_(usuario, m['PROCESSO'], 'Drive: arquivo enviado', nome);
+  return { ok: true, arquivo: { id: f.getId(), nome: f.getName(), url: f.getUrl() } };
+}
+
+// ---------- gerar documento a partir de um modelo de "Arquivos base" ----------
+const APP_DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const APP_MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+function appRegexEsc_(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function appSlotDoProcesso_(m) {
+  const nomes = appNomesDoProcesso_(m).map(appNorm_);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const itens = appAgenda_().itens.filter(a => nomes.indexOf(appNorm_(a.nome)) >= 0);
+  const comData = itens.map(a => { const p = a.data.split('/'); return Object.assign({ d: new Date(+p[2], +p[1] - 1, +p[0]) }, a); });
+  const futuros = comData.filter(a => a.d >= hoje).sort((a, b) => a.d - b.d);
+  return futuros[0] || comData.sort((a, b) => b.d - a.d)[0] || null;
+}
+
+// troca o texto de uma célula mantendo a formatação do primeiro caractere
+function appTrocarTexto_(el, novo) {
+  const t = el.editAsText();
+  const antigo = t.getText();
+  if (antigo === novo) return;
+  if (!antigo.length) { t.setText(novo); return; }
+  t.insertText(0, novo);
+  t.deleteText(novo.length, novo.length + antigo.length - 1);
+}
+
+function appMarcar_(body, padrao) {
+  let n = 0, r = body.findText(padrao);
+  while (r) {
+    r.getElement().asText().setBackgroundColor(r.getStartOffset(), r.getEndOffsetInclusive(), '#FFF59D');
+    n++;
+    r = body.findText(padrao, r);
+  }
+  return n;
+}
+
+function appPreencherDoc_(doc, m, slot) {
+  const body = doc.getBody();
+  const proc = appCNJ_(m['PROCESSO']);
+  const trocas = [];
+  const conferir = [];
+
+  // 1) tabela de identificação (Processo nº / Requerente / Requerida)
+  body.getTables().forEach(tab => {
+    for (let r = 0; r < tab.getNumRows(); r++) {
+      const row = tab.getRow(r);
+      if (row.getNumCells() < 2) continue;
+      const rot = appChave_(row.getCell(0).getText());
+      let novo = null;
+      if (/^PROCESSO/.test(rot)) novo = proc;
+      else if (/^(REQUERENTE|AUTOR|EXEQUENTE|INTERESSAD)/.test(rot)) novo = m['REQUERENTE'];
+      else if (/^(REQUERID|REU|RE:|EXECUTAD)/.test(rot)) novo = m['REQUERIDA'];
+      if (!novo) continue;
+      const cel = row.getCell(1);
+      const velho = cel.getText().trim();
+      if (velho && velho !== novo) trocas.push([velho, novo]);
+      appTrocarTexto_(cel.getChild(0), novo);
+    }
+  });
+  // nomes e número antigos que aparecem no meio do texto
+  trocas.forEach(([velho, novo]) => {
+    if (velho.length < 5) return;
+    body.replaceText(appRegexEsc_(velho), novo);
+    if (velho.toUpperCase() !== velho) body.replaceText(appRegexEsc_(velho.toUpperCase()), novo.toUpperCase());
+  });
+
+  // 2) juízo no endereçamento
+  const vara = appEhNucleo_(m)
+    ? 'VARA DO NÚCLEO ESPECIALIZADO DE JUSTIÇA 4.0 - ACIDENTES DO TRABALHO DO INTERIOR E DO LITORAL'
+    : (m['FORUM'] && m['CIDADE'] ? (m['FORUM'] + ' DO FORO DE ' + m['CIDADE'] + '/SP.').toUpperCase() : '');
+  if (vara && body.findText('JUIZ\\(A\\) DE DIREITO D[AO] ')) body.replaceText('JUIZ\\(A\\) DE DIREITO D[AO] .*', 'JUIZ(A) DE DIREITO DA ' + vara);
+  else if (!vara) conferir.push('endereçamento (vara e foro)');
+
+  // 3) data de assinatura
+  const hoje = new Date();
+  body.replaceText('Rio Preto/SP, [0-9]{1,2} de [^ ]+ de [0-9]{4}', 'Rio Preto/SP, ' + hoje.getDate() + ' de ' + APP_MESES[hoje.getMonth()] + ' de ' + hoje.getFullYear());
+
+  // 4) data, horário e local da perícia (modelos de agendamento)
+  if (body.findText('Data: [0-9]{1,2}/[0-9]{1,2}/[0-9]{4}')) {
+    if (slot) {
+      const hora = slot.hora.replace(/^0(\d)/, '$1');
+      body.replaceText('Data: [0-9]{1,2}/[0-9]{1,2}/[0-9]{4} \\([^)]*\\); Horário: [0-9]{1,2}:[0-9]{2} horas', 'Data: ' + slot.data + ' (' + APP_DIAS[slot.d.getDay()] + '); Horário: ' + hora + ' horas');
+      if (slot.local && appChave_(slot.local) !== 'CONSULTORIO') { body.replaceText('Local: .*', 'Local: ' + slot.local); conferir.push('local da perícia'); }
+    } else {
+      appMarcar_(body, 'Data: [0-9]{1,2}/[0-9]{1,2}/[0-9]{4}[^;]*; Horário: [0-9:]+ horas');
+      conferir.push('data e horário da perícia (nada agendado na aba AGENDAMENTOS)');
+    }
+  }
+
+  // 5) o que o app não sabe: marca em amarelo
+  if (appMarcar_(body, 'R\\$ ?[0-9.]+,[0-9]{2}')) conferir.push('valores em R$');
+  if (appMarcar_(body, '[Ee]vento [0-9]+')) conferir.push('número do evento');
+  if (appMarcar_(body, 'fls?\\. ?[0-9]+')) conferir.push('folhas citadas');
+  return conferir;
+}
+
+function appGerarDoc_(req, usuario) {
+  const m = appLinhaMapa_(req);
+  const modelo = DriveApp.getFileById(req.modeloId);
+  let doModelo = false;
+  const ps = modelo.getParents();
+  while (ps.hasNext()) if (ps.next().getId() === APP_PASTA_MODELOS) doModelo = true;
+  if (!doModelo || modelo.getMimeType() !== APP_MIME_DOC) return { ok: false, erro: 'Modelo inválido.' };
+  const r = appEncontrarPasta_(m);
+  if (!r.pasta) return { ok: false, erro: 'Crie ou vincule a pasta do periciado antes de gerar documentos.' };
+  const base = modelo.getName().replace(/^MODELO\s+(DE\s+)?/i, '').replace(/\bBASE\b/ig, '').replace(/\s+/g, ' ').trim();
+  const nome = base + ' ' + r.pasta.getName().toUpperCase();
+  const copia = modelo.makeCopy(nome, r.pasta);
+  const doc = DocumentApp.openById(copia.getId());
+  let conferir;
+  try { conferir = appPreencherDoc_(doc, m, appSlotDoProcesso_(m)); } finally { doc.saveAndClose(); }
+  appLog_(usuario, m['PROCESSO'], 'Documento gerado', nome + (conferir.length ? ' (conferir: ' + conferir.join(', ') + ')' : ''));
+  return { ok: true, doc: { id: copia.getId(), nome: nome, url: copia.getUrl() }, conferir: conferir };
 }

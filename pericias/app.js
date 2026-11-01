@@ -331,8 +331,54 @@ function gerarFilaAgendamento(itens) {
   return L.join('\n').trim();
 }
 
+// ---------- documentos (Drive) ----------
+function ehIntegra(nome) { return /INTEGRA|AUTOS|PROCESSO COMPLETO|COPIA INTEGRAL|CAPA/.test(chave(nome)); }
+function tipoArquivo(mime, nome) {
+  if (mime === 'application/vnd.google-apps.folder') return { k: 'pasta', r: 'PASTA' };
+  if (mime === 'application/vnd.google-apps.document') return { k: 'doc', r: 'DOCS' };
+  if (mime === 'application/vnd.google-apps.spreadsheet') return { k: 'planilha', r: 'PLAN' };
+  if (mime === 'application/pdf') return { k: 'pdf', r: 'PDF' };
+  if (/^image\//.test(mime || '')) return { k: 'img', r: 'FOTO' };
+  if (/word/.test(mime || '')) return { k: 'doc', r: 'WORD' };
+  const ext = (String(nome || '').match(/\.([a-z0-9]{2,5})$/i) || [])[1];
+  return { k: 'outro', r: ext ? ext.toUpperCase() : 'ARQ' };
+}
+function urlPrevia(f) {
+  if (f.mime === 'application/vnd.google-apps.document') return 'https://docs.google.com/document/d/' + f.id + '/preview';
+  if (f.mime === 'application/vnd.google-apps.spreadsheet') return 'https://docs.google.com/spreadsheets/d/' + f.id + '/preview';
+  if (f.mime === 'application/vnd.google-apps.presentation') return 'https://docs.google.com/presentation/d/' + f.id + '/preview';
+  return 'https://drive.google.com/file/d/' + f.id + '/preview';
+}
+function fmtTamanho(b) {
+  if (!b) return '';
+  if (b < 1024 * 1024) return Math.max(1, Math.round(b / 1024)) + ' KB';
+  return (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
+}
+// modelos sugeridos para a etapa do processo
+function sugerirModelos(modelos, m) {
+  const e = etapaDe(m), obs = chave(m['OBSERVACAO']), tipo = chave(m['TIPO']);
+  const nuc = /NUCLEO/.test(chave(m['CIDADE'])) || /NUCLEO/.test(chave(m['FORUM']));
+  const chaves = {
+    ACEITE: ['ACEITE'], RESERVA: ['ACEITE COM AGENDAMENTO', 'AGENDAMENTO'], AGENDAMENTO: ['AGENDAMENTO'],
+    PERICIA: ['DECLARACAO COMPARECIMENTO', 'AUTORIZACAO FOTOGRAFIA'], LAUDO: ['LAUDO'], ESCLARECIMENTOS: ['ESCLARECIMENTO'],
+    DECISAO: /COMPARECEU/.test(obs) ? ['NAO COMPARECIMENTO'] : [], PETICAO: ['PETICAO'],
+    PAGAMENTO: ['MLE', 'HONORARIOS', 'FORMULARIO'], RENUNCIAR: ['RENUNCIA']
+  }[e] || [];
+  return modelos.map(md => {
+    const t = chave(md.nome).replace(/[^A-Z0-9 ]/g, ' ');
+    let s = 0;
+    chaves.forEach((k, i) => { if (t.indexOf(k) >= 0) s = Math.max(s, 4 - Math.min(i, 2)); });
+    if (!s) return { md: md, s: 0 };
+    if (/\bN40\b/.test(t)) { if (!nuc) return { md: md, s: 0 }; s += 2; } else if (nuc) s -= 1;
+    if (/INTERDICAO/.test(t)) s += /INTERDI|CURATELA/.test(tipo) ? 2 : -9;
+    if (/HOMECARE/.test(t)) s += /HOMECARE/.test(tipo) ? 2 : -9;
+    return { md: md, s: s };
+  }).filter(x => x.s > 0).sort((a, b) => b.s - a.s || a.md.nome.length - b.md.nome.length).slice(0, 4).map(x => x.md);
+}
+
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
+    ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
     montarEventos, porMes, gcalLink, linkEsaj, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
@@ -398,7 +444,11 @@ const state = {
   arqQ: '',
   verPassadas: false,
   dc: { modelo: 0, canal: '', titulo: '', texto: '', processo: '' },
-  ficha: null
+  ficha: null,
+  docs: {},
+  modelos: null,
+  modelosUrl: '',
+  ultimoDoc: null
 };
 
 /* ---------- API ---------- */
@@ -864,6 +914,7 @@ function renderFicha() {
     if (f.confirma) {
       h += '<div class="confirma"><b>' + esc(f.confirma.titulo) + '</b><ul>' + f.confirma.linhas.map(l => '<li>' + l + '</li>').join('') + '</ul><div class="acoes"><button type="button" class="btn primario" data-acao="confirmar">Confirmar</button><button type="button" class="btn" data-acao="cancelar-confirma">Cancelar</button></div></div>';
     }
+    h += '<section class="docs" id="docs-bloco"></section>';
   } else if (f.aba2 === 'dados') {
     h += '<div class="form-grid" id="ficha-form">' + camposForm(f.aba, it) + '</div><div class="acoes" style="margin-top:14px"><button type="button" class="btn primario" data-acao="salvar-dados">Salvar alterações</button></div>';
   } else {
@@ -885,6 +936,150 @@ function renderFicha() {
   });
   if (f.aba2 === 'dados') ligarForm($('#ficha-form'), f.aba, it);
   if (f.aba2 === 'hist' && !f.hist) carregarHistorico(proc);
+  if (f.aba2 === 'acoes') renderDocsBloco(it);
+}
+
+/* ================= DOCUMENTOS (DRIVE) ================= */
+function fichaItem() { return state.ficha ? acharItem(state.ficha.aba, state.ficha.linha) : null; }
+function chaveDocs(it) { return digitos(it.m['PROCESSO']) || it.aba + ':' + it.linha; }
+function fmtDataHora(ms) { const d = new Date(ms); return fmtData(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+function erroApi(j, padrao) { return j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || padrao); }
+
+async function carregarDocs(it, forcar) {
+  const k = chaveDocs(it);
+  if (!forcar && state.docs[k] && !state.docs[k].erro && !state.docs[k].carregando) return;
+  state.docs[k] = { carregando: true };
+  renderDocsBloco(it);
+  try {
+    const j = await api('docs', { aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'] });
+    state.docs[k] = j.ok ? j : { erro: erroApi(j, 'Erro ao ler o Drive') };
+  } catch (e) { state.docs[k] = { erro: e.message }; }
+  const atual = fichaItem();
+  if (atual && chaveDocs(atual) === k) renderDocsBloco(atual);
+}
+
+function renderDocsBloco(it) {
+  const el = $('#docs-bloco');
+  if (!el) return;
+  const d = state.docs[chaveDocs(it)];
+  if (!d) { carregarDocs(it); return; }
+  let h = '<div class="docs-topo"><div><h3>Documentos</h3>' + (d.pasta ? '<small>📁 ' + esc(d.pasta.caminho) + '</small>' : '') + '</div>';
+  if (d.pasta) h += '<div class="acoes"><button type="button" class="btn pequeno primario" data-acao="doc-gerar">Gerar documento</button><button type="button" class="btn pequeno" data-acao="doc-enviar">Enviar arquivo</button>' +
+    '<a class="btn pequeno" href="' + esc(d.pasta.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir pasta</a>' +
+    '<button type="button" class="btn pequeno icone" data-acao="doc-atualizar" title="Atualizar lista" aria-label="Atualizar lista">' + ic('atualizar') + '</button></div>';
+  h += '</div>';
+  if (d.carregando) h += '<p class="vazio">Procurando a pasta no Drive...</p>';
+  else if (d.erro) h += '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>' + esc(d.erro) + '</span></div><button type="button" class="btn pequeno" data-acao="doc-atualizar">Tentar de novo</button>';
+  else if (d.pasta) {
+    const arqs = d.arquivos.slice().sort((a, b) => (ehIntegra(b.nome) - ehIntegra(a.nome)) || b.mod - a.mod);
+    h += arqs.length ? '<div class="arquivos">' + arqs.map(f => {
+      const t = tipoArquivo(f.mime, f.nome);
+      return '<button type="button" class="arq" data-acao="doc-ver" data-id="' + esc(f.id) + '"><span class="tipo-arq ' + t.k + '">' + t.r + '</span><span class="meio"><b>' + esc(f.nome) + '</b><small>' + esc(fmtDataHora(f.mod) + (f.tam ? ' · ' + fmtTamanho(f.tam) : '')) + '</small></span>' +
+        (ehIntegra(f.nome) ? '<span class="chip pericia">Íntegra</span>' : '') + '</button>';
+    }).join('') + '</div>' : '<p class="vazio">Pasta vazia. Envie a íntegra do processo pelo botão "Enviar arquivo" (até 15 MB) ou direto no Drive.</p>';
+  } else {
+    const s = d.sugestao || {};
+    h += '<div class="alerta-box azul" style="cursor:default"><span>📁</span><span>Não achei a pasta deste periciado em <b>PERICIAS / ' + esc(s.cidade || '?') + '</b>' + (s.cidadeExiste ? '' : ' (a pasta da cidade também será criada)') + '.</span></div>' +
+      '<div class="linha-form"><div class="campo"><label for="pasta-nome">Nome da pasta</label><input id="pasta-nome" value="' + esc(s.nome || '') + '"></div><button type="button" class="btn primario" data-acao="pasta-criar">Criar pasta</button></div>';
+    if (d.candidatas && d.candidatas.length) h += '<div class="linha-form"><div class="campo"><label for="pasta-vinc">Ou vincular a uma pasta que já existe em ' + esc(s.cidade) + '</label><select id="pasta-vinc"><option value="">Escolha...</option>' +
+      d.candidatas.map(c => '<option value="' + esc(c.id) + '">' + esc(c.nome) + '</option>').join('') + '</select></div><button type="button" class="btn" data-acao="pasta-vincular">Vincular</button></div>';
+  }
+  h += '<input type="file" id="docs-file" multiple hidden>';
+  el.innerHTML = h;
+  const inp = $('#docs-file');
+  inp.addEventListener('change', () => { enviarArquivos(it, inp.files); });
+}
+
+async function acaoPasta(it, acao, extra, msgOk) {
+  try {
+    const j = await api(acao, Object.assign({ aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'] }, extra));
+    if (!j.ok) throw new Error(erroApi(j, 'Erro no Drive'));
+    state.docs[chaveDocs(it)] = j;
+    renderDocsBloco(it);
+    toast(msgOk);
+  } catch (e) { toast(e.message, { erro: true }); }
+}
+
+async function enviarArquivos(it, files) {
+  const lista = Array.from(files || []);
+  for (const f of lista) {
+    if (f.size > 15 * 1024 * 1024) { toast(f.name + ' tem mais de 15 MB. Envie pelo Drive (botão Abrir pasta).', { erro: true }); continue; }
+    toast('Enviando ' + f.name + '...');
+    try {
+      const b64 = await new Promise((ok, falha) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(',')[1] || '');
+        r.onerror = () => falha(new Error('Não consegui ler o arquivo.'));
+        r.readAsDataURL(f);
+      });
+      const j = await api('upload', { aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'], nome: f.name, mime: f.type, dados: b64 });
+      if (!j.ok) throw new Error(erroApi(j, 'Erro ao enviar'));
+      toast(f.name + ': enviado');
+    } catch (e) { toast(e.message, { erro: true }); }
+  }
+  if (lista.length) carregarDocs(it, true);
+}
+
+function abrirPrevia(f) {
+  if (f.mime === 'application/vnd.google-apps.folder') { window.open(f.url, '_blank', 'noopener'); return; }
+  modal.classList.add('grande');
+  $('#modal-titulo').textContent = f.nome;
+  $('#modal-corpo').innerHTML = '<iframe class="previa" src="' + esc(urlPrevia(f)) + '" title="' + esc(f.nome) + '"></iframe>' +
+    '<p class="dica-previa">Se a prévia não aparecer, entre na sua conta Google neste navegador ou use "Abrir no Drive".</p>';
+  $('#modal-rodape').innerHTML = '<a class="btn primario" href="' + esc(f.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir no Drive</a>';
+  if (!modal.open) modal.showModal();
+}
+
+async function abrirGerador(it) {
+  modal.classList.remove('grande');
+  $('#modal-titulo').textContent = 'Gerar documento';
+  $('#modal-corpo').innerHTML = '<p class="carregando">Carregando modelos...</p>';
+  $('#modal-rodape').innerHTML = '';
+  if (!modal.open) modal.showModal();
+  if (!state.modelos) {
+    try {
+      const j = await api('modelos');
+      if (!j.ok) throw new Error(j.erro || 'Erro ao ler os modelos');
+      state.modelos = j.modelos; state.modelosUrl = j.url || '';
+    } catch (e) { $('#modal-corpo').innerHTML = '<p class="vazio">' + esc(e.message) + '</p>'; return; }
+  }
+  renderGerador(it, '');
+}
+
+function renderGerador(it, q) {
+  const d = state.docs[chaveDocs(it)] || {};
+  const sug = sugerirModelos(state.modelos, it.m);
+  const qq = chave(q);
+  const todos = state.modelos.filter(md => !qq || chave(md.nome).indexOf(qq) >= 0);
+  const item = md => '<button type="button" class="arq" data-acao="modelo-gerar" data-id="' + esc(md.id) + '"><span class="tipo-arq doc">DOCS</span><span class="meio"><b>' + esc(md.nome) + '</b></span></button>';
+  let h = '<p class="dica-gerador">Escolha o modelo. O app faz uma cópia na pasta <b>' + esc(d.pasta ? d.pasta.caminho : '') + '</b> e preenche número do processo, partes, juízo, data de hoje e o agendamento. O que ele não sabe (valores, número de evento, folhas) fica marcado em amarelo.</p>';
+  if (sug.length && !qq) h += '<h3 class="sub">Sugeridos para a etapa ' + esc(rotEtapa(etapaDe(it.m))) + '</h3><div class="arquivos">' + sug.map(item).join('') + '</div>';
+  h += '<h3 class="sub">Todos os modelos (' + state.modelos.length + ')</h3><input type="search" id="modelo-q" class="busca-modelo" placeholder="Buscar modelo..." value="' + esc(q) + '" autocomplete="off">' +
+    '<div class="arquivos">' + (todos.length ? todos.map(item).join('') : '<p class="vazio">Nenhum modelo com esse nome.</p>') + '</div>';
+  $('#modal-corpo').innerHTML = h;
+  $('#modal-rodape').innerHTML = state.modelosUrl ? '<a class="btn pequeno" href="' + esc(state.modelosUrl) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir a pasta de modelos</a>' : '';
+  const inp = $('#modelo-q');
+  inp.addEventListener('input', () => { renderGerador(it, inp.value); const n = $('#modelo-q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); });
+}
+
+async function gerarDocumento(it, id) {
+  const md = state.modelos.find(x => x.id === id);
+  if (!md) return;
+  $('#modal-corpo').innerHTML = '<p class="carregando">Gerando "' + esc(md.nome) + '"... pode levar alguns segundos.</p>';
+  $('#modal-rodape').innerHTML = '';
+  try {
+    const j = await api('gerarDoc', { aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'], modeloId: id });
+    if (!j.ok) throw new Error(erroApi(j, 'Erro ao gerar o documento'));
+    state.ultimoDoc = { id: j.doc.id, nome: j.doc.nome, url: j.doc.url, mime: 'application/vnd.google-apps.document' };
+    $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq doc">DOCS</span><div><b>' + esc(j.doc.nome) + '</b><small>Salvo na pasta do periciado</small></div></div>' +
+      (j.conferir && j.conferir.length ? '<div class="alerta-box" style="cursor:default"><span>🖍️</span><span>Confira antes de protocolar: <b>' + esc(j.conferir.join(', ')) + '</b>. Esses trechos estão marcados em amarelo no documento; tire o realce depois de conferir.</span></div>'
+        : '<p class="vazio">Preenchido. Revise e baixe em PDF pelo Docs (Arquivo > Fazer download > PDF).</p>');
+    $('#modal-rodape').innerHTML = '<a class="btn primario" href="' + esc(j.doc.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir no Docs para editar</a><button type="button" class="btn" data-acao="doc-ver-ultimo">Visualizar aqui</button>';
+    carregarDocs(it, true);
+  } catch (e) {
+    $('#modal-corpo').innerHTML = '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>' + esc(e.message) + '</span></div>';
+    $('#modal-rodape').innerHTML = '<button type="button" class="btn" data-acao="doc-gerar">Voltar aos modelos</button>';
+  }
 }
 
 async function carregarHistorico(proc) {
@@ -996,11 +1191,13 @@ async function salvarDadosFicha() {
 const modal = $('#modal');
 $('#modal-fechar').addEventListener('click', () => modal.close());
 modal.addEventListener('click', ev => { if (ev.target === modal) modal.close(); });
+modal.addEventListener('close', () => { if (modal.classList.contains('grande')) { modal.classList.remove('grande'); $('#modal-corpo').innerHTML = ''; } });
 $('#modal-form').addEventListener('submit', ev => ev.preventDefault());
 
 function abrirNovoProcesso() {
   $('#modal-titulo').textContent = 'Novo processo';
-  $('#modal-corpo').innerHTML = '<div class="form-grid" id="novo-form">' + camposForm('PERICIAS', null, { 'STATUS': 'AGUARDANDO', 'PROXIMO PASSO': 'ACEITE', 'SISTEMA': 'ESAJ' }) + '</div>';
+  $('#modal-corpo').innerHTML = '<div class="form-grid" id="novo-form">' + camposForm('PERICIAS', null, { 'STATUS': 'AGUARDANDO', 'PROXIMO PASSO': 'ACEITE', 'SISTEMA': 'ESAJ' }) + '</div>' +
+    '<label class="check" style="margin-top:14px"><input type="checkbox" id="novo-pasta" checked> Criar a pasta do periciado no Drive (PERICIAS / CIDADE / Nome)</label>';
   $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="novo-salvar">Cadastrar</button><span class="esp"></span><small style="color:var(--suave);align-self:center">O processo entra na aba PERICIAS</small>';
   ligarForm($('#novo-form'));
   $('#novo-salvar').onclick = async ev => {
@@ -1018,8 +1215,15 @@ function abrirNovoProcesso() {
         j = await api('salvar', req);
       }
       if (!j.ok) throw new Error(j.erro || 'Erro ao salvar');
+      const criarPasta = $('#novo-pasta') && $('#novo-pasta').checked;
       modal.close();
       toast('Processo cadastrado');
+      if (criarPasta) {
+        const m = linhaMapa(Object.keys(dados), Object.keys(dados).map(k => dados[k]));
+        api('pastaCriar', { aba: 'PERICIAS', linha: j.linha, processoEsperado: dados[hProc], nome: periciadoDe(m) })
+          .then(r => toast(r.ok && r.pasta ? 'Pasta criada: ' + r.pasta.caminho : 'Processo cadastrado, mas a pasta não foi criada: ' + erroApi(r, ''), { erro: !(r.ok && r.pasta) }))
+          .catch(e => toast('Processo cadastrado, mas a pasta não foi criada: ' + e.message, { erro: true }));
+      }
       await recarregar(true);
     } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
   };
@@ -1416,6 +1620,30 @@ document.addEventListener('click', ev => {
     case 'cal-dia': { const d = new Date(Number(ds.t)); state.cal.sel = d.getTime(); if (d.getMonth() !== state.cal.mes) { state.cal.mes = d.getMonth(); state.cal.ano = d.getFullYear(); } render(); if (window.innerWidth < 900) { const l = document.querySelector('.dia-lista'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }); } break; }
     case 'cal-f': state.cal.f[ds.t] = !state.cal.f[ds.t]; render(); break;
     case 'arq': state.arquivo = ds.aba; render(); break;
+    case 'doc-ver': {
+      const it = fichaItem(), d = it && state.docs[chaveDocs(it)];
+      const f = d && d.arquivos && d.arquivos.find(x => x.id === ds.id);
+      if (f) abrirPrevia(f);
+      break;
+    }
+    case 'doc-ver-ultimo': if (state.ultimoDoc) abrirPrevia(state.ultimoDoc); break;
+    case 'doc-atualizar': { const it = fichaItem(); if (it) carregarDocs(it, true); break; }
+    case 'doc-enviar': { const inp = $('#docs-file'); if (inp) inp.click(); break; }
+    case 'doc-gerar': { const it = fichaItem(); if (it) abrirGerador(it); break; }
+    case 'modelo-gerar': { const it = fichaItem(); if (it) gerarDocumento(it, ds.id); break; }
+    case 'pasta-criar': {
+      const it = fichaItem(), nome = ($('#pasta-nome') || {}).value || '';
+      if (!nome.trim()) { toast('Informe o nome da pasta.', { erro: true }); break; }
+      el.disabled = true;
+      acaoPasta(it, 'pastaCriar', { nome: nome.trim() }, 'Pasta criada no Drive').finally(() => { el.disabled = false; });
+      break;
+    }
+    case 'pasta-vincular': {
+      const it = fichaItem(), id = ($('#pasta-vinc') || {}).value;
+      if (!id) { toast('Escolha a pasta.', { erro: true }); break; }
+      acaoPasta(it, 'pastaVincular', { pastaId: id }, 'Pasta vinculada');
+      break;
+    }
     case 'dc-gerar': gerarDiscord(ds.id); break;
     case 'dc-enviar': enviarDiscord(el); break;
     case 'dc-limpar': state.dc = { modelo: 0, canal: state.dc.canal, titulo: '', texto: '', processo: '' }; renderDiscord(); break;
