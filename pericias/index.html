@@ -4,7 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <meta name="theme-color" content="#0d1b2a">
+  <meta name="theme-color" content="#08101a">
+  <!-- tema: escuro por padrão; aplicado antes de desenhar a tela para não piscar -->
+  <script>try { document.documentElement.dataset.tema = localStorage.getItem('pericias_tema') === 'claro' ? 'claro' : 'escuro'; } catch (e) { document.documentElement.dataset.tema = 'escuro'; }</script>
   <title>Perícias | Dr. Bruno Thomás Michels</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="../logo.png">
@@ -13,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
   <!-- ao publicar mudanças, aumente o número de "v" nos 3 arquivos abaixo para o navegador baixar a versão nova -->
-  <link rel="stylesheet" href="app.css?v=9">
+  <link rel="stylesheet" href="app.css?v=10">
 </head>
 <body>
 
@@ -38,6 +40,7 @@
     <div class="marca"><img src="../logo.png" alt=""><div><b>Perícias</b><small>Dr. Bruno Michels</small></div></div>
     <div id="nav-itens" class="nav-itens"></div>
     <div id="nav-mais" class="nav-mais" hidden></div>
+    <button type="button" class="btn-tema" id="btn-tema" data-acao="tema"></button>
     <div class="nav-rodape"><span id="nav-user"></span><button type="button" class="link-sair" id="btn-sair">Sair</button></div>
   </nav>
   <div class="principal">
@@ -73,7 +76,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="config.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
