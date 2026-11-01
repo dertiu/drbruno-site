@@ -564,11 +564,19 @@ function appVerificado_(req, usuario) {
   return { ok: true, quando: appAgoraTxt_(), por: usuario };
 }
 
+// última vez que alguém olhou cada processo: "Sem novidade" ou atualização da situação pelo app
+// (etapa, pagamento, status, observação, prazo, datas), cadastro ou mudança de aba
 function appVerificados_() {
   const out = {};
+  const situacao = /(^|; )(PROXIMO PASSO|PAGO|STATUS|OBSERVACAO|PRAZOS?|PERICIA|LAUDO|INTIMACAO):/;
   appLerLog_().forEach(x => {
-    if (x.acao !== 'Verificado nos autos') return;
-    out[String(x.processo).replace(/\D/g, '')] = { quando: x.data, por: x.usuario, nota: x.detalhe };
+    const k = String(x.processo).replace(/\D/g, '');
+    if (!k) return;
+    let tipo = '';
+    if (x.acao === 'Verificado nos autos') tipo = 'sem novidade';
+    else if (/^Cadastro|^Movido/.test(x.acao)) tipo = 'atualizado';
+    else if (situacao.test(String(x.detalhe).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase())) tipo = 'atualizado';
+    if (tipo) out[k] = { quando: x.data, por: x.usuario, nota: tipo === 'sem novidade' ? x.detalhe : x.acao, tipo: tipo };
   });
   return out;
 }

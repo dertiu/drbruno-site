@@ -5,6 +5,8 @@ window.PERICIAS_CONFIG = {
   // Valor da UFESP usado para estimar honorários fixados em UFESP (2026: R$ 38,42, Comunicado DICAR 88/2025).
   // Atualize todo mês de janeiro.
   UFESP: 38.42,
-  // De quantos em quantos dias conferir nos autos os processos que só aguardam decisão, depósito ou pagamento.
-  CONFERIR_DIAS: 3
+  // Conferência nos autos dos processos que só aguardam decisão, depósito ou pagamento:
+  // meta de conferir a cada CONFERIR_DIAS dias e nunca passar de CONFERIR_LIMITE dias sem conferir.
+  CONFERIR_DIAS: 7,
+  CONFERIR_LIMITE: 15
 };
