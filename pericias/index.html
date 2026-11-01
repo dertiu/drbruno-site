@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0d1b2a">
+  <title>Perícias | Dr. Bruno Thomás Michels</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="../logo.png">
+  <link rel="apple-touch-icon" href="../logo.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<main id="tela-login" class="login" hidden>
+  <form id="form-login" class="login-card" autocomplete="on">
+    <img src="../logo.png" alt="Logo" class="login-logo">
+    <h1>Perícias</h1>
+    <label for="lg-user">Usuário</label>
+    <input id="lg-user" name="username" autocomplete="username" autocapitalize="none" required>
+    <label for="lg-pass">Senha</label>
+    <input id="lg-pass" name="password" type="password" autocomplete="current-password" required>
+    <button class="btn primario" type="submit" id="lg-btn">Entrar</button>
+    <p id="lg-msg" class="msg" role="alert"></p>
+  </form>
+</main>
+
+<!-- APP -->
+<div id="tela-app" hidden>
+  <header class="topo">
+    <div class="topo-in">
+      <strong class="marca">Perícias</strong>
+      <span id="topo-user" class="topo-user"></span>
+      <button class="btn pequeno" id="btn-atualizar" title="Recarregar dados">Atualizar</button>
+      <button class="btn pequeno" id="btn-sair">Sair</button>
+    </div>
+    <nav class="abas" id="abas">
+      <button data-aba="painel" class="ativa">Painel</button>
+      <button data-aba="PERICIAS">Perícias</button>
+      <button data-aba="agenda">Agenda</button>
+      <button data-aba="CONCLUSOS">Concluídos</button>
+      <button data-aba="RENUNCIAS">Renúncias</button>
+    </nav>
+  </header>
+
+  <main id="conteudo" class="conteudo"></main>
+  <div id="aviso" class="toast" hidden></div>
+</div>
+
+<!-- MODAL -->
+<dialog id="modal">
+  <form method="dialog" id="modal-form" class="modal-card">
+    <div class="modal-topo">
+      <h2 id="modal-titulo"></h2>
+      <button type="button" class="btn pequeno" id="modal-fechar">Fechar</button>
+    </div>
+    <div id="modal-corpo" class="modal-corpo"></div>
+    <div id="modal-rodape" class="modal-rodape"></div>
+  </form>
+</dialog>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "Perícias | Dr. Bruno Michels",
+  "short_name": "Perícias",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1b2a",
+  "theme_color": "#0d1b2a",
+  "icons": [
+    { "src": "../logo.png", "sizes": "any", "type": "image/png", "purpose": "any" }
+  ]
+}
