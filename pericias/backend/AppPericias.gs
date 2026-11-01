@@ -67,6 +67,10 @@ function appRotear_(req) {
     case 'pastaVincular': return appComTrava_(() => appPastaVincular_(req, usuario));
     case 'pastaCriar': return appComTrava_(() => appPastaCriar_(req, usuario));
     case 'modelos': return appModelos_();
+    case 'modeloSalvar': return appComTrava_(() => appModeloSalvar_(req, usuario));
+    case 'modeloDuplicar': return appComTrava_(() => appModeloDuplicar_(req, usuario));
+    case 'modeloCriar': return appComTrava_(() => appModeloCriar_(req, usuario));
+    case 'modeloExcluir': return appPapel_(usuario) === 'perito' ? appComTrava_(() => appModeloExcluir_(req, usuario)) : { ok: false, erro: 'Só o perito pode excluir modelos.' };
     case 'gerarDoc': return appGerarDoc_(req, usuario);
     case 'upload': return appUpload_(req, usuario);
     default: return { ok: false, erro: 'Ação desconhecida' };
@@ -806,21 +810,192 @@ function appPastaCriar_(req, usuario) {
   return appDocs_(req);
 }
 
+// ---------- modelos: lista, regras de sugestão e criação ----------
+// Regras ficam nas Propriedades do Script (MODELOS_CFG): { idDoModelo: { grupo, etapas[], filtro, obs, oculto, desc } }
+function appModelosCfg_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('MODELOS_CFG') || '{}'); } catch (e) { return {}; } }
+function appSalvarModelosCfg_(cfg) { PropertiesService.getScriptProperties().setProperty('MODELOS_CFG', JSON.stringify(cfg)); CacheService.getScriptCache().remove('APP_MODELOS'); }
+
 function appModelos_() {
   const cache = CacheService.getScriptCache();
   const url = 'https://drive.google.com/drive/folders/' + APP_PASTA_MODELOS;
+  let out;
   const c = cache.get('APP_MODELOS');
-  if (c) return { ok: true, modelos: JSON.parse(c), url: url };
-  const it = DriveApp.getFolderById(APP_PASTA_MODELOS).getFilesByType(MimeType.GOOGLE_DOCS);
-  const out = [];
-  while (it.hasNext()) {
-    const f = it.next();
-    if (/^c[oó]pia de /i.test(f.getName())) continue;
-    out.push({ id: f.getId(), nome: f.getName(), mod: f.getLastUpdated().getTime() });
+  if (c) out = JSON.parse(c);
+  else {
+    const it = DriveApp.getFolderById(APP_PASTA_MODELOS).getFilesByType(MimeType.GOOGLE_DOCS);
+    out = [];
+    while (it.hasNext()) {
+      const f = it.next();
+      if (/^c[oó]pia de /i.test(f.getName()) || f.isTrashed()) continue;
+      out.push({ id: f.getId(), nome: f.getName(), mod: f.getLastUpdated().getTime(), url: f.getUrl() });
+    }
+    out.sort((a, b) => a.nome.localeCompare(b.nome));
+    cache.put('APP_MODELOS', JSON.stringify(out), 600);
   }
-  out.sort((a, b) => a.nome.localeCompare(b.nome));
-  cache.put('APP_MODELOS', JSON.stringify(out), 600);
-  return { ok: true, modelos: out, url: url };
+  const cfg = appModelosCfg_();
+  const nomes = out.map(m => appNorm_(m.nome));
+  return {
+    ok: true, url: url,
+    modelos: out.map(m => Object.assign({}, m, { cfg: cfg[m.id] || null })),
+    sugeridos: APP_MODELOS_SUGERIDOS.map(s => ({ chave: s.chave, nome: s.nome, grupo: s.grupo, desc: s.desc, existe: nomes.indexOf(appNorm_(s.nome)) >= 0 }))
+  };
+}
+
+function appModeloDaPasta_(id) {
+  const f = DriveApp.getFileById(id);
+  let ok = false;
+  const ps = f.getParents();
+  while (ps.hasNext()) if (ps.next().getId() === APP_PASTA_MODELOS) ok = true;
+  if (!ok || f.getMimeType() !== APP_MIME_DOC) throw new Error('Modelo inválido.');
+  return f;
+}
+
+function appLimparCfg_(c) {
+  c = c || {};
+  const etapas = ['ACEITE', 'RESERVA', 'AGENDAMENTO', 'PERICIA', 'LAUDO', 'ESCLARECIMENTOS', 'PETICAO', 'DECISAO', 'PAGAMENTO', 'RENUNCIAR'];
+  return {
+    grupo: String(c.grupo || '').slice(0, 40),
+    etapas: (Array.isArray(c.etapas) ? c.etapas : []).map(String).filter(e => etapas.indexOf(e) >= 0),
+    filtro: ['', 'nucleo', 'comum', 'interdicao', 'homecare', 'bariatrica', 'erro'].indexOf(c.filtro || '') >= 0 ? (c.filtro || '') : '',
+    obs: String(c.obs || '').slice(0, 60),
+    oculto: !!c.oculto,
+    desc: String(c.desc || '').slice(0, 300)
+  };
+}
+
+function appModeloSalvar_(req, usuario) {
+  const f = appModeloDaPasta_(req.id);
+  const nome = String(req.nome || '').trim();
+  if (nome && nome !== f.getName()) f.setName(nome);
+  const cfg = appModelosCfg_();
+  cfg[f.getId()] = appLimparCfg_(req.cfg);
+  appSalvarModelosCfg_(cfg);
+  appLog_(usuario, '', 'Modelo configurado', f.getName());
+  return appModelos_();
+}
+
+function appModeloDuplicar_(req, usuario) {
+  const f = appModeloDaPasta_(req.id);
+  const nome = String(req.nome || ('CÓPIA ' + f.getName())).trim().toUpperCase();
+  if (/^c[oó]pia de /i.test(nome)) return { ok: false, erro: 'Escolha um nome que não comece com "Cópia de" (esses ficam ocultos).' };
+  const copia = f.makeCopy(nome, DriveApp.getFolderById(APP_PASTA_MODELOS));
+  const cfg = appModelosCfg_();
+  if (cfg[f.getId()]) { cfg[copia.getId()] = Object.assign({}, cfg[f.getId()], { oculto: false }); }
+  appSalvarModelosCfg_(cfg);
+  appLog_(usuario, '', 'Modelo duplicado', f.getName() + ' → ' + nome);
+  return Object.assign(appModelos_(), { novo: { id: copia.getId(), nome: nome, url: copia.getUrl() } });
+}
+
+function appModeloExcluir_(req, usuario) {
+  const f = appModeloDaPasta_(req.id);
+  f.setTrashed(true); // vai para a lixeira do Drive (dá para recuperar por 30 dias)
+  const cfg = appModelosCfg_();
+  delete cfg[f.getId()];
+  appSalvarModelosCfg_(cfg);
+  appLog_(usuario, '', 'Modelo excluído (lixeira do Drive)', f.getName());
+  return appModelos_();
+}
+
+const APP_ENDERECO_CONSULTORIO = 'Compart Clinic - Rua Santo Afonso de Maria Liguori, nº 141, Vila São Pedro, São José do Rio Preto/SP';
+const APP_INTRO = 'Eu, Dr. Bruno Thomás Michels, brasileiro, médico, inscrito no CRM-SP sob o nº 245235, nomeado perito judicial nos autos do processo em epígrafe, venho, respeitosamente, à presença de Vossa Excelência, ';
+
+// modelos que ainda não existem na pasta e podem ser criados com um clique (texto revisável no Docs)
+const APP_MODELOS_SUGERIDOS = [
+  { chave: 'aceite-proposta', nome: 'MODELO ACEITE COM PROPOSTA DE HONORARIOS', grupo: 'Aceite', etapas: ['ACEITE'], filtro: 'comum',
+    desc: 'Aceite da nomeação com proposta de honorários (varas comuns).',
+    paragrafos: [APP_INTRO + 'ACEITAR a nomeação, comprometendo-me a realizar a perícia médica com isenção, ética e rigor técnico.',
+      'Considerando a natureza da perícia, a análise da documentação médica, a realização do exame pericial e a elaboração do laudo, bem como o elevado grau de zelo e responsabilidade que o encargo exige, proponho honorários periciais no valor de {{HONORARIOS}}.',
+      'Após o depósito dos honorários, informarei nos autos a data, o horário e o local da perícia.'] },
+  { chave: 'redesignacao', nome: 'MODELO REDESIGNACAO DE PERICIA', grupo: 'Agendamento', etapas: ['PERICIA', 'AGENDAMENTO'], filtro: '',
+    desc: 'Informa nova data, horário e local da perícia (puxa da aba AGENDAMENTOS).',
+    paragrafos: [APP_INTRO + 'INFORMAR que a avaliação pericial foi redesignada para:',
+      'Data: {{DATA_PERICIA}} ({{DIA_SEMANA}}); Horário: {{HORA_PERICIA}} horas;',
+      'Local: {{LOCAL_PERICIA}}',
+      'Requeiro que o(a) periciando(a) seja intimado(a) da nova data, devendo comparecer portando documento oficial com foto e toda a documentação médica pertinente.'] },
+  { chave: 'sem-contato', nome: 'MODELO IMPOSSIBILIDADE DE CONTATO COM PERICIANDO', grupo: 'Agendamento', etapas: ['AGENDAMENTO'], filtro: '',
+    desc: 'Pede endereço e telefone atualizados quando não se consegue falar com o periciando.',
+    paragrafos: [APP_INTRO + 'INFORMAR que, apesar das tentativas realizadas, não foi possível contato com o(a) periciando(a) ou seus familiares pelos meios constantes dos autos, o que inviabiliza o agendamento da perícia.',
+      'Requeiro a intimação da parte autora para que informe endereço e telefone atualizados, a fim de possibilitar a designação da data da perícia.'] },
+  { chave: 'documentos', nome: 'MODELO SOLICITACAO DE DOCUMENTOS MEDICOS', grupo: 'Perícia', etapas: ['PERICIA', 'LAUDO'], filtro: '',
+    desc: 'Pede a juntada de prontuário, exames ou relatórios indispensáveis ao laudo, no prazo que o Juízo fixar.',
+    paragrafos: [APP_INTRO + 'requerer a intimação da parte [[autora]] para que apresente nos autos [[prontuário médico, exames de imagem e relatórios do médico assistente]], documentos indispensáveis à conclusão da avaliação pericial, no prazo que Vossa Excelência entender cabível.'] },
+  { chave: 'prorrogacao', nome: 'MODELO PRORROGACAO DE PRAZO DO LAUDO', grupo: 'Laudo e esclarecimentos', etapas: ['LAUDO'], filtro: '',
+    desc: 'Pede mais prazo para entregar o laudo, com justificativa curta; o período fica a critério do Juízo.',
+    paragrafos: [APP_INTRO + 'requerer a prorrogação do prazo para entrega do laudo pericial, pelo período que Vossa Excelência entender cabível.',
+      'O pedido se justifica pela necessidade de [[análise de documentação médica complementar]], indispensável à conclusão técnica do trabalho pericial.'] },
+  { chave: 'juntada-laudo', nome: 'MODELO JUNTADA DE LAUDO', grupo: 'Laudo e esclarecimentos', etapas: ['LAUDO'], filtro: '',
+    desc: 'Petição de juntada do laudo pericial.',
+    paragrafos: [APP_INTRO + 'requerer a juntada do laudo médico pericial em anexo, referente à perícia realizada em {{DATA_PERICIA}}.',
+      'Permaneço à disposição deste Juízo para eventuais esclarecimentos.'] },
+  { chave: 'esclarecimentos', nome: 'MODELO RESPOSTA A ESCLARECIMENTOS', grupo: 'Laudo e esclarecimentos', etapas: ['ESCLARECIMENTOS', 'DECISAO'], filtro: '',
+    desc: 'Estrutura para responder quesitos complementares (copie os quesitos exatamente como formulados).',
+    paragrafos: [APP_INTRO + 'apresentar os esclarecimentos solicitados, nos termos a seguir.',
+      'QUESITO: [[transcrever exatamente como formulado pela parte]]',
+      'RESPOSTA: [[resposta técnica objetiva]]',
+      '[[Ficam mantidas as conclusões do laudo pericial anteriormente apresentado.]]'] }
+];
+
+// monta um modelo novo copiando a formatação (cabeçalho, margens, fonte) de um modelo existente
+function appMontarModelo_(doc, paragrafos) {
+  const body = doc.getBody();
+  const P = DocumentApp.ElementType.PARAGRAPH;
+  let fonte = null, tam = null;
+  for (let i = 0; i < body.getNumChildren() && !fonte; i++) {
+    const el = body.getChild(i);
+    if (el.getType() === P && el.asParagraph().getText().trim().length > 40) {
+      const a = el.asParagraph().editAsText().getAttributes(0);
+      fonte = a[DocumentApp.Attribute.FONT_FAMILY]; tam = a[DocumentApp.Attribute.FONT_SIZE];
+    }
+  }
+  body.clear();
+  const J = DocumentApp.HorizontalAlignment.JUSTIFY, C = DocumentApp.HorizontalAlignment.CENTER;
+  const par = (txt, negrito, alinh) => {
+    const p = body.appendParagraph(txt);
+    p.setAlignment(alinh || J);
+    if (txt.length) { const t = p.editAsText(); if (fonte) t.setFontFamily(fonte); if (tam) t.setFontSize(tam); t.setBold(!!negrito); }
+    return p;
+  };
+  par('EXCELENTÍSSIMO(A) SENHOR(A) DOUTOR(A) JUIZ(A) DE DIREITO DA VARA', true);
+  par('');
+  const tab = body.appendTable([['Processo nº:', '{{PROCESSO}}'], ['Requerente:', '{{REQUERENTE}}'], ['Requerida:', '{{REQUERIDA}}']]);
+  tab.setBorderWidth(0);
+  const tt = tab.editAsText(); if (fonte) tt.setFontFamily(fonte); if (tam) tt.setFontSize(tam);
+  par('');
+  paragrafos.forEach(t => { par(t); par(''); });
+  par('Nesses termos, pede deferimento.');
+  par('');
+  par('Dr. Bruno Thomás Michels', true, C);
+  par('Médico Perito | CRM-SP 245235', true, C);
+  par('São José do Rio Preto/SP, {{HOJE}}.', true, C);
+  const primeiro = body.getChild(0);
+  if (body.getNumChildren() > 1 && primeiro.getType() === P && !primeiro.asParagraph().getText()) primeiro.removeFromParent();
+}
+
+function appModeloCriar_(req, usuario) {
+  const pasta = DriveApp.getFolderById(APP_PASTA_MODELOS);
+  const sug = req.sugestao ? APP_MODELOS_SUGERIDOS.filter(s => s.chave === req.sugestao)[0] : null;
+  if (req.sugestao && !sug) return { ok: false, erro: 'Sugestão não encontrada.' };
+  let nome = String(req.nome || (sug ? sug.nome : '')).trim().toUpperCase();
+  if (!nome) return { ok: false, erro: 'Dê um nome ao modelo.' };
+  if (!/^MODELO /.test(nome)) nome = 'MODELO ' + nome;
+  // base de formatação: o modelo escolhido, ou um ACEITE N40, ou o primeiro da pasta
+  let base = null;
+  if (req.baseId) base = appModeloDaPasta_(req.baseId);
+  else {
+    const it = pasta.getFilesByType(MimeType.GOOGLE_DOCS);
+    while (it.hasNext()) { const f = it.next(); if (/^c[oó]pia de /i.test(f.getName()) || f.isTrashed()) continue; if (!base || /ACEITE N40/i.test(f.getName())) base = f; if (/ACEITE N40/i.test(f.getName())) break; }
+  }
+  let doc;
+  if (base) doc = DocumentApp.openById(base.makeCopy(nome, pasta).getId());
+  else { doc = DocumentApp.create(nome); DriveApp.getFileById(doc.getId()).moveTo(pasta); }
+  try {
+    appMontarModelo_(doc, sug ? sug.paragrafos : ['[[Escreva aqui o texto. Use campos automáticos como {{PROCESSO}}, {{PERICIADO}} ou {{DATA_PERICIA}}, e marque entre colchetes duplos o que deve ser preenchido à mão.]]']);
+  } finally { doc.saveAndClose(); }
+  const cfg = appModelosCfg_();
+  cfg[doc.getId()] = appLimparCfg_(Object.assign(sug ? { grupo: sug.grupo, etapas: sug.etapas, filtro: sug.filtro, desc: sug.desc } : {}, req.cfg || {}));
+  appSalvarModelosCfg_(cfg);
+  appLog_(usuario, '', 'Modelo criado', nome);
+  return Object.assign(appModelos_(), { novo: { id: doc.getId(), nome: nome, url: 'https://docs.google.com/document/d/' + doc.getId() + '/edit' } });
 }
 
 function appUpload_(req, usuario) {
@@ -892,11 +1067,49 @@ function appMarcar_(body, padrao, ignorar) {
   return n;
 }
 
+// troca literal (sem regex na substituição), mantendo a formatação do trecho
+function appSubstituir_(body, padrao, novo) {
+  let n = 0, r = body.findText(padrao);
+  while (r && n < 300) {
+    const t = r.getElement().asText(), ini = r.getStartOffset(), fim = r.getEndOffsetInclusive();
+    if (novo) t.insertText(fim + 1, novo);
+    t.deleteText(ini, fim);
+    n++;
+    r = body.findText(padrao);
+  }
+  return n;
+}
+
+// campos automáticos que podem ser usados em qualquer modelo
+function appCamposDoc_(m, slot) {
+  const hoje = new Date();
+  const dPericia = slot ? slot.d : (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(m['PERICIA'] || '') ? (p => new Date(+p[2], +p[1] - 1, +p[0]))(m['PERICIA'].split('/')) : null);
+  const local = slot ? (appChave_(slot.local) === 'CONSULTORIO' || !slot.local ? APP_ENDERECO_CONSULTORIO : slot.local) : '';
+  return {
+    PROCESSO: appCNJ_(m['PROCESSO']), REQUERENTE: m['REQUERENTE'] || '', REQUERIDA: m['REQUERIDA'] || '', PERICIADO: appPericiado_(m),
+    VARA: m['FORUM'] || '', CIDADE: m['CIDADE'] || '', TIPO: m['TIPO'] || '', HONORARIOS: m['HONORARIOS'] || '',
+    DATA_PERICIA: slot ? slot.data : (dPericia ? m['PERICIA'] : ''),
+    DIA_SEMANA: dPericia ? APP_DIAS[dPericia.getDay()] : '',
+    HORA_PERICIA: slot ? String(slot.hora).replace(/^0(\d)/, '$1') : '',
+    LOCAL_PERICIA: local,
+    HOJE: hoje.getDate() + ' de ' + APP_MESES[hoje.getMonth()] + ' de ' + hoje.getFullYear()
+  };
+}
+
 function appPreencherDoc_(doc, m, slot) {
   const body = doc.getBody();
   const proc = appCNJ_(m['PROCESSO']);
   const trocas = [];
   const conferir = [];
+
+  // 0) campos automáticos {{...}}; sem valor, ficam marcados em amarelo
+  const campos = appCamposDoc_(m, slot);
+  Object.keys(campos).forEach(k => {
+    const padrao = '\\{\\{' + k + '\\}\\}';
+    if (!body.findText(padrao)) return;
+    if (campos[k]) appSubstituir_(body, padrao, campos[k]);
+    else { appMarcar_(body, padrao); conferir.push('{{' + k + '}} sem valor na planilha'); }
+  });
 
   // 1) tabela de identificação (Processo nº / Requerente / Requerida)
   body.getTables().forEach(tab => {
@@ -965,6 +1178,7 @@ function appPreencherDoc_(doc, m, slot) {
   if (appMarcar_(body, 'R\\$ ?[0-9.]+,[0-9]{2}', /(at[ée]|de)\s*$/i)) conferir.push('valores em R$');
   if (appMarcar_(body, '[Ee]vento [0-9]+')) conferir.push('número do evento');
   if (appMarcar_(body, 'fls?\\. ?[0-9]+')) conferir.push('folhas citadas');
+  if (appMarcar_(body, '\\[\\[[^\\]]*\\]\\]')) conferir.push('trechos entre [[ ]] para completar');
   return conferir;
 }
 

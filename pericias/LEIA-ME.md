@@ -47,7 +47,7 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
 - **Calendário**: perícias e prazos do mês, com link para o Google Agenda.
 - **Agenda**: horários por dia e fila de processos para agendar. Agendar pelo app cria o horário em AGENDAMENTOS, atualiza o processo (data e etapa PERÍCIA) e pode avisar o #agenda.
-- **Financeiro**: total a receber, situação dos honorários, MLEs a peticionar. UFESP configurável em `config.js`.
+- **Gestão** (perito) ou **Pagamentos** (assistente): veja Perfis de acesso. UFESP configurável em `config.js`.
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
@@ -60,12 +60,33 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - O perito vê por padrão as tarefas do assistente (e pode trocar para "Minhas" ou "Todas"). O assistente vê as dele.
 - Só quem criou a tarefa, ou o perito, pode excluí-la.
 
-## Documentos (gerador)
+## Documentos
 
-1. Escolha o modelo (lista da pasta Arquivos base, agrupada por tipo).
-2. O app marca os processos que precisam daquele modelo agora (ex.: todas as perícias futuras do Núcleo para AGENDAMENTO N40; todos com MLE a peticionar para PETICAO MLE). Dá para desmarcar ou buscar outros.
-3. Gerar: cria um documento por processo na pasta de cada periciado (cria a pasta se faltar, opção marcada), com links para abrir e baixar em PDF.
-- Além do que já era preenchido, o formulário MLE recebe o número do processo e o valor nominal do depósito, e o não comparecimento recebe a data da perícia. Modelos do Núcleo mantêm o endereçamento original.
+A página tem duas abas: **Gerar documentos** e **Modelos**.
+
+### Gerar documentos
+1. **Para gerar agora** mostra os modelos com mais processos esperando por eles (o número é a quantidade de processos).
+2. Escolha o modelo. O app marca os processos que precisam dele agora (ex.: perícias futuras do Núcleo para AGENDAMENTO N40; MLE a peticionar para PETICAO MLE). Dá para desmarcar ou buscar outros.
+3. Gerar: cria um documento por processo na pasta de cada periciado (cria a pasta se faltar), com links para abrir e baixar em PDF.
+- O formulário MLE recebe o número do processo e o valor nominal do depósito, e o não comparecimento recebe a data da perícia. Modelos do Núcleo mantêm o endereçamento original.
+
+### Modelos
+- Lista todos os modelos da pasta Arquivos base, por grupo, com quantos processos precisam de cada um agora.
+- **Configurar**: nome do arquivo, grupo, em quais etapas (PRÓXIMO PASSO) ele é sugerido, para quais processos (Núcleo, varas comuns, interdição, homecare, pós-bariátrica, erro médico), uma palavra da observação e uma descrição curta. A janela mostra na hora para quantos processos ele seria sugerido. Sem etapa marcada, o app continua reconhecendo pelo nome do arquivo. Dá para esconder um modelo sem apagá-lo.
+- **Criar modelo**: cria um documento novo em Arquivos base copiando cabeçalho, margens e fonte de um modelo existente, com endereçamento, tabela Processo/Requerente/Requerida, um parágrafo para escrever e a assinatura. Depois é só escrever o texto no Docs.
+- **Modelos sugeridos**: petições prontas no seu padrão (aceite com proposta de honorários, redesignação, impossibilidade de contato, solicitação de documentos médicos, prorrogação do prazo do laudo, juntada de laudo, resposta a esclarecimentos). Um clique cria o arquivo já com a regra de sugestão. Revise o texto no Docs antes do primeiro uso.
+- **Duplicar** faz uma variação com o mesmo texto e a mesma regra. **Excluir** (só o perito) manda o arquivo para a lixeira do Drive, de onde dá para recuperar por 30 dias.
+- As regras ficam nas Propriedades do Script (`MODELOS_CFG`), não no arquivo.
+
+### Campos automáticos
+Escreva no modelo exatamente assim e o app troca pelo dado do processo ao gerar:
+`{{PROCESSO}}`, `{{REQUERENTE}}`, `{{REQUERIDA}}`, `{{PERICIADO}}` (na interdição, a parte requerida), `{{VARA}}`, `{{CIDADE}}`, `{{TIPO}}`, `{{HONORARIOS}}`, `{{DATA_PERICIA}}`, `{{DIA_SEMANA}}`, `{{HORA_PERICIA}}`, `{{LOCAL_PERICIA}}` (consultório vira o endereço completo da Compart Clinic) e `{{HOJE}}`.
+- Campo sem dado na planilha fica marcado em amarelo e aparece no aviso "Confira antes de protocolar".
+- Texto entre `[[ ]]` fica amarelo para completar à mão (ex.: `[[número do evento]]`).
+
+### Sugestões no dia a dia
+- **Na ficha do processo**: logo abaixo dos botões do fluxo aparece "Documento para esta etapa" com até 3 modelos. Um toque gera o documento na pasta do periciado.
+- **Ao cadastrar um processo**: depois de salvar, a janela mostra a pasta criada no Drive e os documentos sugeridos para começar (ex.: o aceite), com botão Gerar, além de Abrir o processo e Criar tarefa.
 
 ## Perfis de acesso
 

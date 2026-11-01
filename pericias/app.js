@@ -347,13 +347,59 @@ function urlPrevia(f) {
   if (f.mime === 'application/vnd.google-apps.presentation') return 'https://docs.google.com/presentation/d/' + f.id + '/preview';
   return 'https://drive.google.com/file/d/' + f.id + '/preview';
 }
+function linkPdf(id) { return 'https://docs.google.com/document/d/' + encodeURIComponent(id) + '/export?format=pdf'; }
+// campos que podem ser escritos nos modelos e são trocados ao gerar
+const CAMPOS_DOC = [
+  ['PROCESSO', 'Número do processo (formato CNJ)'], ['REQUERENTE', 'Parte requerente'], ['REQUERIDA', 'Parte requerida'],
+  ['PERICIADO', 'Quem será periciado (na interdição, a parte requerida)'], ['VARA', 'Vara (coluna FORUM)'], ['CIDADE', 'Comarca'],
+  ['TIPO', 'Tipo da perícia'], ['HONORARIOS', 'Honorários como estão na planilha'], ['DATA_PERICIA', 'Data da perícia (agenda ou planilha)'],
+  ['DIA_SEMANA', 'Dia da semana da perícia'], ['HORA_PERICIA', 'Horário marcado na aba AGENDAMENTOS'], ['LOCAL_PERICIA', 'Local (consultório vira o endereço completo da Compart Clinic)'],
+  ['HOJE', 'Data de hoje por extenso']
+];
 function fmtTamanho(b) {
   if (!b) return '';
   if (b < 1024 * 1024) return Math.max(1, Math.round(b / 1024)) + ' KB';
   return (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
 }
-// modelos sugeridos para a etapa do processo
+// ---------- regras de sugestão configuradas em cada modelo ----------
+const FILTROS_MODELO = [['', 'Todos os processos'], ['nucleo', 'Só Núcleo 4.0 (acidentário)'], ['comum', 'Só varas comuns (fora do Núcleo)'], ['interdicao', 'Só interdição/curatela'], ['homecare', 'Só homecare'], ['bariatrica', 'Só pós-bariátrica'], ['erro', 'Só erro médico']];
+function ehNucleoM(m) { return /NUCLEO/.test(chave(m['CIDADE'])) || /NUCLEO/.test(chave(m['FORUM'])); }
+function filtroOk(filtro, m) {
+  const t = chave(m['TIPO']);
+  switch (filtro) {
+    case 'nucleo': return ehNucleoM(m);
+    case 'comum': return !ehNucleoM(m);
+    case 'interdicao': return /INTERDI|CURATELA/.test(t) || /FAMILIA/.test(chave(m['FORUM']));
+    case 'homecare': return /HOMECARE/.test(t);
+    case 'bariatrica': return /BARIATR/.test(t);
+    case 'erro': return /ERRO/.test(t);
+    default: return true;
+  }
+}
+function regraModelo(md) { const c = md && md.cfg; return c && ((c.etapas && c.etapas.length) || c.obs) ? c : null; }
+function modeloServe(md, m) {
+  const r = regraModelo(md);
+  if (!r) return false;
+  return (!r.etapas.length || r.etapas.indexOf(etapaDe(m)) >= 0) && (!r.obs || chave(m['OBSERVACAO']).indexOf(chave(r.obs)) >= 0) && filtroOk(r.filtro, m);
+}
+function modelosVisiveis(modelos) { return (modelos || []).filter(md => !(md.cfg && md.cfg.oculto)); }
+function resumoRegra(md) {
+  const r = md.cfg || {};
+  const partes = [];
+  if (r.etapas && r.etapas.length) partes.push('etapa ' + r.etapas.map(rotEtapa).join(', '));
+  if (r.obs) partes.push('observação com "' + r.obs + '"');
+  if (r.filtro) partes.push((FILTROS_MODELO.find(f => f[0] === r.filtro) || ['', ''])[1].replace(/^Só /, 'só '));
+  return partes.length ? 'Sugerido em ' + partes.join(' · ') : 'Sugestão automática pelo nome';
+}
+
+// modelos sugeridos para o processo: primeiro os que têm regra configurada, depois os reconhecidos pelo nome
 function sugerirModelos(modelos, m) {
+  const vis = modelosVisiveis(modelos);
+  const porRegra = vis.filter(md => modeloServe(md, m));
+  const semRegra = vis.filter(md => !regraModelo(md) && (!md.cfg || !md.cfg.filtro || filtroOk(md.cfg.filtro, m)));
+  return porRegra.concat(sugerirPorNome(semRegra, m).filter(md => porRegra.indexOf(md) < 0)).slice(0, 4);
+}
+function sugerirPorNome(modelos, m) {
   const e = etapaDe(m), obs = chave(m['OBSERVACAO']), tipo = chave(m['TIPO']);
   const nuc = /NUCLEO/.test(chave(m['CIDADE'])) || /NUCLEO/.test(chave(m['FORUM']));
   const chaves = {
@@ -448,9 +494,11 @@ function montarTarefas(itens, manuais, usuario, papel, escopo, usuarios) {
 }
 
 // ---------- gerador de documentos ----------
-const GRUPOS_MODELO = ['Aceite', 'Agendamento', 'Perícia', 'Pagamento (MLE)', 'Renúncia', 'Outros'];
-function grupoModelo(nome) {
-  const t = chave(nome);
+const GRUPOS_MODELO = ['Aceite', 'Agendamento', 'Perícia', 'Laudo e esclarecimentos', 'Pagamento (MLE)', 'Renúncia', 'Outros'];
+function grupoModelo(md) {
+  if (md && typeof md === 'object' && md.cfg && md.cfg.grupo && GRUPOS_MODELO.indexOf(md.cfg.grupo) >= 0) return md.cfg.grupo;
+  const t = chave(typeof md === 'object' ? md.nome : md);
+  if (/ESCLARECIMENTO|LAUDO|PRORROGACAO/.test(t)) return 'Laudo e esclarecimentos';
   if (/NAO COMPARECIMENTO|DECLARACAO|AUTORIZACAO|COMPARECIMENTO/.test(t)) return 'Perícia';
   if (/ACEITE/.test(t)) return 'Aceite';
   if (/AGENDAMENTO/.test(t)) return 'Agendamento';
@@ -458,8 +506,14 @@ function grupoModelo(nome) {
   if (/RENUNCIA/.test(t)) return 'Renúncia';
   return 'Outros';
 }
-// processos que normalmente precisam deste modelo agora
-function processosParaModelo(nome, itens) {
+// processos que normalmente precisam deste modelo agora (regra configurada ou pelo nome do modelo)
+function processosParaModelo(md, itens) {
+  if (typeof md === 'string') md = { nome: md };
+  if (regraModelo(md)) return itens.filter(it => modeloServe(md, it.m)).sort((a, b) => (parseData(a.m['PERICIA']) || 9e15) - (parseData(b.m['PERICIA']) || 9e15));
+  const filtro = md.cfg && md.cfg.filtro;
+  return processosPeloNome(md.nome, itens).filter(it => !filtro || filtroOk(filtro, it.m));
+}
+function processosPeloNome(nome, itens) {
   const t = chave(nome).replace(/[^A-Z0-9 ]/g, ' ');
   const nuc = it => /NUCLEO/.test(chave(it.m['CIDADE'])) || /NUCLEO/.test(chave(it.m['FORUM']));
   const futura = (it, max) => { const d = parseData(it.m['PERICIA']); return d && diasAte(d) >= 0 && (max == null || diasAte(d) <= max); };
@@ -481,9 +535,9 @@ function processosParaModelo(nome, itens) {
 
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
-    principalAcao, grupoPrazo, montarTarefas, grupoModelo, processosParaModelo,
+    principalAcao, grupoPrazo, montarTarefas, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
     estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
-    ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos,
+    ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
     montarEventos, porMes, gcalLink, linkEsaj, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
@@ -574,6 +628,9 @@ const state = {
   docs: {},
   modelos: null,
   modelosUrl: '',
+  modelosSug: [],
+  docTab: 'gerar',
+  mdQ: '',
   ultimoDoc: null
 };
 
@@ -1057,6 +1114,7 @@ function renderFicha() {
     if (f.aba === 'PERICIAS') {
       const acs = acoesRapidas(m);
       h += acs.length ? '<div class="acoes">' + acs.map(a => '<button type="button" class="btn' + (a.destaque ? ' primario' : '') + '" data-acao="rapida" data-id="' + a.id + '">' + esc(a.rot) + '</button>').join('') + '</div>' : '';
+      h += '<div class="sug-doc" id="sug-doc"></div>';
       h += '<div class="campo" style="margin-top:14px;max-width:320px"><label for="f-etapa-mudar">Mudar etapa (próximo passo)</label><select id="f-etapa-mudar"><option value="">Escolha...</option>' + ETAPAS.map(e => '<option value="' + e.k + '"' + (etapaDe(m) === e.k ? ' disabled' : '') + '>' + e.rot + '</option>').join('') + '</select></div>';
     } else {
       h += '<p class="vazio">Processo em ' + TITULO_ABA[f.aba] + '.</p><div class="acoes"><button type="button" class="btn primario" data-acao="mover" data-para="PERICIAS">Voltar para Perícias</button></div>';
@@ -1086,8 +1144,25 @@ function renderFicha() {
   });
   if (f.aba2 === 'dados') ligarForm($('#ficha-form'), f.aba, it);
   if (f.aba2 === 'hist' && !f.hist) carregarHistorico(proc);
-  if (f.aba2 === 'acoes') renderDocsBloco(it);
+  if (f.aba2 === 'acoes') { renderSugDoc(it); renderDocsBloco(it); }
 }
+
+// faixa "Documento para esta etapa" logo abaixo dos botões do fluxo
+function renderSugDoc(it) {
+  const el = $('#sug-doc');
+  if (!el) return;
+  if (!state.modelos) {
+    el.innerHTML = '';
+    garantirModelos(true).then(ok => { const a = fichaItem(); if (ok && a && chaveDocs(a) === chaveDocs(it)) renderSugDoc(a); });
+    return;
+  }
+  const sug = sugerirModelos(state.modelos, it.m).slice(0, 3);
+  if (!sug.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<span class="rot">📄 Documento para esta etapa</span><div class="sug-botoes">' +
+    sug.map(md => '<button type="button" class="btn pequeno" data-acao="ficha-sug" data-id="' + esc(md.id) + '" title="' + esc((md.cfg && md.cfg.desc) || 'Gerar na pasta do periciado') + '">' + ic('documentos') + esc(nomeModeloCurto(md.nome)) + '</button>').join('') +
+    '<button type="button" class="link" data-acao="doc-gerar">outros modelos</button></div>';
+}
+function nomeModeloCurto(n) { return String(n || '').replace(/^MODELO\s+(DE\s+)?/i, '').trim() || n; }
 
 /* ================= DOCUMENTOS (DRIVE) ================= */
 function fichaItem() { return state.ficha ? acharItem(state.ficha.aba, state.ficha.linha) : null; }
@@ -1186,13 +1261,8 @@ async function abrirGerador(it) {
   $('#modal-corpo').innerHTML = '<p class="carregando">Carregando modelos...</p>';
   $('#modal-rodape').innerHTML = '';
   if (!modal.open) modal.showModal();
-  if (!state.modelos) {
-    try {
-      const j = await api('modelos');
-      if (!j.ok) throw new Error(j.erro || 'Erro ao ler os modelos');
-      state.modelos = j.modelos; state.modelosUrl = j.url || '';
-    } catch (e) { $('#modal-corpo').innerHTML = '<p class="vazio">' + esc(e.message) + '</p>'; return; }
-  }
+  modelosFalhouEm = 0;
+  if (!(await garantirModelos(true))) { $('#modal-corpo').innerHTML = '<p class="vazio">Não consegui ler a pasta de modelos. Confira se o backend novo foi publicado e se o Drive foi autorizado.</p>'; return; }
   renderGerador(it, '');
 }
 
@@ -1200,11 +1270,12 @@ function renderGerador(it, q) {
   const d = state.docs[chaveDocs(it)] || {};
   const sug = sugerirModelos(state.modelos, it.m);
   const qq = chave(q);
-  const todos = state.modelos.filter(md => !qq || chave(md.nome).indexOf(qq) >= 0);
-  const item = md => '<button type="button" class="arq" data-acao="modelo-gerar" data-id="' + esc(md.id) + '"><span class="tipo-arq doc">DOCS</span><span class="meio"><b>' + esc(md.nome) + '</b></span></button>';
-  let h = '<p class="dica-gerador">Escolha o modelo. O app faz uma cópia na pasta <b>' + esc(d.pasta ? d.pasta.caminho : '') + '</b> e preenche número do processo, partes, juízo, data de hoje e o agendamento. O que ele não sabe (valores, número de evento, folhas) fica marcado em amarelo.</p>';
+  const vis = modelosVisiveis(state.modelos);
+  const todos = vis.filter(md => !qq || chave(md.nome).indexOf(qq) >= 0);
+  const item = md => '<button type="button" class="arq" data-acao="modelo-gerar" data-id="' + esc(md.id) + '"><span class="tipo-arq doc">DOCS</span><span class="meio"><b>' + esc(md.nome) + '</b>' + (md.cfg && md.cfg.desc ? '<small>' + esc(md.cfg.desc) + '</small>' : '') + '</span></button>';
+  let h = '<p class="dica-gerador">Escolha o modelo. O app faz uma cópia na pasta <b>' + esc(d.pasta ? d.pasta.caminho : 'do periciado') + '</b> e preenche número do processo, partes, juízo, data de hoje e o agendamento. O que ele não sabe (valores, número de evento, folhas, trechos entre [[ ]]) fica marcado em amarelo.</p>';
   if (sug.length && !qq) h += '<h3 class="sub">Sugeridos para a etapa ' + esc(rotEtapa(etapaDe(it.m))) + '</h3><div class="arquivos">' + sug.map(item).join('') + '</div>';
-  h += '<h3 class="sub">Todos os modelos (' + state.modelos.length + ')</h3><input type="search" id="modelo-q" class="busca-modelo" placeholder="Buscar modelo..." value="' + esc(q) + '" autocomplete="off">' +
+  h += '<h3 class="sub">Todos os modelos (' + vis.length + ')</h3><input type="search" id="modelo-q" class="busca-modelo" placeholder="Buscar modelo..." value="' + esc(q) + '" autocomplete="off">' +
     '<div class="arquivos">' + (todos.length ? todos.map(item).join('') : '<p class="vazio">Nenhum modelo com esse nome.</p>') + '</div>';
   $('#modal-corpo').innerHTML = h;
   $('#modal-rodape').innerHTML = state.modelosUrl ? '<a class="btn pequeno" href="' + esc(state.modelosUrl) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir a pasta de modelos</a>' : '';
@@ -1218,13 +1289,13 @@ async function gerarDocumento(it, id) {
   $('#modal-corpo').innerHTML = '<p class="carregando">Gerando "' + esc(md.nome) + '"... pode levar alguns segundos.</p>';
   $('#modal-rodape').innerHTML = '';
   try {
-    const j = await api('gerarDoc', { aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'], modeloId: id });
+    const j = await api('gerarDoc', { aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'], modeloId: id, criarPasta: true });
     if (!j.ok) throw new Error(erroApi(j, 'Erro ao gerar o documento'));
     state.ultimoDoc = { id: j.doc.id, nome: j.doc.nome, url: j.doc.url, mime: 'application/vnd.google-apps.document' };
     $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq doc">DOCS</span><div><b>' + esc(j.doc.nome) + '</b><small>Salvo na pasta do periciado</small></div></div>' +
       (j.conferir && j.conferir.length ? '<div class="alerta-box" style="cursor:default"><span>🖍️</span><span>Confira antes de protocolar: <b>' + esc(j.conferir.join(', ')) + '</b>. Esses trechos estão marcados em amarelo no documento; tire o realce depois de conferir.</span></div>'
-        : '<p class="vazio">Preenchido. Revise e baixe em PDF pelo Docs (Arquivo > Fazer download > PDF).</p>');
-    $('#modal-rodape').innerHTML = '<a class="btn primario" href="' + esc(j.doc.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir no Docs para editar</a><button type="button" class="btn" data-acao="doc-ver-ultimo">Visualizar aqui</button>';
+        : '<p class="vazio">Preenchido. Revise no Docs e baixe em PDF.</p>');
+    $('#modal-rodape').innerHTML = '<a class="btn primario" href="' + esc(j.doc.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir no Docs</a><a class="btn" href="' + esc(linkPdf(j.doc.id)) + '" target="_blank" rel="noopener">PDF</a><button type="button" class="btn" data-acao="doc-ver-ultimo">Visualizar aqui</button><span class="esp"></span><button type="button" class="btn pequeno" data-acao="doc-gerar">Gerar outro</button>';
     carregarDocs(it, true);
   } catch (e) {
     $('#modal-corpo').innerHTML = '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>' + esc(e.message) + '</span></div>';
@@ -1366,18 +1437,64 @@ function abrirNovoProcesso() {
       }
       if (!j.ok) throw new Error(j.erro || 'Erro ao salvar');
       const criarPasta = $('#novo-pasta') && $('#novo-pasta').checked;
-      modal.close();
+      const m = linhaMapa(Object.keys(dados), Object.keys(dados).map(k => dados[k]));
+      const pastaPronta = criarPasta
+        ? api('pastaCriar', { aba: 'PERICIAS', linha: j.linha, processoEsperado: dados[hProc], nome: periciadoDe(m) }).catch(e => ({ ok: false, erro: e.message }))
+        : Promise.resolve(null);
       toast('Processo cadastrado');
-      if (criarPasta) {
-        const m = linhaMapa(Object.keys(dados), Object.keys(dados).map(k => dados[k]));
-        api('pastaCriar', { aba: 'PERICIAS', linha: j.linha, processoEsperado: dados[hProc], nome: periciadoDe(m) })
-          .then(r => toast(r.ok && r.pasta ? 'Pasta criada: ' + r.pasta.caminho : 'Processo cadastrado, mas a pasta não foi criada: ' + erroApi(r, ''), { erro: !(r.ok && r.pasta) }))
-          .catch(e => toast('Processo cadastrado, mas a pasta não foi criada: ' + e.message, { erro: true }));
-      }
-      await recarregar(true);
+      const recarga = recarregar(true);
+      mostrarCadastrado(j.linha, dados[hProc], m, pastaPronta, recarga, criarPasta);
     } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
   };
   modal.showModal();
+}
+
+// depois do cadastro: pasta, documentos sugeridos para a etapa e atalhos
+async function mostrarCadastrado(linha, proc, m, pastaPronta, recarga, criando) {
+  $('#modal-titulo').textContent = 'Processo cadastrado';
+  $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq img">OK</span><div><b>' + esc(m['REQUERENTE'] || formatarCNJ(proc)) + '</b><small>' + esc(formatarCNJ(proc) + ' · entrou em Perícias na etapa ' + rotEtapa(etapaDe(m))) + '</small></div></div>' +
+    '<p class="status-pasta" id="cad-pasta">' + ic('arquivo') + '<span>' + (criando ? 'Criando a pasta no Drive...' : '') + '</span></p>' +
+    '<div id="cad-docs"><p class="vazio">Procurando modelos para esta etapa...</p></div>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="cad-abrir">Abrir o processo</button><button type="button" class="btn" id="cad-tarefa">' + ic('tarefas') + 'Criar tarefa</button><span class="esp"></span><button type="button" class="btn" id="cad-fechar">Fechar</button>';
+  $('#cad-abrir').onclick = async () => {
+    modal.close();
+    await recarga;
+    const alvo = itens('PERICIAS').find(i => digitos(i.m['PROCESSO']) === digitos(proc)) || acharItem('PERICIAS', linha);
+    if (alvo) abrirFicha('PERICIAS', alvo.linha);
+    else toast('Processo cadastrado. Toque em atualizar para vê-lo na lista.');
+  };
+  $('#cad-tarefa').onclick = () => abrirNovaTarefa(proc);
+  $('#cad-fechar').onclick = () => modal.close();
+  pastaPronta.then(r => {
+    const el = $('#cad-pasta span');
+    if (!el) return;
+    if (!r) el.textContent = 'Pasta não criada agora. Dá para criar pela ficha do processo, ou ela é criada ao gerar o primeiro documento.';
+    else if (r.ok && r.pasta) el.innerHTML = 'Pasta no Drive: <b>' + esc(r.pasta.caminho) + '</b>';
+    else el.textContent = 'A pasta não foi criada: ' + erroApi(r, 'erro no Drive') + '. Tente pela ficha do processo.';
+  });
+  const ok = await garantirModelos(true);
+  const box = $('#cad-docs');
+  if (!box) return;
+  const sug = ok ? sugerirModelos(state.modelos, m) : [];
+  if (!sug.length) {
+    box.innerHTML = ok ? '<p class="vazio">Nenhum modelo configurado para a etapa ' + esc(rotEtapa(etapaDe(m))) + '. Dá para definir isso em Documentos > Modelos.</p>' : '';
+    return;
+  }
+  box.innerHTML = '<h3 class="sub">Documentos sugeridos para começar</h3><div class="arquivos">' + sug.map(md =>
+    '<div class="arq" style="cursor:default"><span class="tipo-arq doc">DOCS</span><span class="meio"><b class="quebra">' + esc(nomeModeloCurto(md.nome)) + '</b><small data-cad-info>' + esc((md.cfg && md.cfg.desc) || 'Gera na pasta do periciado, já preenchido') + '</small></span>' +
+    '<span class="acoes-md"><button type="button" class="btn pequeno primario" data-cad-gerar="' + esc(md.id) + '">Gerar</button></span></div>').join('') + '</div>';
+  box.querySelectorAll('[data-cad-gerar]').forEach(b => { b.onclick = async () => {
+    const linhaEl = b.closest('.arq'), alvo = b.parentNode;
+    b.disabled = true; b.textContent = 'Gerando...';
+    try {
+      await pastaPronta;
+      const r = await api('gerarDoc', { aba: 'PERICIAS', linha: linha, processoEsperado: proc, modeloId: b.dataset.cadGerar, criarPasta: true });
+      if (!r.ok) throw new Error(erroApi(r, 'Erro ao gerar'));
+      delete state.docs[digitos(proc)];
+      linhaEl.querySelector('[data-cad-info]').textContent = r.conferir && r.conferir.length ? 'Gerado. Conferir: ' + r.conferir.join(', ') : 'Gerado e preenchido';
+      alvo.innerHTML = '<a class="btn pequeno primario" href="' + esc(r.doc.url) + '" target="_blank" rel="noopener">Abrir</a><a class="btn pequeno" href="' + esc(linkPdf(r.doc.id)) + '" target="_blank" rel="noopener">PDF</a>';
+    } catch (e) { b.disabled = false; b.textContent = 'Tentar de novo'; toast(e.message, { erro: true }); }
+  }; });
 }
 
 /* ================= CALENDÁRIO ================= */
@@ -1811,14 +1928,33 @@ async function mudarTarefa(acao, extra, msg) {
 }
 
 /* ================= DOCUMENTOS (gerador) ================= */
-async function garantirModelos() {
-  if (state.modelos) return true;
-  try {
-    const j = await api('modelos');
-    if (!j.ok) throw new Error(j.erro || 'Erro ao ler os modelos');
-    state.modelos = j.modelos; state.modelosUrl = j.url || '';
-    return true;
-  } catch (e) { toast(e.message, { erro: true }); return false; }
+function aplicarModelos(j) {
+  state.modelos = j.modelos || [];
+  state.modelosUrl = j.url || '';
+  state.modelosSug = j.sugeridos || [];
+}
+let carregandoModelos = null, modelosFalhouEm = 0;
+function garantirModelos(silencioso) {
+  if (state.modelos) return Promise.resolve(true);
+  // em segundo plano (ficha), não insiste se acabou de falhar
+  if (silencioso && Date.now() - modelosFalhouEm < 120000) return Promise.resolve(false);
+  if (!carregandoModelos) {
+    carregandoModelos = api('modelos').then(j => {
+      if (!j.ok) throw new Error(j.erro || 'Erro ao ler os modelos');
+      aplicarModelos(j);
+      return true;
+    }).catch(e => { modelosFalhouEm = Date.now(); if (!silencioso) toast(e.message, { erro: true }); return false; })
+      .finally(() => { carregandoModelos = null; });
+  }
+  return carregandoModelos;
+}
+
+function abasDocumentos() {
+  const n = state.modelos ? state.modelos.length : 0;
+  return '<div class="ferramentas"><span class="alternar" role="tablist" aria-label="Documentos">' +
+    '<button type="button" role="tab" data-acao="doc-tab" data-k="gerar" class="' + (state.docTab === 'gerar' ? 'ativa' : '') + '" aria-selected="' + (state.docTab === 'gerar') + '">Gerar documentos</button>' +
+    '<button type="button" role="tab" data-acao="doc-tab" data-k="modelos" class="' + (state.docTab === 'modelos' ? 'ativa' : '') + '" aria-selected="' + (state.docTab === 'modelos') + '">Modelos (' + n + ')</button></span>' +
+    '<span class="esp"></span>' + (state.modelosUrl ? '<a class="btn pequeno" href="' + esc(state.modelosUrl) + '" target="_blank" rel="noopener">' + ic('externo') + 'Pasta Arquivos base</a>' : '') + '</div>';
 }
 
 function renderDocumentos() {
@@ -1828,27 +1964,38 @@ function renderDocumentos() {
     garantirModelos().then(ok => { if (ok && state.view === 'documentos') render(); else if (!ok) $('#conteudo').innerHTML = '<p class="carregando">Não consegui ler a pasta de modelos. Confira se o backend novo foi publicado e se o Drive foi autorizado.</p>'; });
     return;
   }
+  if (state.docTab === 'modelos') { renderModelos(); return; }
+  const lista = ativos();
   const q = chave(gd.q);
-  const modelos = state.modelos.filter(md => !q || chave(md.nome).indexOf(q) >= 0);
+  const vis = modelosVisiveis(state.modelos);
+  const modelos = vis.filter(md => !q || chave(md.nome).indexOf(q) >= 0);
   const modelo = state.modelos.find(md => md.id === gd.modeloId);
-  let h = '<div class="grid"><section class="cartao c5"><h2>1. Modelo</h2><input type="search" id="gd-q" class="busca-modelo" placeholder="Buscar modelo..." value="' + esc(gd.q) + '" autocomplete="off">';
+  const precisa = {};
+  vis.forEach(md => { precisa[md.id] = processosParaModelo(md, lista).length; });
+  const agora = vis.filter(md => precisa[md.id] > 0).sort((a, b) => precisa[b.id] - precisa[a.id]).slice(0, 5);
+  let h = abasDocumentos() + '<div class="grid alto-livre"><section class="cartao c5"><h2>1. Modelo</h2>';
+  if (agora.length && !q) {
+    h += '<h3 class="sub" style="margin-top:0">Para gerar agora</h3><div class="agora-docs">' + agora.map(md => '<button type="button" class="agora-doc' + (md.id === gd.modeloId ? ' sel' : '') + '" data-acao="gd-modelo" data-id="' + esc(md.id) + '"><b>' + precisa[md.id] + '</b><span>' + esc(nomeModeloCurto(md.nome)) + '</span></button>').join('') + '</div>';
+  }
+  h += '<input type="search" id="gd-q" class="busca-modelo" style="margin-top:12px" placeholder="Buscar modelo..." value="' + esc(gd.q) + '" autocomplete="off">';
   GRUPOS_MODELO.forEach(g => {
-    const doGrupo = modelos.filter(md => grupoModelo(md.nome) === g);
+    const doGrupo = modelos.filter(md => grupoModelo(md) === g);
     if (!doGrupo.length) return;
-    h += '<h3 class="sub">' + esc(g) + '</h3><div class="arquivos">' + doGrupo.map(md => '<button type="button" class="arq' + (md.id === gd.modeloId ? ' sel' : '') + '" data-acao="gd-modelo" data-id="' + esc(md.id) + '"><span class="tipo-arq doc">DOCS</span><span class="meio"><b>' + esc(md.nome) + '</b></span>' + (md.id === gd.modeloId ? '<span class="chip ok">escolhido</span>' : '') + '</button>').join('') + '</div>';
+    h += '<h3 class="sub">' + esc(g) + '</h3><div class="arquivos">' + doGrupo.map(md => '<button type="button" class="arq' + (md.id === gd.modeloId ? ' sel' : '') + '" data-acao="gd-modelo" data-id="' + esc(md.id) + '"><span class="tipo-arq doc">DOCS</span><span class="meio"><b>' + esc(md.nome) + '</b>' + (md.cfg && md.cfg.desc ? '<small>' + esc(md.cfg.desc) + '</small>' : '') + '</span>' +
+      (md.id === gd.modeloId ? '<span class="chip ok">escolhido</span>' : precisa[md.id] ? '<span class="chip pericia" title="Processos que precisam deste modelo agora">' + precisa[md.id] + '</span>' : '') + '</button>').join('') + '</div>';
   });
   if (!modelos.length) h += '<p class="vazio">Nenhum modelo com esse nome.</p>';
-  if (state.modelosUrl) h += '<a class="btn pequeno" style="margin-top:12px" href="' + esc(state.modelosUrl) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir a pasta de modelos</a>';
+  h += '<p class="dica" style="margin:12px 0 0">Falta algum modelo? Crie, configure ou use um dos sugeridos na aba <button type="button" class="link" data-acao="doc-tab" data-k="modelos">Modelos</button>.</p>';
   h += '</section><section class="cartao c7"><h2>2. Processos</h2>';
   if (!modelo) h += '<p class="vazio">Escolha um modelo ao lado. O app sugere os processos que precisam dele agora (por exemplo: todos com MLE a peticionar, ou todas as perícias agendadas do Núcleo).</p>';
   else {
-    const lista = ativos();
-    const sug = processosParaModelo(modelo.nome, lista);
+    const sug = processosParaModelo(modelo, lista);
     const linhaSel = it => {
       const d = parseData(it.m['PERICIA']);
       return '<label class="sel-proc"><input type="checkbox" data-gd-linha="' + it.linha + '"' + (gd.sel[it.linha] ? ' checked' : '') + '><span class="meio"><b>' + esc(it.m['REQUERENTE']) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (it.m['CIDADE'] || '') + ' · ' + (it.m['PROXIMO PASSO'] || '')) + '</small></span>' + (d ? '<span class="chip pericia">Perícia ' + fmtCurto(d) + '</span>' : '') + '</label>';
     };
-    h += '<p class="dica"><b>' + esc(modelo.nome) + '</b></p>';
+    h += '<div class="modelo-escolhido"><b>' + esc(modelo.nome) + '</b><small>' + esc(resumoRegra(modelo)) + (modelo.cfg && modelo.cfg.desc ? ' · ' + esc(modelo.cfg.desc) : '') + '</small>' +
+      '<span class="acoes-md"><a class="link" href="' + esc(modelo.url || ('https://docs.google.com/document/d/' + modelo.id + '/edit')) + '" target="_blank" rel="noopener">ver o modelo</a> · <button type="button" class="link" data-acao="md-config" data-id="' + esc(modelo.id) + '">ajustar a regra</button></span></div>';
     h += '<h3 class="sub">Sugeridos (' + sug.length + ')' + (sug.length ? ' · <button type="button" class="link" data-acao="gd-todos">marcar todos</button> · <button type="button" class="link" data-acao="gd-nenhum">desmarcar</button>' : '') + '</h3>';
     h += sug.length ? '<div class="arquivos">' + sug.map(linhaSel).join('') + '</div>' : '<p class="vazio">Nenhum processo precisa deste modelo agora. Busque abaixo.</p>';
     const pq = chave(gd.pq);
@@ -1882,7 +2029,7 @@ function renderResultadosGd() {
   el.innerHTML = '<h2>Resultado <span class="chip ' + (feitos === r.length ? 'ok' : '') + '">' + feitos + ' de ' + r.length + '</span></h2><div class="arquivos">' + r.map(x =>
     '<div class="arq" style="cursor:default"><span class="tipo-arq ' + (x.status === 'ok' ? 'doc' : x.status === 'erro' ? 'pdf' : '') + '">' + (x.status === 'ok' ? 'OK' : x.status === 'erro' ? 'ERRO' : x.status === 'gerando' ? '...' : 'FILA') + '</span>' +
     '<span class="meio"><b>' + esc(x.doc ? x.doc.nome : x.nome) + '</b><small>' + esc(x.status === 'erro' ? x.erro : x.status === 'gerando' ? 'Gerando...' : x.status === 'fila' ? 'Na fila' : (x.conferir && x.conferir.length ? 'Conferir: ' + x.conferir.join(', ') : 'Preenchido')) + '</small></span>' +
-    (x.doc ? '<a class="btn pequeno primario" href="' + esc(x.doc.url) + '" target="_blank" rel="noopener">Abrir</a><a class="btn pequeno" href="https://docs.google.com/document/d/' + esc(x.doc.id) + '/export?format=pdf" target="_blank" rel="noopener">PDF</a>' : '') + '</div>').join('') + '</div>' +
+    (x.doc ? '<a class="btn pequeno primario" href="' + esc(x.doc.url) + '" target="_blank" rel="noopener">Abrir</a><a class="btn pequeno" href="' + esc(linkPdf(x.doc.id)) + '" target="_blank" rel="noopener">PDF</a>' : '') + '</div>').join('') + '</div>' +
     (state.gd.rodando ? '' : '<p class="dica" style="margin:10px 0 0">Os documentos ficam na pasta de cada periciado. Trechos em amarelo precisam de conferência; tire o realce antes de protocolar.</p>');
 }
 
@@ -1908,6 +2055,178 @@ async function gerarLote() {
   const ok = gd.resultados.filter(x => x.status === 'ok').length;
   toast(ok + ' de ' + gd.resultados.length + ' documento(s) gerado(s)', { erro: ok < gd.resultados.length });
   if (state.view === 'documentos') render();
+}
+
+/* ---------- Modelos: lista, regras, criação ---------- */
+function urlModelo(md) { return md.url || ('https://docs.google.com/document/d/' + md.id + '/edit'); }
+
+function renderModelos() {
+  const lista = ativos();
+  const q = chave(state.mdQ);
+  const mods = state.modelos.filter(md => !q || chave(md.nome).indexOf(q) >= 0);
+  const perito = state.papel === 'perito';
+  let h = abasDocumentos() + '<div class="grid alto-livre"><section class="cartao c8"><div class="cartao-topo"><h2>Modelos da pasta Arquivos base</h2><button type="button" class="btn pequeno primario" data-acao="md-novo">+ Criar modelo</button></div>' +
+    '<p class="dica">Cada modelo pode ter uma regra que diz quando ele aparece como sugestão: etapa do processo, tipo de processo e uma palavra da observação. Sem regra, o app reconhece pelo nome do arquivo.</p>' +
+    '<input type="search" id="md-q" class="busca-modelo" placeholder="Buscar modelo..." value="' + esc(state.mdQ) + '" autocomplete="off">';
+  GRUPOS_MODELO.forEach(g => {
+    const doGrupo = mods.filter(md => grupoModelo(md) === g);
+    if (!doGrupo.length) return;
+    h += '<h3 class="sub">' + esc(g) + ' (' + doGrupo.length + ')</h3><div class="arquivos">' + doGrupo.map(md => {
+      const oculto = !!(md.cfg && md.cfg.oculto);
+      const n = oculto ? 0 : processosParaModelo(md, lista).length;
+      return '<div class="modelo-linha' + (oculto ? ' oculto' : '') + '"><span class="tipo-arq doc">DOCS</span><div class="meio"><b>' + esc(md.nome) + '</b>' +
+        '<small>' + (oculto ? 'Escondido do gerador e das sugestões' : esc(resumoRegra(md))) + (n ? ' · <b class="n">' + n + ' processo' + (n === 1 ? '' : 's') + ' agora</b>' : '') + '</small>' +
+        (md.cfg && md.cfg.desc ? '<small class="desc">' + esc(md.cfg.desc) + '</small>' : '') + '</div>' +
+        '<div class="acoes-md"><button type="button" class="btn pequeno" data-acao="md-config" data-id="' + esc(md.id) + '">Configurar</button>' +
+        '<a class="btn pequeno" href="' + esc(urlModelo(md)) + '" target="_blank" rel="noopener">' + ic('externo') + 'Texto</a>' +
+        '<button type="button" class="btn pequeno" data-acao="md-duplicar" data-id="' + esc(md.id) + '">Duplicar</button>' +
+        (perito ? '<button type="button" class="btn pequeno perigo" data-acao="md-excluir" data-id="' + esc(md.id) + '">Excluir</button>' : '') + '</div></div>';
+    }).join('') + '</div>';
+  });
+  if (!mods.length) h += '<p class="vazio">Nenhum modelo com esse nome.</p>';
+  h += '</section><div class="c4 pilha col-lateral">';
+  h += '<section class="cartao"><h2>Modelos sugeridos</h2><p class="dica">Petições comuns na rotina da perícia que ainda não estão na pasta. O texto vem no seu padrão (objetivo, em primeira pessoa, sem citar folhas, prazos a critério do Juízo) e pode ser ajustado no Docs depois.</p>';
+  h += state.modelosSug.length ? '<div class="arquivos">' + state.modelosSug.map(s => '<div class="modelo-linha"><div class="meio"><b>' + esc(nomeModeloCurto(s.nome)) + '</b><small>' + esc(s.grupo + ' · ' + s.desc) + '</small></div>' +
+    (s.existe ? '<span class="chip ok">na pasta</span>' : '<button type="button" class="btn pequeno primario" data-acao="md-sugestao" data-k="' + esc(s.chave) + '">Criar</button>') + '</div>').join('') + '</div>'
+    : '<p class="vazio">As sugestões aparecem depois de publicar a versão nova do backend.</p>';
+  h += '</section><section class="cartao"><h2>Campos automáticos</h2><p class="dica">Escreva no modelo exatamente assim; ao gerar, o app troca pelo dado do processo. Campo sem dado na planilha fica amarelo.</p><dl class="campos-doc">' +
+    CAMPOS_DOC.map(c => '<div><dt><code>{{' + c[0] + '}}</code></dt><dd>' + esc(c[1]) + '</dd></div>').join('') + '</dl>' +
+    '<p class="dica" style="margin:12px 0 0">Texto entre <code>[[ ]]</code> fica amarelo para completar à mão. Mesmo sem campos, o app já troca a tabela Processo/Requerente/Requerida, o juízo do endereçamento, a data de assinatura e a linha "Data: ...; Horário: ... horas".</p></section>';
+  h += '</div></div>';
+  $('#conteudo').innerHTML = h;
+  const inp = $('#md-q');
+  inp.addEventListener('input', () => { state.mdQ = inp.value; render(); });
+}
+
+function camposRegraHtml(cfg, nomeAtual) {
+  cfg = cfg || {};
+  const et = cfg.etapas || [];
+  return '<div class="campo largo"><label for="md-grupo">Grupo na lista</label><select id="md-grupo"><option value="">Automático pelo nome' + (nomeAtual ? ' (' + esc(grupoModelo(nomeAtual)) + ')' : '') + '</option>' +
+    GRUPOS_MODELO.map(g => '<option' + (cfg.grupo === g ? ' selected' : '') + '>' + esc(g) + '</option>').join('') + '</select></div>' +
+    '<fieldset class="cfg-etapas campo largo"><legend>Sugerir quando o próximo passo for</legend>' +
+    ETAPAS.map(e => '<label class="check"><input type="checkbox" data-md-etapa="' + e.k + '"' + (et.indexOf(e.k) >= 0 ? ' checked' : '') + '> ' + esc(e.rot) + '</label>').join('') + '</fieldset>' +
+    '<div class="campo"><label for="md-filtro">Para quais processos</label><select id="md-filtro">' + FILTROS_MODELO.map(f => '<option value="' + f[0] + '"' + ((cfg.filtro || '') === f[0] ? ' selected' : '') + '>' + esc(f[1]) + '</option>').join('') + '</select></div>' +
+    '<div class="campo"><label for="md-obs">Observação contém (opcional)</label><input id="md-obs" value="' + esc(cfg.obs || '') + '" placeholder="ex.: não compareceu" autocomplete="off"></div>' +
+    '<div class="campo largo"><label for="md-desc">Para que serve (aparece na lista)</label><textarea id="md-desc" rows="2" maxlength="300">' + esc(cfg.desc || '') + '</textarea></div>';
+}
+function lerRegra() {
+  return {
+    grupo: $('#md-grupo').value,
+    etapas: Array.from(document.querySelectorAll('[data-md-etapa]')).filter(c => c.checked).map(c => c.dataset.mdEtapa),
+    filtro: $('#md-filtro').value,
+    obs: $('#md-obs').value.trim(),
+    desc: $('#md-desc').value.trim(),
+    oculto: !!($('#md-oculto') && $('#md-oculto').checked)
+  };
+}
+function ligarPreviaRegra(nomeFixo) {
+  const atualizar = () => {
+    const el = $('#md-previa');
+    if (!el) return;
+    const r = lerRegra();
+    const nome = ($('#md-nome') && $('#md-nome').value) || nomeFixo || '';
+    if (r.oculto) { el.textContent = 'Escondido: não aparece no gerador nem nas sugestões.'; return; }
+    const lista = processosParaModelo({ nome: nome, cfg: r }, ativos());
+    const semRegra = !r.etapas.length && !r.obs;
+    el.innerHTML = (semRegra ? 'Sem etapa marcada, o app sugere pelo nome do arquivo. Hoje' : 'Com esta regra, hoje') + ' ele seria sugerido para <b>' + lista.length + ' processo' + (lista.length === 1 ? '' : 's') + '</b>' +
+      (lista.length ? ': ' + esc(lista.slice(0, 3).map(it => nomeCurto(it.m['REQUERENTE'])).join(', ')) + (lista.length > 3 ? ' e outros' : '') : '') + '.';
+  };
+  $('#modal-corpo').querySelectorAll('input,select,textarea').forEach(x => { x.addEventListener('input', atualizar); x.addEventListener('change', atualizar); });
+  atualizar();
+}
+function enterAciona(inp, btn) { inp.addEventListener('keydown', e => { if (e.key === 'Enter' && inp.tagName !== 'TEXTAREA') { e.preventDefault(); btn.click(); } }); }
+
+function abrirConfigModelo(id) {
+  const md = (state.modelos || []).find(x => x.id === id);
+  if (!md) return;
+  modal.classList.remove('grande');
+  $('#modal-titulo').textContent = 'Configurar modelo';
+  $('#modal-corpo').innerHTML = '<div class="form-grid" id="md-form"><div class="campo largo"><label for="md-nome">Nome do arquivo</label><input id="md-nome" value="' + esc(md.nome) + '" autocomplete="off"></div>' +
+    camposRegraHtml(md.cfg, md.nome) +
+    '<label class="check"><input type="checkbox" id="md-oculto"' + (md.cfg && md.cfg.oculto ? ' checked' : '') + '> Esconder do gerador e das sugestões (o arquivo continua na pasta)</label></div>' +
+    '<p class="previa-regra" id="md-previa"></p>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="md-salvar">Salvar</button><a class="btn" href="' + esc(urlModelo(md)) + '" target="_blank" rel="noopener">' + ic('externo') + 'Editar o texto no Docs</a>';
+  ligarPreviaRegra(md.nome);
+  const btn = $('#md-salvar');
+  enterAciona($('#md-nome'), btn); enterAciona($('#md-obs'), btn);
+  btn.onclick = async () => {
+    const nome = $('#md-nome').value.trim();
+    if (!nome) { toast('Dê um nome ao modelo.', { erro: true }); return; }
+    if (/^c[oó]pia de /i.test(nome)) { toast('Nomes que começam com "Cópia de" ficam fora da lista. Escolha outro.', { erro: true }); return; }
+    btn.disabled = true;
+    try {
+      const j = await api('modeloSalvar', { id: md.id, nome: nome, cfg: lerRegra() });
+      if (!j.ok) throw new Error(j.erro || 'Erro ao salvar o modelo');
+      aplicarModelos(j);
+      modal.close();
+      toast('Modelo salvo');
+      render();
+    } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
+  };
+  if (!modal.open) modal.showModal();
+}
+
+function abrirNovoModelo() {
+  const bases = modelosVisiveis(state.modelos);
+  modal.classList.remove('grande');
+  $('#modal-titulo').textContent = 'Criar modelo';
+  $('#modal-corpo').innerHTML = '<p class="dica-gerador">O app cria um documento novo em Arquivos base com o cabeçalho e as margens do modelo escolhido, o endereçamento, a tabela Processo/Requerente/Requerida, um parágrafo para você escrever e a assinatura. Depois é só escrever o texto no Docs, usando os campos automáticos.</p>' +
+    '<div class="form-grid" id="md-form"><div class="campo largo"><label for="md-nome">Nome</label><input id="md-nome" placeholder="ex.: JUNTADA DE DOCUMENTOS" autocomplete="off"></div>' +
+    '<div class="campo largo"><label for="md-base">Copiar cabeçalho e formatação de</label><select id="md-base"><option value="">Automático (um ACEITE N40)</option>' +
+    bases.map(md => '<option value="' + esc(md.id) + '">' + esc(md.nome) + '</option>').join('') + '</select></div>' +
+    camposRegraHtml({}, '') + '</div><p class="previa-regra" id="md-previa"></p>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="md-criar">Criar no Drive</button><small style="color:var(--suave);align-self:center">O nome ganha "MODELO" na frente</small>';
+  ligarPreviaRegra('');
+  const btn = $('#md-criar');
+  enterAciona($('#md-nome'), btn);
+  btn.onclick = async () => {
+    const nome = $('#md-nome').value.trim();
+    if (!nome) { toast('Dê um nome ao modelo.', { erro: true }); return; }
+    btn.disabled = true; btn.textContent = 'Criando...';
+    try {
+      const j = await api('modeloCriar', { nome: nome, baseId: $('#md-base').value, cfg: lerRegra() });
+      if (!j.ok) throw new Error(j.erro || 'Erro ao criar o modelo');
+      aplicarModelos(j);
+      render();
+      mostrarModeloCriado(j.novo, 'Modelo criado');
+    } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; btn.textContent = 'Criar no Drive'; }
+  };
+  if (!modal.open) modal.showModal();
+}
+
+function abrirDuplicarModelo(id) {
+  const md = (state.modelos || []).find(x => x.id === id);
+  if (!md) return;
+  modal.classList.remove('grande');
+  $('#modal-titulo').textContent = 'Duplicar modelo';
+  $('#modal-corpo').innerHTML = '<p class="dica-gerador">Faz uma cópia com o mesmo texto e a mesma regra, para criar uma variação (outra vara, outro tipo de perícia).</p>' +
+    '<div class="campo"><label for="md-nome">Nome da cópia</label><input id="md-nome" value="' + esc(md.nome + ' 2') + '" autocomplete="off"></div>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="md-dup">Duplicar</button>';
+  const btn = $('#md-dup');
+  enterAciona($('#md-nome'), btn);
+  btn.onclick = async () => {
+    const nome = $('#md-nome').value.trim();
+    if (!nome) { toast('Dê um nome à cópia.', { erro: true }); return; }
+    btn.disabled = true; btn.textContent = 'Duplicando...';
+    try {
+      const j = await api('modeloDuplicar', { id: md.id, nome: nome });
+      if (!j.ok) throw new Error(j.erro || 'Erro ao duplicar');
+      aplicarModelos(j);
+      render();
+      mostrarModeloCriado(j.novo, 'Cópia criada');
+    } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; btn.textContent = 'Duplicar'; }
+  };
+  if (!modal.open) modal.showModal();
+}
+
+function mostrarModeloCriado(novo, titulo) {
+  modal.classList.remove('grande');
+  $('#modal-titulo').textContent = titulo;
+  $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq doc">DOCS</span><div><b>' + esc(novo.nome) + '</b><small>Na pasta Arquivos base</small></div></div>' +
+    '<p class="dica-gerador">Abra no Docs para escrever ou revisar o texto. Os trechos entre [[ ]] ficam amarelos em cada documento gerado, para lembrar de completar.</p>';
+  $('#modal-rodape').innerHTML = '<a class="btn primario" href="' + esc(novo.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir no Docs</a><button type="button" class="btn" data-acao="md-config" data-id="' + esc(novo.id) + '">Ajustar a regra</button><span class="esp"></span><button type="button" class="btn" id="md-ok">Fechar</button>';
+  $('#md-ok').onclick = () => modal.close();
+  if (!modal.open) modal.showModal();
 }
 
 /* ================= DISCORD ================= */
@@ -2112,12 +2431,52 @@ document.addEventListener('click', ev => {
       if (gd.rodando) break;
       gd.modeloId = ds.id; gd.pq = ''; gd.sel = {}; gd.resultados = [];
       const md = state.modelos.find(x => x.id === ds.id);
-      processosParaModelo(md.nome, ativos()).forEach(it => { gd.sel[it.linha] = true; });
+      processosParaModelo(md, ativos()).forEach(it => { gd.sel[it.linha] = true; });
       render();
       if (window.innerWidth < 1180) { const s = document.querySelectorAll('#conteudo .cartao')[1]; if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       break;
     }
-    case 'gd-todos': { const md = state.modelos.find(x => x.id === state.gd.modeloId); processosParaModelo(md.nome, ativos()).forEach(it => { state.gd.sel[it.linha] = true; }); render(); break; }
+    case 'gd-todos': { const md = state.modelos.find(x => x.id === state.gd.modeloId); if (md) processosParaModelo(md, ativos()).forEach(it => { state.gd.sel[it.linha] = true; }); render(); break; }
+    case 'doc-tab': state.docTab = ds.k === 'modelos' ? 'modelos' : 'gerar'; if (modal.open) modal.close(); render(); window.scrollTo(0, 0); break;
+    case 'md-novo': abrirNovoModelo(); break;
+    case 'md-config': abrirConfigModelo(ds.id); break;
+    case 'md-duplicar': abrirDuplicarModelo(ds.id); break;
+    case 'md-excluir': {
+      const md = (state.modelos || []).find(x => x.id === ds.id);
+      if (!md || !confirm('Mover "' + md.nome + '" para a lixeira do Drive? Dá para recuperar pela lixeira em até 30 dias.')) break;
+      el.disabled = true;
+      api('modeloExcluir', { id: md.id }).then(j => {
+        if (!j.ok) throw new Error(j.erro || 'Erro ao excluir');
+        aplicarModelos(j);
+        if (state.gd.modeloId === md.id) { state.gd.modeloId = ''; state.gd.sel = {}; }
+        render(); toast('Modelo enviado para a lixeira do Drive');
+      }).catch(e => { el.disabled = false; toast(e.message, { erro: true }); });
+      break;
+    }
+    case 'md-sugestao': {
+      el.disabled = true; el.textContent = 'Criando...';
+      api('modeloCriar', { sugestao: ds.k }).then(j => {
+        if (!j.ok) throw new Error(j.erro || 'Erro ao criar o modelo');
+        aplicarModelos(j); render();
+        mostrarModeloCriado(j.novo, 'Modelo criado');
+      }).catch(e => { el.disabled = false; el.textContent = 'Criar'; toast(e.message, { erro: true }); });
+      break;
+    }
+    case 'ficha-sug': {
+      const it = fichaItem();
+      if (!it) break;
+      const d = state.docs[chaveDocs(it)];
+      if (d && !d.carregando && !d.erro && !d.pasta && d.candidatas && d.candidatas.length) {
+        toast('Há pastas com nome parecido em ' + ((d.sugestao || {}).cidade || 'a cidade') + '. Vincule ou crie a pasta logo abaixo antes de gerar.', { erro: true });
+        const b = $('#docs-bloco'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
+      modal.classList.remove('grande');
+      $('#modal-titulo').textContent = 'Gerar documento';
+      if (!modal.open) modal.showModal();
+      gerarDocumento(it, ds.id);
+      break;
+    }
     case 'gd-nenhum': state.gd.sel = {}; render(); break;
     case 'gd-gerar': gerarLote(); break;
     case 'g-filtro': state.gFiltro = state.gFiltro === ds.k ? '' : ds.k; render(); { const t = document.querySelector('.tabela-wrap'); if (t && ds.k) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); } break;
