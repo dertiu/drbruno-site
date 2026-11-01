@@ -1,17 +1,21 @@
 /**
  * APP PERÍCIAS: backend (Google Apps Script)
  *
- * Fica no MESMO projeto do script do Discord (planilha PERICIAS), como um arquivo novo.
- * Não altera nada do script do Discord. Só lê e grava nas abas pelo nome das colunas.
+ * Fica no MESMO projeto do script do Discord (planilha PERICIAS), como um arquivo separado.
+ * Não altera o script do Discord: lê e grava nas abas pelo nome das colunas e reaproveita
+ * as funções de envio que já existem lá (enviarMensagemManual, resumoDiario etc.).
  *
  * Segurança:
  *  - Usuários e senhas ficam em Propriedades do Script (senha só como hash com sal), nunca no código.
  *  - Todo acesso a dados exige uma sessão válida (token). Sem login, nada é devolvido.
  *  - 5 senhas erradas seguidas bloqueiam o usuário por 15 minutos.
+ *
+ * Histórico: cada alteração feita pelo app é registrada na aba HISTORICO (criada sozinha).
  */
 
 const APP_ABAS = ['PERICIAS', 'CONCLUSOS', 'RENUNCIAS'];
 const APP_ABA_AGENDA = 'AGENDAMENTOS';
+const APP_ABA_LOG = 'HISTORICO';
 const APP_SESSAO_DIAS = 14;
 const APP_MAX_ERROS = 5;
 const APP_ITER_HASH = 500;
@@ -39,11 +43,18 @@ function appRotear_(req) {
   switch (req.acao) {
     case 'me': return { ok: true, usuario: usuario };
     case 'logout': appEncerrarSessao_(req.token); return { ok: true };
+    case 'inicial': return appInicial_(usuario);
     case 'listar': return appListar_(req.aba);
-    case 'salvar': return appComTrava_(() => appSalvar_(req));
-    case 'mover': return appComTrava_(() => appMover_(req));
+    case 'salvar': return appComTrava_(() => appSalvar_(req, usuario));
+    case 'mover': return appComTrava_(() => appMover_(req, usuario));
     case 'agenda': return appAgenda_();
-    case 'agendaSalvar': return appComTrava_(() => appAgendaSalvar_(req));
+    case 'agendaSalvar': return appComTrava_(() => appAgendaSalvar_(req, usuario));
+    case 'agendar': return appComTrava_(() => appAgendar_(req, usuario));
+    case 'historico': return appHistorico_(req.processo);
+    case 'atividade': return { ok: true, itens: appAtividade_(60) };
+    case 'discordCanais': return { ok: true, canais: appDiscordCanais_() };
+    case 'discordEnviar': return appDiscordEnviar_(req, usuario);
+    case 'discordRotina': return appDiscordRotina_(req.rotina, usuario);
     default: return { ok: false, erro: 'Ação desconhecida' };
   }
 }
@@ -54,8 +65,25 @@ function appComTrava_(fn) {
   try { return fn(); } finally { trava.releaseLock(); }
 }
 
+// tudo que a tela precisa ao abrir, numa chamada só
+function appInicial_(usuario) {
+  const abas = {};
+  APP_ABAS.forEach(n => { abas[n] = appListar_(n); });
+  let canais = [];
+  try { canais = appDiscordCanais_(); } catch (e) {}
+  return {
+    ok: true,
+    usuario: usuario,
+    abas: abas,
+    agenda: appAgenda_().itens,
+    atividade: appAtividade_(60),
+    canais: canais,
+    hora: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'HH:mm')
+  };
+}
+
 // -------------------- USUÁRIOS E SESSÃO --------------------
-// Rode pelo menu da planilha (item "App: criar ou trocar senha de usuário") ou direto no editor.
+// Rode pelo menu da planilha (item "App: criar ou trocar senha de usuário").
 function appCriarUsuarioDialogo() {
   const ui = SpreadsheetApp.getUi();
   const u = ui.prompt('Usuário', 'Nome de usuário (sem espaços), por exemplo: bruno', ui.ButtonSet.OK_CANCEL);
@@ -136,6 +164,7 @@ function appLimparSessoes_() {
 
 // -------------------- LEITURA --------------------
 function appChave_(v) { return String(v == null ? '' : v).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase(); }
+function appTem_(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
 
 function appAba_(nome) {
   if (APP_ABAS.indexOf(nome) < 0) throw new Error('Aba inválida');
@@ -168,6 +197,15 @@ function appListar_(nome) {
 }
 
 // -------------------- GRAVAÇÃO --------------------
+// números longos só com dígitos (ex.: processo sem máscara) ficam como texto, para o Sheets não estragar
+function appLongoNumerico_(v) { return /^\d{9,}$/.test(String(v == null ? '' : v).trim()); }
+
+function appEscrever_(rg, v) {
+  const s = String(v == null ? '' : v);
+  if (appLongoNumerico_(s)) rg.setNumberFormat('@');
+  rg.setValue(s);
+}
+
 function appIndiceProcesso_(cab) {
   const i = cab.map(appChave_).indexOf('PROCESSO');
   if (i < 0) throw new Error('Coluna PROCESSO não encontrada');
@@ -188,7 +226,7 @@ function appProcessoExiste_(numero) {
   return null;
 }
 
-function appSalvar_(req) {
+function appSalvar_(req, usuario) {
   const aba = appAba_(req.aba);
   const cab = appCabecalho_(aba);
   const dados = req.dados || {};
@@ -197,12 +235,19 @@ function appSalvar_(req) {
   if (req.linha) { // editar
     const linha = Number(req.linha);
     if (linha < 2 || linha > aba.getLastRow()) return { ok: false, erro: 'CONFLITO' };
-    const atual = String(aba.getRange(linha, iProc + 1).getDisplayValue()).trim();
+    const antes = aba.getRange(linha, 1, 1, cab.length).getDisplayValues()[0];
+    const atual = String(antes[iProc]).trim();
     if (atual !== String(req.processoEsperado || '').trim()) return { ok: false, erro: 'CONFLITO' };
+    const mud = [];
     cab.forEach((nome, i) => {
-      if (Object.prototype.hasOwnProperty.call(dados, nome)) aba.getRange(linha, i + 1).setValue(dados[nome]);
+      if (!appTem_(dados, nome)) return;
+      const novo = String(dados[nome] == null ? '' : dados[nome]).trim();
+      if (novo === String(antes[i]).trim()) return;
+      appEscrever_(aba.getRange(linha, i + 1), novo);
+      mud.push(nome + ': ' + (String(antes[i]).trim() || 'vazio') + ' → ' + (novo || 'vazio'));
     });
-    return { ok: true, linha: linha };
+    if (mud.length) appLog_(usuario, atual, req.motivo || 'Edição (' + req.aba + ')', mud.join('; '));
+    return { ok: true, linha: linha, mudancas: mud.length };
   }
 
   // criar
@@ -213,13 +258,15 @@ function appSalvar_(req) {
     if (onde) return { ok: false, erro: 'DUPLICADO', onde: onde };
   }
   const linhaNova = aba.getLastRow() + 1;
-  const valores = cab.map(nome => Object.prototype.hasOwnProperty.call(dados, nome) ? dados[nome] : '');
+  const valores = cab.map(nome => appTem_(dados, nome) ? String(dados[nome] == null ? '' : dados[nome]).trim() : '');
+  valores.forEach((v, i) => { if (appLongoNumerico_(v)) aba.getRange(linhaNova, i + 1).setNumberFormat('@'); });
   aba.getRange(linhaNova, 1, 1, cab.length).setValues([valores]);
+  appLog_(usuario, proc, 'Cadastro (' + req.aba + ')', cab.filter((n, i) => valores[i]).map((n, i) => n).join(', '));
   return { ok: true, linha: linhaNova };
 }
 
 // copia a linha para a aba de destino pelos nomes das colunas e remove da origem
-function appMover_(req) {
+function appMover_(req, usuario) {
   if (req.de === req.para) return { ok: false, erro: 'Origem e destino iguais.' };
   const de = appAba_(req.de), para = appAba_(req.para);
   const cabDe = appCabecalho_(de), cabPara = appCabecalho_(para);
@@ -233,14 +280,16 @@ function appMover_(req) {
   cabDe.forEach((nome, i) => { mapa[appChave_(nome)] = origem[i]; });
   const extra = req.extra || {};
   const destino = cabPara.map(nome => {
-    if (Object.prototype.hasOwnProperty.call(extra, nome)) return extra[nome];
+    if (appTem_(extra, nome)) return extra[nome];
     const k = appChave_(nome);
     if (k === 'INTIMACAO' || k === 'PRAZOS' || k === 'PRAZO') return '';
-    return Object.prototype.hasOwnProperty.call(mapa, k) ? mapa[k] : '';
+    return appTem_(mapa, k) ? mapa[k] : '';
   });
   const linhaNova = para.getLastRow() + 1;
+  destino.forEach((v, i) => { if (typeof v === 'string' && appLongoNumerico_(v)) para.getRange(linhaNova, i + 1).setNumberFormat('@'); });
   para.getRange(linhaNova, 1, 1, cabPara.length).setValues([destino]);
   de.deleteRow(linha);
+  appLog_(usuario, proc, 'Movido', req.de + ' → ' + req.para + (Object.keys(extra).length ? ' (' + Object.keys(extra).map(k => k + ': ' + extra[k]).join('; ') + ')' : ''));
   return { ok: true, linha: linhaNova };
 }
 
@@ -271,7 +320,7 @@ function appAgenda_() {
   return { ok: true, itens: itens };
 }
 
-function appAgendaSalvar_(req) {
+function appAgendaSalvar_(req, usuario) {
   const aba = appAgendaAba_();
   const d = req.dados || {};
   const vals = [String(d.hora || '').trim(), String(d.nome || '').trim(), String(d.tipo || '').trim(), String(d.status || '').trim(), String(d.local || '').trim()];
@@ -280,9 +329,10 @@ function appAgendaSalvar_(req) {
   if (req.linha) { // editar um horário existente
     const linha = Number(req.linha);
     if (linha < 1 || linha > aba.getLastRow()) return { ok: false, erro: 'CONFLITO' };
-    const nomeAtual = String(aba.getRange(linha, 2).getDisplayValue()).trim();
-    if (nomeAtual !== String(req.nomeEsperado || '').trim()) return { ok: false, erro: 'CONFLITO' };
-    aba.getRange(linha, 1, 1, 5).setValues([vals]);
+    const antes = aba.getRange(linha, 1, 1, 5).getDisplayValues()[0];
+    if (String(antes[1]).trim() !== String(req.nomeEsperado || '').trim()) return { ok: false, erro: 'CONFLITO' };
+    aba.getRange(linha, 1, 1, 5).setNumberFormat('@').setValues([vals]);
+    appLog_(usuario, req.processo || '', 'Agenda: horário editado', antes.join(' | ') + ' → ' + vals.join(' | '));
     return { ok: true, linha: linha };
   }
 
@@ -293,23 +343,123 @@ function appAgendaSalvar_(req) {
   for (let i = 0; i < dados.length; i++) {
     if (String(dados[i][0]).trim() === dia && !String(dados[i][1]).trim()) { linhaDia = i + 1; break; }
   }
+  let linhaNova;
   if (linhaDia < 0) { // dia novo: cria bloco no fim
     const base = aba.getLastRow() + 2;
     aba.getRange(base, 1).setNumberFormat('@').setValue(dia);
     aba.getRange(base, 4, 1, 2).setValues([['STATUS', 'LOCAL']]);
     aba.getRange(base + 1, 1, 1, 3).setValues([['HORA', 'PERICIADO', 'TIPO']]);
     aba.getRange(base + 2, 1, 1, 5).setNumberFormat('@').setValues([vals]);
-    return { ok: true, linha: base + 2 };
+    linhaNova = base + 2;
+  } else { // dia existente: insere depois da última linha do bloco
+    let ultima = linhaDia + 1; // pula a linha de cabeçalho HORA/PERICIADO/TIPO
+    for (let r = linhaDia + 2; r <= dados.length; r++) {
+      const a = String(dados[r - 1][0]).trim(), b = String(dados[r - 1][1]).trim();
+      if (!a && !b) break;
+      if (appData_(a) && !b) break;
+      ultima = r;
+    }
+    aba.insertRowAfter(ultima);
+    aba.getRange(ultima + 1, 1, 1, 5).setNumberFormat('@').setValues([vals]);
+    linhaNova = ultima + 1;
   }
-  // dia existente: insere depois da última linha do bloco
-  let ultima = linhaDia + 1; // pula a linha de cabeçalho HORA/PERICIADO/TIPO
-  for (let r = linhaDia + 2; r <= dados.length; r++) {
-    const a = String(dados[r - 1][0]).trim(), b = String(dados[r - 1][1]).trim();
-    if (!a && !b) break;
-    if (appData_(a) && !b) break;
-    ultima = r;
+  appLog_(usuario, req.processo || '', 'Agenda: perícia marcada', dia + ' ' + vals[0] + ' · ' + vals[1] + (vals[4] ? ' · ' + vals[4] : ''));
+  return { ok: true, linha: linhaNova };
+}
+
+// cria o horário na agenda e atualiza o processo (data da perícia e próximo passo) de uma vez
+function appAgendar_(req, usuario) {
+  const r1 = appAgendaSalvar_({ dados: req.slot, processo: req.processoEsperado }, usuario);
+  if (!r1.ok) return r1;
+  const r2 = appSalvar_({ aba: 'PERICIAS', linha: req.linha, processoEsperado: req.processoEsperado, dados: req.dadosProcesso || {}, motivo: 'Perícia agendada' }, usuario);
+  if (!r2.ok) return { ok: false, erro: 'O horário foi criado na agenda, mas não consegui atualizar o processo (' + r2.erro + '). Atualize a tela e ajuste o processo.' };
+  return { ok: true };
+}
+
+// -------------------- HISTÓRICO --------------------
+function appLogAba_() {
+  const ss = SpreadsheetApp.getActive();
+  let aba = ss.getSheetByName(APP_ABA_LOG);
+  if (!aba) {
+    aba = ss.insertSheet(APP_ABA_LOG, ss.getSheets().length);
+    aba.getRange(1, 1, 1, 5).setValues([['DATA', 'USUÁRIO', 'PROCESSO', 'AÇÃO', 'DETALHE']]).setFontWeight('bold');
+    aba.setFrozenRows(1);
+    aba.getRange('A:A').setNumberFormat('dd/MM/yyyy HH:mm');
+    aba.getRange('C:C').setNumberFormat('@');
+    aba.setColumnWidth(5, 600);
   }
-  aba.insertRowAfter(ultima);
-  aba.getRange(ultima + 1, 1, 1, 5).setNumberFormat('@').setValues([vals]);
-  return { ok: true, linha: ultima + 1 };
+  return aba;
+}
+
+function appLog_(usuario, processo, acao, detalhe) {
+  try {
+    const aba = appLogAba_();
+    const n = aba.getLastRow() + 1;
+    aba.getRange(n, 2, 1, 4).setNumberFormat('@'); // texto puro: número de processo sem máscara não vira número
+    aba.getRange(n, 1, 1, 5).setValues([[new Date(), usuario || '', String(processo || ''), acao, String(detalhe || '').slice(0, 1500)]]);
+  } catch (e) {}
+}
+
+function appLerLog_() {
+  const aba = SpreadsheetApp.getActive().getSheetByName(APP_ABA_LOG);
+  if (!aba || aba.getLastRow() < 2) return [];
+  return aba.getRange(2, 1, aba.getLastRow() - 1, 5).getDisplayValues()
+    .map(l => ({ data: l[0], usuario: l[1], processo: l[2], acao: l[3], detalhe: l[4] }));
+}
+
+function appAtividade_(n) {
+  const aba = SpreadsheetApp.getActive().getSheetByName(APP_ABA_LOG);
+  if (!aba || aba.getLastRow() < 2) return [];
+  const ult = aba.getLastRow();
+  const ini = Math.max(2, ult - n + 1);
+  return aba.getRange(ini, 1, ult - ini + 1, 5).getDisplayValues()
+    .map(l => ({ data: l[0], usuario: l[1], processo: l[2], acao: l[3], detalhe: l[4] })).reverse();
+}
+
+function appHistorico_(processo) {
+  const alvo = String(processo || '').replace(/\D/g, '');
+  if (!alvo) return { ok: true, itens: [] };
+  const itens = appLerLog_().filter(x => String(x.processo).replace(/\D/g, '') === alvo).reverse().slice(0, 200);
+  return { ok: true, itens: itens };
+}
+
+// -------------------- DISCORD (usa o script do Discord deste mesmo projeto) --------------------
+const APP_ROTINAS = { dia: 'Resumo do dia', semana: 'Resumo semanal', prazos: 'Alertas de prazo', paineis: 'Painéis de pendências', mudancas: 'Verificar mudanças' };
+
+function appDiscordCheck_() {
+  if (typeof CANAIS === 'undefined' || typeof enviarMensagemManual !== 'function') throw new Error('Script do Discord não encontrado neste projeto.');
+}
+
+function appDiscordCanais_() {
+  appDiscordCheck_();
+  const props = PropertiesService.getScriptProperties();
+  return Object.keys(CANAIS).filter(k => props.getProperty('WEBHOOK_' + k)).map(k => ({ k: k, n: CANAIS[k] }));
+}
+
+function appDiscordEnviar_(req, usuario) {
+  appDiscordCheck_();
+  const texto = String(req.texto || '').trim();
+  const msg = enviarMensagemManual({
+    canal: req.canal,
+    titulo: req.titulo,
+    texto: texto ? texto + '\n\n_enviado pelo app por ' + usuario + '_' : '',
+    processo: req.processo || ''
+  });
+  appLog_(usuario, req.processo || '', 'Discord', (CANAIS[req.canal] || req.canal) + ': ' + (String(req.titulo || '').trim() || 'mensagem'));
+  return { ok: true, msg: msg };
+}
+
+function appDiscordRotina_(rotina, usuario) {
+  appDiscordCheck_();
+  const fn = {
+    dia: () => resumoDiario(),
+    semana: () => resumoSemanal(),
+    prazos: () => rotinaAlertas(),
+    paineis: () => atualizarPaineisAgora(),
+    mudancas: () => verificarMudancas()
+  }[rotina];
+  if (!fn) return { ok: false, erro: 'Rotina desconhecida' };
+  fn();
+  appLog_(usuario, '', 'Discord', 'Rotina enviada: ' + APP_ROTINAS[rotina]);
+  return { ok: true };
 }
