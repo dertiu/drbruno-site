@@ -16,6 +16,9 @@
 const APP_ABAS = ['PERICIAS', 'CONCLUSOS', 'RENUNCIAS'];
 const APP_ABA_AGENDA = 'AGENDAMENTOS';
 const APP_ABA_LOG = 'HISTORICO';
+// Usuários com perfil de PERITO: veem a página Gestão (valores totais, projeção e equipe).
+// Todos os outros entram como ASSISTENTE (operacional, sem totais).
+const APP_ADMINS = ['bruno'];
 const APP_SESSAO_DIAS = 14;
 const APP_MAX_ERROS = 5;
 const APP_ITER_HASH = 500;
@@ -41,9 +44,10 @@ function appRotear_(req) {
   const usuario = appValidarSessao_(req.token);
   if (!usuario) return { ok: false, erro: 'SESSAO' };
   switch (req.acao) {
-    case 'me': return { ok: true, usuario: usuario };
+    case 'me': return { ok: true, usuario: usuario, papel: appPapel_(usuario) };
     case 'logout': appEncerrarSessao_(req.token); return { ok: true };
     case 'inicial': return appInicial_(usuario);
+    case 'gestao': return appPapel_(usuario) === 'perito' ? appGestao_() : { ok: false, erro: 'Sem permissão para a Gestão.' };
     case 'listar': return appListar_(req.aba);
     case 'salvar': return appComTrava_(() => appSalvar_(req, usuario));
     case 'mover': return appComTrava_(() => appMover_(req, usuario));
@@ -80,6 +84,7 @@ function appInicial_(usuario) {
   return {
     ok: true,
     usuario: usuario,
+    papel: appPapel_(usuario),
     abas: abas,
     agenda: appAgenda_().itens,
     atividade: appAtividade_(60),
@@ -143,7 +148,38 @@ function appLogin_(usuario, senha) {
   const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
   const exp = Date.now() + APP_SESSAO_DIAS * 86400000;
   props.setProperty('S_' + token, JSON.stringify({ u: usuario, exp: exp }));
-  return { ok: true, token: token, usuario: usuario };
+  return { ok: true, token: token, usuario: usuario, papel: appPapel_(usuario) };
+}
+
+function appPapel_(usuario) { return APP_ADMINS.indexOf(String(usuario || '').toLowerCase()) >= 0 ? 'perito' : 'assistente'; }
+
+// -------------------- GESTÃO (só perito): atividade da equipe a partir do HISTORICO --------------------
+function appGestao_() {
+  const log = appLerLog_();
+  const agora = Date.now(), DIA = 86400000;
+  const quando = s => { const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?: (\d{1,2}):(\d{2}))?/); return m ? new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime() : 0; };
+  const equipe = {}, acoes = {}, semanas = [];
+  for (let i = 7; i >= 0; i--) semanas.push({ ini: agora - (i + 1) * 7 * DIA, fim: agora - i * 7 * DIA, n: 0, porUsuario: {} });
+  log.forEach(x => {
+    const t = quando(x.data), u = x.usuario || '?';
+    const o = equipe[u] = equipe[u] || { usuario: u, papel: appPapel_(u), d7: 0, d30: 0, total: 0, ultima: 0, ultimaAcao: '' };
+    o.total++;
+    if (agora - t <= 7 * DIA) o.d7++;
+    if (agora - t <= 30 * DIA) {
+      o.d30++;
+      const k = String(x.acao).replace(/\s*\(.*\)$/, '').replace(/^Etapa: .*/, 'Mudança de etapa');
+      acoes[k] = (acoes[k] || 0) + 1;
+    }
+    if (t >= o.ultima) { o.ultima = t; o.ultimaAcao = x.acao; }
+    semanas.forEach(s => { if (t > s.ini && t <= s.fim) { s.n++; s.porUsuario[u] = (s.porUsuario[u] || 0) + 1; } });
+  });
+  return {
+    ok: true,
+    equipe: Object.keys(equipe).map(k => equipe[k]).sort((a, b) => b.d30 - a.d30),
+    acoes: Object.keys(acoes).map(k => ({ acao: k, n: acoes[k] })).sort((a, b) => b.n - a.n),
+    semanas: semanas.map(s => ({ fim: s.fim, n: s.n, porUsuario: s.porUsuario })),
+    desde: log.length ? log[0].data : ''
+  };
 }
 
 function appValidarSessao_(token) {

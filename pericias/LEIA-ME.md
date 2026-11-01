@@ -51,6 +51,14 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
+## Perfis de acesso
+
+- **Perito** (usuários listados em `APP_ADMINS` no topo do `AppPericias.gs`, hoje só `bruno`): vê a página **Gestão** com total a receber, projeção por estágio, recebidos, valor por tipo e por comarca, laudos pendentes, indicadores, atividade da equipe e exportação em CSV.
+- **Assistente** (qualquer outro usuário): vê a página **Pagamentos**, só com o operacional (MLE a peticionar, aguardando pagamento, travados por falta de reserva, aguardando depósito). Vê os honorários de cada processo, como na planilha, mas nenhum total. O painel e as mensagens geradas para o Discord também não mostram somas.
+- A Gestão é bloqueada no servidor: mesmo digitando o endereço, o assistente não recebe os dados.
+- Para dar perfil de perito a outra pessoa, acrescente o usuário em `APP_ADMINS` e publique uma Nova versão.
+- Observação: se o assistente tiver acesso de edição à planilha, ele continua vendo a coluna HONORARIOS por lá.
+
 ## Cuidados
 
 - O app grava pelo nome das colunas da linha 1. Não renomeie os cabeçalhos.

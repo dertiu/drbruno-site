@@ -96,12 +96,13 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke
 
 /* ---------- gráficos ---------- */
 .barras{display:grid;gap:4px}
-.barra{display:grid;grid-template-columns:minmax(90px,130px) 1fr 52px;align-items:center;gap:10px;background:none;border:0;padding:5px 6px;border-radius:8px;cursor:pointer;text-align:left;width:100%}
+.barra{display:grid;grid-template-columns:minmax(90px,130px) 1fr minmax(44px,auto);align-items:center;gap:10px;background:none;border:0;padding:5px 6px;border-radius:8px;cursor:pointer;text-align:left;width:100%}
 .barra:hover,.barra:focus-visible{background:#f3f6fa;outline:none}
 .barra .rot{font-size:.84rem;color:var(--texto2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trilho{height:10px;background:var(--linha2);border-radius:999px;overflow:hidden}
 .trilho .fill{display:block;height:100%;border-radius:0 4px 4px 0;background:var(--serie);min-width:2px}
-.barra .v{text-align:right;font-weight:900;font-size:.85rem;font-variant-numeric:tabular-nums}
+.barra .v{text-align:right;font-weight:900;font-size:.85rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tabela.compacta td:first-child{white-space:nowrap}
 .colunas{display:flex;align-items:stretch;gap:6px;height:170px;padding-top:4px}
 .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;cursor:default;background:none;border:0;padding:0}
 .col .area{flex:1;width:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative}
@@ -273,6 +274,25 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke
 .hist b{font-size:.88rem}
 .hist p{margin:2px 0 0;font-size:.84rem;color:var(--texto2);word-break:break-word}
 
+/* ---------- gestão ---------- */
+.estagios{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-top:14px;font-size:.84rem}
+.estagios small{display:block;color:var(--suave);font-size:.76rem;margin-left:15px}
+.estagios .ponto{margin-right:6px}
+.mini-kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.mini-kpis div{background:#f6f7f9;border-radius:10px;padding:10px 12px}
+.mini-kpis b{display:block;font-size:1.4rem;font-weight:900;color:var(--navy);font-variant-numeric:tabular-nums}
+.mini-kpis span{font-size:.78rem;color:var(--texto2)}
+.mini-kpis em{font-style:normal;color:var(--vencido);font-weight:700}
+.tabela.compacta td,.tabela.compacta th{padding:7px 6px}
+.chips-linha{display:flex;flex-wrap:wrap;gap:6px}
+.indicadores{margin:0;display:flex;flex-direction:column}
+.indicadores div{display:flex;justify-content:space-between;gap:12px;padding:9px 2px;border-top:1px solid var(--linha2);font-size:.88rem}
+.indicadores div:first-child{border-top:0}
+.indicadores dt{color:var(--texto2)}
+.indicadores dd{margin:0;font-weight:900;text-align:right;font-variant-numeric:tabular-nums}
+.cartao-topo .alternar button{padding:6px 10px;font-size:.8rem}
+@media (max-width:899px){.estagios{grid-template-columns:1fr}.cartao-topo{flex-wrap:wrap}.cartao-topo .alternar{overflow-x:auto;max-width:100%}}
+
 /* ---------- documentos (Drive) ---------- */
 .docs{margin-top:22px;padding-top:16px;border-top:1px solid var(--linha)}
 .docs-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px}
@@ -393,6 +413,6 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
   .ficha-corpo{padding:14px 16px 24px}
   .docs-topo .acoes .btn{flex:1 1 auto}
   .toast{bottom:calc(76px + env(safe-area-inset-bottom))}
-  .barra{grid-template-columns:96px 1fr 44px}
+  .barra{grid-template-columns:90px 1fr minmax(40px,auto)}
   .ferramentas select{flex:1 1 45%;max-width:none}
 }

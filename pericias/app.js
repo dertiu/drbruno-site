@@ -302,24 +302,21 @@ function gerarPrazos(itens, dias) {
     return (n < 0 ? '🔴' : n <= 2 ? '🟠' : '🟡') + ' **' + fmtCurto(pz) + '** (' + txtDias(n) + ') · ' + (it.c.quem === 'perito' ? '👨‍⚕️ ' : '🧑‍💼 ') + it.c.acao + ' · `' + it.m['PROCESSO'] + '`';
   }).join('\n');
 }
-function gerarFinanceiro(itens, ufesp) {
+// vai para #honorários-e-mle, que o assistente também lê: só quantidades e processos, nunca somas
+function gerarFinanceiro(itens) {
   const ativos = itens.filter(it => chave(it.m['PAGO']) !== 'PAGO');
-  const grupos = [['RESERVADO', '🏦 Reservado no processo'], ['MLE', '📝 MLE peticionado'], ['OFICIO', '📨 Ofício expedido'], ['PARCIAL', '🧩 Recebido em parte']];
+  const grupos = [['MLE', '📝 MLE peticionado'], ['OFICIO', '📨 Ofício expedido'], ['PARCIAL', '🧩 Recebido em parte'], ['RESERVADO', '🏦 Reservado no processo']];
   const L = [];
-  let total = 0;
+  const mle = itens.filter(it => it.c.acao === 'Peticionar o pagamento (MLE)');
+  if (mle.length) { L.push('**✍️ Falta peticionar o MLE: ' + mle.length + '**'); mle.forEach(it => L.push('• `' + it.m['PROCESSO'] + '` · ' + nomeCurto(it.m['REQUERENTE']))); L.push(''); }
   grupos.forEach(([k, t]) => {
     const g = ativos.filter(it => chave(it.m['PAGO']) === k);
     if (!g.length) return;
-    const soma = g.reduce((s, it) => s + valorHonorarios(it.m['HONORARIOS'], ufesp), 0);
-    total += soma;
-    L.push('**' + t + ': ' + g.length + ' · ' + fmtBRL(soma) + '**');
-    if (k !== 'RESERVADO') g.forEach(it => L.push('• `' + it.m['PROCESSO'] + '` · ' + (it.m['HONORARIOS'] || 'sem valor')));
+    L.push('**' + t + ': ' + g.length + '**');
+    if (k !== 'RESERVADO') g.forEach(it => L.push('• `' + it.m['PROCESSO'] + '` · ' + nomeCurto(it.m['REQUERENTE']) + (it.m['OBSERVACAO'] ? ' · ' + abreviar(it.m['OBSERVACAO'], 50) : '')));
     L.push('');
   });
-  const mle = itens.filter(it => it.c.acao === 'Peticionar o pagamento (MLE)');
-  if (mle.length) { L.push('**✍️ Falta peticionar o MLE: ' + mle.length + '**'); mle.forEach(it => L.push('• `' + it.m['PROCESSO'] + '` · ' + (it.m['HONORARIOS'] || ''))); L.push(''); }
-  L.push('**Total estimado a receber: ' + fmtBRL(total) + '**');
-  return L.join('\n').trim();
+  return L.join('\n').trim() || 'Nenhum pagamento pendente.';
 }
 function gerarFilaAgendamento(itens) {
   const lista = itens.filter(it => etapaDe(it.m) === 'AGENDAMENTO');
@@ -376,8 +373,54 @@ function sugerirModelos(modelos, m) {
   }).filter(x => x.s > 0).sort((a, b) => b.s - a.s || a.md.nome.length - b.md.nome.length).slice(0, 4).map(x => x.md);
 }
 
+// ---------- gestão (perfil perito) ----------
+const ESTAGIOS_RECEB = [
+  { k: 'pedido', rot: 'Já pedido', desc: 'MLE peticionado, ofício expedido ou recebido em parte', cor: '#1baf7a' },
+  { k: 'pronto', rot: 'Pronto para pedir', desc: 'Valor reservado e laudo entregue', cor: '#2a78d6' },
+  { k: 'andamento', rot: 'Em andamento', desc: 'Valor reservado, perícia ou laudo por fazer', cor: '#6250d6' },
+  { k: 'incerto', rot: 'Sem reserva', desc: 'Honorários ainda não depositados', cor: '#8a94a3' }
+];
+function estagioRecebimento(m) {
+  const pago = chave(m['PAGO']), e = etapaDe(m);
+  if (pago === 'PAGO') return null;
+  if (pago === 'MLE' || pago === 'OFICIO' || pago === 'PARCIAL') return 'pedido';
+  if (pago === 'RESERVADO') return (['DECISAO', 'ESCLARECIMENTOS', 'PETICAO', 'PAGAMENTO'].indexOf(e) >= 0 || chave(m['LAUDO']) === 'ENTREGUE') ? 'pronto' : 'andamento';
+  return 'incerto';
+}
+// linhas antigas de CONCLUSOS têm colunas deslocadas: procura o valor e o PAGO em qualquer célula
+function valorLinha(v, ufesp) {
+  for (const c of v) {
+    const s = String(c || '').trim();
+    if (/^R\$\s?[\d.]+,\d{2}$/.test(s) || /^[\d.,]+\s*UFESPS?$/i.test(s)) return valorHonorarios(s, ufesp);
+  }
+  return 0;
+}
+function pagoLinha(v) { return v.some(c => chave(c) === 'PAGO'); }
+function somarPor(lista, fn, ufesp) {
+  const g = {};
+  lista.forEach(it => {
+    const k = (fn(it) || '').trim() || 'Sem informação';
+    const v = valorHonorarios(it.m['HONORARIOS'], ufesp);
+    const o = g[k] = g[k] || { k: k, n: 0, soma: 0, comValor: 0 };
+    o.n++;
+    if (v) { o.soma += v; o.comValor++; }
+  });
+  return Object.keys(g).map(k => Object.assign(g[k], { media: g[k].comValor ? g[k].soma / g[k].comValor : 0 })).sort((a, b) => b.soma - a.soma || b.n - a.n);
+}
+function laudosPendentes(itens) {
+  return itens.filter(it => etapaDe(it.m) === 'LAUDO').map(it => {
+    const d = parseData(it.m['PERICIA']);
+    return { it: it, dias: d ? -diasAte(d) : null };
+  }).sort((a, b) => (b.dias == null ? -1 : b.dias) - (a.dias == null ? -1 : a.dias));
+}
+function gerarCSV(linhas) {
+  const q = v => { const s = String(v == null ? '' : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return '﻿' + linhas.map(l => l.map(q).join(';')).join('\r\n');
+}
+
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
+    estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
@@ -409,19 +452,24 @@ const ICONES = {
   sair: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/>',
   copiar: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
   fechar: '<path d="M6 6l12 12M18 6 6 18"/>',
-  externo: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'
+  externo: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  gestao: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>'
 };
 function ic(nome) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONES[nome] || '') + '</svg>'; }
 
-const VIEWS = [
-  { id: 'painel', rot: 'Painel' },
-  { id: 'processos', rot: 'Processos' },
-  { id: 'calendario', rot: 'Calendário' },
-  { id: 'agenda', rot: 'Agenda' },
-  { id: 'financeiro', rot: 'Financeiro' },
-  { id: 'discord', rot: 'Discord' },
-  { id: 'arquivo', rot: 'Arquivo' }
-];
+// o perito vê "Gestão" (totais e projeção); o assistente vê "Pagamentos" (só o operacional)
+function views() {
+  const perito = state.papel === 'perito';
+  return [
+    { id: 'painel', rot: 'Painel' },
+    { id: 'processos', rot: 'Processos' },
+    { id: 'calendario', rot: 'Calendário' },
+    { id: 'agenda', rot: 'Agenda' },
+    perito ? { id: 'gestao', rot: 'Gestão', icone: 'gestao' } : { id: 'pagamentos', rot: 'Pagamentos', icone: 'financeiro' },
+    { id: 'discord', rot: 'Discord' },
+    { id: 'arquivo', rot: 'Arquivo' }
+  ];
+}
 
 function ler(k, padrao) { try { const v = localStorage.getItem(k); return v == null ? padrao : v; } catch (e) { return padrao; } }
 function gravar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -431,6 +479,9 @@ const filtroVazio = () => ({ q: '', quem: '', etapa: '', tipo: '', cidade: '' })
 const state = {
   token: ler('pericias_token', ''),
   user: '',
+  papel: 'assistente',
+  gestao: null,
+  gFiltro: '',
   view: 'painel',
   dados: {},
   agenda: [],
@@ -481,7 +532,7 @@ function mostrarApp() { $('#tela-login').hidden = true; $('#tela-app').hidden = 
 
 function sair(avisarServidor) {
   if (avisarServidor && state.token) api('logout').catch(() => {});
-  state.token = ''; state.dados = {}; state.agenda = [];
+  state.token = ''; state.dados = {}; state.agenda = []; state.papel = 'assistente'; state.gestao = null; state.docs = {};
   apagar('pericias_token');
   fecharFicha();
   mostrarLogin();
@@ -494,7 +545,7 @@ $('#form-login').addEventListener('submit', async ev => {
   try {
     const j = await api('login', { usuario: $('#lg-user').value, senha: $('#lg-pass').value, token: '' });
     if (!j.ok) { msg.textContent = j.erro || 'Não foi possível entrar.'; return; }
-    state.token = j.token; state.user = j.usuario;
+    state.token = j.token; state.user = j.usuario; state.papel = j.papel || 'assistente'; state.gestao = null;
     gravar('pericias_token', j.token);
     $('#lg-pass').value = '';
     mostrarApp();
@@ -515,8 +566,10 @@ async function recarregar(silencioso) {
   carregando = (async () => {
     try {
       const j = await api('inicial');
+      if (!j.ok && j.erro === 'Ação desconhecida') throw new Error('O backend no Apps Script está desatualizado. Cole o AppPericias.gs novo e publique uma Nova versão em Implantar > Gerenciar implantações.');
       if (!j.ok) throw new Error(j.erro || 'Erro ao carregar');
       state.user = j.usuario || state.user;
+      state.papel = j.papel || 'assistente';
       ABAS_PLANILHA.forEach(a => { if (j.abas && j.abas[a]) state.dados[a] = j.abas[a]; });
       state.agenda = j.agenda || [];
       state.atividade = j.atividade || [];
@@ -561,12 +614,18 @@ function processoDoSlot(a) {
 /* ---------- NAVEGAÇÃO ---------- */
 function renderNav() {
   const urgentes = ativos().filter(it => it.c.quem && it.c.quem !== 'acompanhar' && prazoDe(it.m) && diasAte(prazoDe(it.m)) <= 2).length;
-  $('#nav-itens').innerHTML = VIEWS.map(v => '<button type="button" data-acao="ir" data-view="' + v.id + '" class="' + (state.view === v.id ? 'ativa' : '') + '"' + (state.view === v.id ? ' aria-current="page"' : '') + '>' +
-    ic(v.id) + '<span>' + v.rot + '</span>' + (v.id === 'painel' && urgentes ? '<span class="badge" title="Prazos vencidos ou em até 2 dias">' + urgentes + '</span>' : '') + '</button>').join('');
+  $('#nav-itens').innerHTML = views().map(v => '<button type="button" data-acao="ir" data-view="' + v.id + '" class="' + (state.view === v.id ? 'ativa' : '') + '"' + (state.view === v.id ? ' aria-current="page"' : '') + '>' +
+    ic(v.icone || v.id) + '<span>' + v.rot + '</span>' + (v.id === 'painel' && urgentes ? '<span class="badge" title="Prazos vencidos ou em até 2 dias">' + urgentes + '</span>' : '') + '</button>').join('');
+}
+
+// endereço antigo (#financeiro) ou de outro perfil cai na tela equivalente
+function viewValida(view) {
+  if (['financeiro', 'gestao', 'pagamentos'].indexOf(view) >= 0) return state.papel === 'perito' ? 'gestao' : 'pagamentos';
+  return views().some(v => v.id === view) ? view : 'painel';
 }
 
 function ir(view) {
-  if (!VIEWS.some(v => v.id === view)) view = 'painel';
+  view = viewValida(view);
   state.view = view;
   if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view);
   render();
@@ -576,13 +635,14 @@ function ir(view) {
 function render() {
   const ativo = document.activeElement;
   const foco = ativo && ativo.id && $('#conteudo').contains(ativo) ? { id: ativo.id, s: ativo.selectionStart, e: ativo.selectionEnd } : null;
+  state.view = viewValida(state.view);
   renderNav();
-  $('#titulo').textContent = (VIEWS.find(v => v.id === state.view) || VIEWS[0]).rot;
+  $('#titulo').textContent = (views().find(v => v.id === state.view) || views()[0]).rot;
   $('#btn-novo').textContent = (state.view === 'agenda' || state.view === 'calendario') ? '+ Horário' : '+ Processo';
-  $('#btn-novo').hidden = state.view === 'discord';
+  $('#btn-novo').hidden = state.view === 'discord' || state.view === 'gestao';
   if (!state.dados.PERICIAS) return;
   ({ painel: renderPainel, processos: renderProcessos, calendario: renderCalendario, agenda: renderAgenda,
-     financeiro: renderFinanceiro, discord: renderDiscord, arquivo: renderArquivo })[state.view]();
+     gestao: renderGestao, pagamentos: renderPagamentos, discord: renderDiscord, arquivo: renderArquivo })[state.view]();
   if (foco) {
     const el = document.getElementById(foco.id);
     if (el) { el.focus(); try { if (foco.s != null) el.setSelectionRange(foco.s, foco.e); } catch (e) {} }
@@ -660,7 +720,9 @@ function renderPainel() {
     '<button type="button" class="kpi" style="--k:var(--navy)" data-acao="filtrar" data-quem=""><span class="rot">Processos ativos</span><span class="val">' + lista.length + '</span><span class="sub">' + perito.length + ' perito · ' + assist.length + ' assistente · ' + acomp.length + ' aguardando</span></button>' +
     '<button type="button" class="kpi" style="--k:' + (vencidos.length ? 'var(--vencido)' : 'var(--alerta)') + '" data-acao="ir" data-view="calendario"><span class="rot">Prazos em 7 dias</span><span class="val">' + prox7.length + '</span><span class="sub">' + (vencidos.length ? '<b style="color:var(--vencido)">' + vencidos.length + ' vencido(s)</b>' : 'nenhum vencido') + '</span></button>' +
     '<button type="button" class="kpi" style="--k:var(--pericia)" data-acao="ir" data-view="agenda"><span class="rot">Perícias em 14 dias</span><span class="val">' + ag14.length + '</span><span class="sub">' + (agHoje.length ? agHoje.length + ' hoje' : ag14.length ? 'próxima ' + fmtCurto(ag14[0].d) : 'nada agendado') + '</span></button>' +
-    '<button type="button" class="kpi" style="--k:var(--gold)" data-acao="ir" data-view="financeiro"><span class="rot">A receber</span><span class="val">' + fmtBRLcurto(totalReceber) + '</span><span class="sub">' + fmtBRLcurto(reservado) + ' já reservado ou pedido</span></button>' +
+    (state.papel === 'perito'
+      ? '<button type="button" class="kpi" style="--k:var(--gold)" data-acao="ir" data-view="gestao"><span class="rot">A receber</span><span class="val">' + fmtBRLcurto(totalReceber) + '</span><span class="sub">' + fmtBRLcurto(reservado) + ' já reservado ou pedido</span></button>'
+      : '<button type="button" class="kpi" style="--k:var(--assist)" data-acao="ir" data-view="pagamentos"><span class="rot">MLE a peticionar</span><span class="val">' + lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)').length + '</span><span class="sub">' + lista.filter(i => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(chave(i.m['PAGO'])) >= 0).length + ' aguardando pagamento</span></button>') +
     '</section>';
 
   h += '<div class="grid">';
@@ -1405,40 +1467,143 @@ function abrirSlot(a, diaPadrao, op) {
   modal.showModal();
 }
 
-/* ================= FINANCEIRO ================= */
-function renderFinanceiro() {
-  const lista = ativos().map(it => Object.assign({ valor: valorHonorarios(it.m['HONORARIOS'], UFESP), sit: chave(it.m['PAGO']) }, it));
-  const pend = lista.filter(i => i.sit !== 'PAGO');
-  const grupos = [
-    { k: 'RESERVADO', rot: 'Reservado no processo', cor: '#2a78d6' },
-    { k: 'MLE', rot: 'MLE peticionado', cor: '#6250d6' },
-    { k: 'OFICIO', rot: 'Ofício expedido', cor: '#1baf7a' },
-    { k: 'PARCIAL', rot: 'Recebido em parte', cor: '#eda100' },
-    { k: '', rot: 'Ainda sem reserva', cor: '#8a94a3' }
+/* ================= GESTÃO (só perito) ================= */
+async function carregarGestao(forcar) {
+  if (state.papel !== 'perito') return;
+  if (!forcar && state.gestao && (state.gestao.carregando || Date.now() - state.gestao.t < 3 * 60 * 1000)) return;
+  state.gestao = Object.assign({}, state.gestao || {}, { carregando: true, t: Date.now() });
+  try {
+    const j = await api('gestao');
+    state.gestao = j.ok ? Object.assign(j, { t: Date.now() }) : { erro: j.erro || 'Erro ao ler a gestão', t: Date.now() };
+  } catch (e) { state.gestao = { erro: e.message, t: Date.now() }; }
+  if (state.view === 'gestao') render();
+}
+
+function itensFinanceiros() {
+  return ativos().map(it => Object.assign({ valor: valorHonorarios(it.m['HONORARIOS'], UFESP), est: estagioRecebimento(it.m) }, it));
+}
+
+function renderGestao() {
+  if (state.papel !== 'perito') { ir('pagamentos'); return; }
+  carregarGestao(false);
+  const lista = itensFinanceiros();
+  const pend = lista.filter(i => i.est);
+  const soma = arr => arr.reduce((s, i) => s + i.valor, 0);
+  const total = soma(pend);
+  const est = ESTAGIOS_RECEB.map(e => { const its = pend.filter(i => i.est === e.k); return Object.assign({ its: its, soma: soma(its) }, e); });
+  const conc = itens('CONCLUSOS');
+  const recebidos = conc.filter(i => pagoLinha(i.v));
+  const totRec = recebidos.reduce((s, i) => s + valorLinha(i.v, UFESP), 0);
+  const comValor = lista.filter(i => i.valor);
+  const media = comValor.length ? soma(comValor) / comValor.length : 0;
+  const laudos = laudosPendentes(lista);
+  const atrasados = laudos.filter(x => x.dias != null && x.dias > 20);
+  const hoje = zeroHoje();
+
+  let h = '<div class="saudacao"><div><h2>Gestão</h2><p>Só o perfil perito vê esta página. O assistente vê apenas a tela Pagamentos, sem totais.</p></div>' +
+    '<div class="acoes"><button type="button" class="btn" data-acao="csv">Exportar honorários (CSV)</button><button type="button" class="btn icone" data-acao="gestao-atualizar" title="Atualizar" aria-label="Atualizar">' + ic('atualizar') + '</button></div></div>';
+
+  h += '<section class="kpis">' +
+    '<div class="kpi" style="--k:var(--gold);cursor:default"><span class="rot">A receber</span><span class="val">' + fmtBRLcurto(total) + '</span><span class="sub">' + pend.length + ' processos · ' + fmtBRLcurto(est[0].soma + est[1].soma) + ' pedido ou pronto para pedir</span></div>' +
+    '<div class="kpi" style="--k:var(--assist);cursor:default"><span class="rot">Recebido (concluídos)</span><span class="val">' + fmtBRLcurto(totRec) + '</span><span class="sub">' + recebidos.length + ' processos pagos na aba Concluídos</span></div>' +
+    '<div class="kpi" style="--k:var(--perito);cursor:default"><span class="rot">Valor médio</span><span class="val">' + fmtBRLcurto(media) + '</span><span class="sub">por processo ativo com honorários</span></div>' +
+    '<button type="button" class="kpi" style="--k:' + (atrasados.length ? 'var(--critico)' : 'var(--pericia)') + '" data-acao="filtrar" data-etapa="LAUDO"><span class="rot">Laudos pendentes</span><span class="val">' + laudos.length + '</span><span class="sub">' + (atrasados.length ? '<b style="color:var(--vencido)">' + atrasados.length + ' com perícia há mais de 20 dias</b>' : 'nenhum atrasado') + '</span></button></section>';
+
+  h += '<div class="grid">';
+  // projeção por estágio
+  h += '<section class="cartao c7"><h2>Projeção de recebimento</h2><p class="dica">Do mais perto de entrar no caixa ao mais distante. Toque para filtrar a tabela.</p>' +
+    barras(est.map(e => ({ rot: e.rot, val: e.soma, txt: fmtBRLcurto(e.soma), cor: e.cor, attrs: 'data-acao="g-filtro" data-k="' + e.k + '"' }))) +
+    '<div class="estagios">' + est.map(e => '<div><span class="ponto" style="background:' + e.cor + '"></span><b>' + esc(e.rot) + '</b> · ' + e.its.length + ' processo(s)<small>' + esc(e.desc) + '</small></div>').join('') + '</div>' +
+    '<p class="dica" style="margin:10px 0 0">UFESP a ' + fmtBRL(UFESP) + '. Recebimento parcial conta pelo valor cheio. ' + (pend.length - pend.filter(i => i.valor).length ? (pend.length - pend.filter(i => i.valor).length) + ' processo(s) sem honorários informados ficam de fora das somas.' : '') + '</p></section>';
+
+  // equipe
+  const g = state.gestao || {};
+  const abertasA = lista.filter(i => i.c.quem === 'assistente'), abertasP = lista.filter(i => i.c.quem === 'perito');
+  const venc = arr => arr.filter(i => prazoDe(i.m) && diasAte(prazoDe(i.m)) < 0).length;
+  h += '<section class="cartao c5"><h2>Equipe</h2>' +
+    '<div class="mini-kpis"><div><b>' + abertasA.length + '</b><span>tarefas do assistente' + (venc(abertasA) ? ' · <em>' + venc(abertasA) + ' vencida(s)</em>' : '') + '</span></div><div><b>' + abertasP.length + '</b><span>suas pendências' + (venc(abertasP) ? ' · <em>' + venc(abertasP) + ' vencida(s)</em>' : '') + '</span></div></div>';
+  if (g.carregando && !g.equipe) h += '<p class="vazio">Carregando atividade...</p>';
+  else if (g.erro) h += '<p class="vazio">' + esc(g.erro) + '</p>';
+  else if (g.equipe && g.equipe.length) {
+    h += '<table class="tabela compacta"><thead><tr><th>Usuário</th><th class="num">7 dias</th><th class="num">30 dias</th><th>Última ação</th></tr></thead><tbody>' +
+      g.equipe.map(u => '<tr style="cursor:default"><td><b>' + esc(u.usuario) + '</b> <span class="chip ' + (u.papel === 'perito' ? 'perito' : 'assistente') + '">' + (u.papel === 'perito' ? 'perito' : 'assistente') + '</span></td><td class="num">' + u.d7 + '</td><td class="num">' + u.d30 + '</td><td><small>' + esc(u.ultima ? fmtDataHora(u.ultima) + ' · ' + u.ultimaAcao : '') + '</small></td></tr>').join('') + '</tbody></table>';
+    if (g.acoes && g.acoes.length) h += '<p class="dica" style="margin:12px 0 6px">O que mais foi feito nos últimos 30 dias</p><div class="chips-linha">' + g.acoes.slice(0, 6).map(a => '<span class="chip">' + esc(a.acao) + ' · ' + a.n + '</span>').join('') + '</div>';
+    h += '<p class="dica" style="margin:10px 0 0">Conta só o que foi feito pelo app' + (g.desde ? ' (desde ' + esc(String(g.desde).slice(0, 10)) + ')' : '') + '. Edições feitas direto na planilha não entram.</p>';
+  } else h += '<p class="vazio">Ainda não há atividade registrada pelo app.</p>';
+  h += '</section>';
+
+  // valor por tipo e por comarca
+  const porTipo = somarPor(pend, i => i.m['TIPO'], UFESP).filter(x => x.soma);
+  const porCidade = somarPor(pend, i => /NUCLEO/.test(chave(i.m['CIDADE'])) ? 'Núcleo 4.0 (acidentário)' : i.m['CIDADE'], UFESP).filter(x => x.soma);
+  const linhaGrupo = x => ({ rot: x.k, val: x.soma, txt: fmtBRLcurto(x.soma) + ' · ' + x.n });
+  h += '<section class="cartao c6"><h2>A receber por tipo de perícia</h2><p class="dica">Total · quantidade de processos. Valor médio ao passar o mouse.</p>' +
+    barras(porTipo.slice(0, 8).map(x => Object.assign(linhaGrupo(x), { attrs: 'title="' + esc(x.k + ': média ' + fmtBRL(x.media) + ' por processo') + '"' }))) + '</section>';
+  h += '<section class="cartao c6"><h2>A receber por comarca</h2><p class="dica">Total · quantidade de processos</p>' +
+    barras(porCidade.slice(0, 8).map(x => Object.assign(linhaGrupo(x), { attrs: 'title="' + esc(x.k + ': média ' + fmtBRL(x.media) + ' por processo') + '"' }))) + '</section>';
+
+  // laudos pendentes
+  h += '<section class="cartao c6"><h2>Laudos pendentes</h2>' + (laudos.length ? '<div class="lista-linhas">' + laudos.map(x =>
+    '<button type="button" class="linha-item" data-acao="ficha" data-aba="PERICIAS" data-linha="' + x.it.linha + '"><span class="ponto ' + (x.dias == null ? 'acompanhar' : x.dias > 30 ? 'vencido' : x.dias > 20 ? 'alerta' : 'ok') + '"></span><span class="meio"><b>' + esc(x.it.m['REQUERENTE']) + '</b><small>' + esc(x.it.c.acao + ' · ' + (x.it.m['TIPO'] || formatarCNJ(x.it.m['PROCESSO']))) + '</small></span>' +
+    '<span class="chip ' + (x.dias > 20 ? 'alerta' : '') + '">' + (x.dias == null ? esc(x.it.m['PERICIA'] || 'sem data') : 'perícia há ' + x.dias + ' dias') + '</span>' + chipPrazo(x.it.m, true) + '</button>').join('') + '</div>' : '<p class="vazio">Nenhum laudo pendente.</p>') + '</section>';
+
+  // indicadores
+  const todosM = lista.map(i => i.m).concat(itens('CONCLUSOS').map(i => i.m));
+  const passadas = lista.filter(i => parseData(i.m['PERICIA']) && diasAte(parseData(i.m['PERICIA'])) < 0);
+  const faltas = lista.filter(i => /NAO COMPARECEU/.test(chave(i.m['OBSERVACAO'])));
+  const ult30 = todosM.filter(m => { const d = parseData(m['PERICIA']); return d && diasAte(d) < 0 && diasAte(d) >= -30; }).length;
+  const prox30 = state.agenda.filter(a => { const d = parseData(a.data); return d && diasAte(d) >= 0 && diasAte(d) <= 30; }).length;
+  const ind = [
+    ['Não comparecimento', faltas.length + ' de ' + passadas.length + ' perícias já ocorridas' + (passadas.length ? ' (' + Math.round(faltas.length / passadas.length * 100) + '%)' : '')],
+    ['Perícias nos últimos 30 dias', String(ult30)],
+    ['Agendadas nos próximos 30 dias', String(prox30)],
+    ['Aguardando reserva para agendar', String(lista.filter(i => semReserva(i.m)).length)],
+    ['Renúncias registradas', String(itens('RENUNCIAS').length)],
+    ['Processos ativos sem tipo', String(lista.filter(i => !i.m['TIPO']).length)],
+    ['Sem honorários informados', String(lista.filter(i => !i.m['HONORARIOS']).length)],
+    ['Tarefas sem prazo cadastrado', String(lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && !prazoDe(i.m)).length)]
   ];
-  grupos.forEach(g => { g.itens = pend.filter(i => g.k ? i.sit === g.k : PAGO_LIBERA.indexOf(i.sit) < 0); g.soma = g.itens.reduce((s, i) => s + i.valor, 0); });
-  const total = pend.reduce((s, i) => s + i.valor, 0);
-  const aguard = grupos.filter(g => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(g.k) >= 0).reduce((s, g) => s + g.soma, 0);
+  h += '<section class="cartao c6"><h2>Indicadores</h2><dl class="indicadores">' + ind.map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl></section>';
+
+  // tabela
+  const filtro = state.gFiltro;
+  const ordemEst = { pedido: 0, pronto: 1, andamento: 2, incerto: 3 };
+  const tab = pend.filter(i => !filtro || i.est === filtro).sort((a, b) => ordemEst[a.est] - ordemEst[b.est] || b.valor - a.valor);
+  h += '<section class="cartao c12"><div class="cartao-topo"><h2>Honorários pendentes</h2><span class="alternar" role="group">' +
+    [['', 'Todos']].concat(ESTAGIOS_RECEB.map(e => [e.k, e.rot])).map(([k, r]) => '<button type="button" data-acao="g-filtro" data-k="' + k + '" class="' + (filtro === k ? 'ativa' : '') + '">' + esc(r) + '</button>').join('') + '</span></div>' +
+    '<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Parte</th><th>Processo</th><th>Etapa</th><th>Situação</th><th>Honorários</th><th class="num">Estimado</th></tr></thead><tbody>' +
+    tab.map(i => '<tr data-acao="ficha" data-aba="PERICIAS" data-linha="' + i.linha + '"><td>' + esc(i.m['REQUERENTE']) + '<br><small style="color:var(--suave)">' + esc(i.m['CIDADE'] || '') + '</small></td><td style="white-space:nowrap">' + esc(formatarCNJ(i.m['PROCESSO'])) + '</td><td>' + esc(i.m['PROXIMO PASSO']) + '</td><td>' + (i.m['PAGO'] ? chipPago(i.m) : '<span class="chip">sem reserva</span>') + '</td><td>' + esc(i.m['HONORARIOS']) + '</td><td class="num">' + (i.valor ? fmtBRL(i.valor) : '') + '</td></tr>').join('') +
+    '</tbody><tfoot><tr><td colspan="5">Total (' + tab.length + ')</td><td class="num">' + fmtBRL(soma(tab)) + '</td></tr></tfoot></table></div></section></div>';
+  $('#conteudo').innerHTML = h;
+}
+
+function exportarCSV() {
+  const est = k => (ESTAGIOS_RECEB.find(e => e.k === k) || {}).rot || '';
+  const linhas = [['Processo', 'Requerente', 'Requerida', 'Cidade', 'Tipo', 'Próximo passo', 'Pago', 'Honorários', 'Valor estimado (R$)', 'Estágio']];
+  itensFinanceiros().filter(i => i.est).forEach(i => linhas.push([formatarCNJ(i.m['PROCESSO']), i.m['REQUERENTE'], i.m['REQUERIDA'], i.m['CIDADE'], i.m['TIPO'], i.m['PROXIMO PASSO'], i.m['PAGO'], i.m['HONORARIOS'], i.valor ? i.valor.toFixed(2).replace('.', ',') : '', est(i.est)]));
+  const url = URL.createObjectURL(new Blob([gerarCSV(linhas)], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'honorarios-pendentes-' + brParaIso(fmtData(zeroHoje())) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/* ================= PAGAMENTOS (assistente: só o operacional, sem totais) ================= */
+function renderPagamentos() {
+  const lista = ativos();
   const mle = lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)');
-  const semValor = pend.filter(i => !i.valor).length;
-
-  let h = '<section class="kpis">' +
-    '<div class="kpi" style="--k:var(--gold);cursor:default"><span class="rot">Total a receber</span><span class="val">' + fmtBRLcurto(total) + '</span><span class="sub">' + pend.length + ' processos ativos</span></div>' +
-    '<div class="kpi" style="--k:#2a78d6;cursor:default"><span class="rot">Reservado</span><span class="val">' + fmtBRLcurto(grupos[0].soma) + '</span><span class="sub">' + grupos[0].itens.length + ' depositados no processo</span></div>' +
-    '<div class="kpi" style="--k:#6250d6;cursor:default"><span class="rot">Pedido, aguardando</span><span class="val">' + fmtBRLcurto(aguard) + '</span><span class="sub">MLE, ofício ou parcial</span></div>' +
-    '<div class="kpi" style="--k:var(--assist)" data-acao="filtrar" data-etapa="PAGAMENTO"><span class="rot">Falta pedir MLE</span><span class="val">' + mle.length + '</span><span class="sub">' + fmtBRLcurto(mle.reduce((s, i) => s + i.valor, 0)) + ' liberados</span></div></section>';
-
-  h += '<div class="grid"><section class="cartao c5"><h2>Valor por situação</h2>' +
-    barras(grupos.filter(g => g.itens.length).map(g => ({ rot: g.rot, val: g.soma, txt: fmtBRLcurto(g.soma), cor: g.cor }))) +
-    '<p class="dica" style="margin:12px 0 0">Valores em UFESP convertidos a ' + fmtBRL(UFESP) + ' (UFESP 2026). ' + (semValor ? semValor + ' processo(s) sem honorários informados. ' : '') + 'Recebimentos parciais contam pelo valor cheio.</p></section>';
-
-  h += '<section class="cartao c7"><h2>Falta peticionar o MLE</h2>' + (mle.length ? '<div class="lista-linhas">' + mle.map(i => '<button type="button" class="linha-item" data-acao="ficha" data-aba="PERICIAS" data-linha="' + i.linha + '"><span class="ponto assistente"></span><span class="meio"><b>' + esc(i.m['REQUERENTE']) + '</b><small>' + esc(formatarCNJ(i.m['PROCESSO']) + ' · ' + (i.m['OBSERVACAO'] || '')) + '</small></span><span class="chip dinheiro">' + esc(fmtBRL(i.valor)) + '</span></button>').join('') + '</div>' : '<p class="vazio">Nenhum pagamento liberado esperando MLE.</p>') + '</section>';
-
-  const ordem = { MLE: 0, OFICIO: 1, PARCIAL: 2, RESERVADO: 3 };
-  const tab = pend.slice().sort((a, b) => (ordem[a.sit] == null ? 9 : ordem[a.sit]) - (ordem[b.sit] == null ? 9 : ordem[b.sit]) || b.valor - a.valor);
-  h += '<section class="cartao c12"><h2>Todos os honorários pendentes</h2><div class="tabela-wrap"><table class="tabela"><thead><tr><th>Parte</th><th>Processo</th><th>Etapa</th><th>Situação</th><th>Honorários</th><th class="num">Estimado</th></tr></thead><tbody>' +
-    tab.map(i => '<tr data-acao="ficha" data-aba="PERICIAS" data-linha="' + i.linha + '"><td>' + esc(i.m['REQUERENTE']) + '</td><td class="num" style="text-align:left">' + esc(formatarCNJ(i.m['PROCESSO'])) + '</td><td>' + esc(i.m['PROXIMO PASSO']) + '</td><td>' + (i.m['PAGO'] ? chipPago(i.m) : '<span class="chip">sem reserva</span>') + '</td><td>' + esc(i.m['HONORARIOS']) + '</td><td class="num">' + (i.valor ? fmtBRL(i.valor) : '') + '</td></tr>').join('') +
-    '</tbody><tfoot><tr><td colspan="5">Total</td><td class="num">' + fmtBRL(total) + '</td></tr></tfoot></table></div></section></div>';
+  const aguard = lista.filter(i => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(chave(i.m['PAGO'])) >= 0);
+  const travados = lista.filter(i => semReserva(i.m));
+  const reserva = lista.filter(i => etapaDe(i.m) === 'RESERVA');
+  const linha = (i, ponto) => '<button type="button" class="linha-item" data-acao="ficha" data-aba="PERICIAS" data-linha="' + i.linha + '"><span class="ponto ' + ponto + '"></span><span class="meio"><b>' + esc(i.m['REQUERENTE']) + '</b><small>' + esc(formatarCNJ(i.m['PROCESSO']) + (i.m['OBSERVACAO'] ? ' · ' + i.m['OBSERVACAO'] : '')) + '</small></span>' +
+    (i.m['HONORARIOS'] ? '<span class="chip">' + esc(i.m['HONORARIOS']) + '</span>' : '') + chipPago(i.m) + '</button>';
+  const bloco = (titulo, dica, arr, ponto, vazio, cls) => '<section class="cartao ' + cls + '"><h2>' + esc(titulo) + ' (' + arr.length + ')</h2><p class="dica">' + esc(dica) + '</p>' +
+    (arr.length ? '<div class="lista-linhas">' + arr.map(i => linha(i, ponto)).join('') + '</div>' : '<p class="vazio">' + esc(vazio) + '</p>') + '</section>';
+  let h = '<div class="grid">';
+  h += bloco('Peticionar o MLE', 'Pagamento liberado: gerar a petição e o formulário do MLE na ficha do processo.', mle, 'assistente', 'Nenhum MLE para peticionar.', 'c6');
+  h += bloco('Aguardando pagamento', 'MLE peticionado, ofício expedido ou recebido em parte. Conferir nos autos se saiu o pagamento.', aguard, 'acompanhar', 'Nada aguardando pagamento.', 'c6');
+  h += bloco('Agendamento travado por falta de reserva', 'Não agendar nem realizar a perícia antes do depósito dos honorários.', travados, 'critico', 'Nenhum processo travado.', 'c6');
+  h += bloco('Aguardando depósito', 'Etapa RESERVA: acompanhar nos autos o depósito dos honorários.', reserva, 'atencao', 'Nenhum aguardando depósito.', 'c6');
+  h += '</div>';
   $('#conteudo').innerHTML = h;
 }
 
@@ -1462,7 +1627,7 @@ const GERADORES = [
   { id: 'assist', rot: 'Tarefas do assistente', desc: 'Tudo que está com o assistente, por ação', canal: 'ASSISTENTE' },
   { id: 'perito', rot: 'Pendências do perito', desc: 'Laudos, perícias e esclarecimentos', canal: 'DECISOES' },
   { id: 'prazos', rot: 'Prazos dos próximos 10 dias', desc: 'Com semáforo e responsável', canal: 'PRAZOS' },
-  { id: 'fin', rot: 'Honorários a receber', desc: 'Situação por status, com totais em R$', canal: 'HONORARIOS' }
+  { id: 'fin', rot: 'Situação dos pagamentos', desc: 'Processos por situação (sem totais em R$)', canal: 'HONORARIOS' }
 ];
 const ROTINAS = [
   { id: 'dia', rot: 'Resumo do dia', desc: 'Agenda de hoje, prazos e pendências em #agenda (troca o resumo anterior). Automático às 7h.' },
@@ -1539,7 +1704,7 @@ function gerarDiscord(id) {
   else if (id === 'assist') { dc.titulo = '🧑‍💼 Tarefas do assistente: ' + procs.filter(i => i.c.quem === 'assistente').length; dc.texto = gerarTarefas(procs, 'assistente'); }
   else if (id === 'perito') { dc.titulo = '👨‍⚕️ Pendências do perito: ' + procs.filter(i => i.c.quem === 'perito').length; dc.texto = gerarTarefas(procs, 'perito'); }
   else if (id === 'prazos') { dc.titulo = '⏰ Prazos até ' + fmtCurto(somaDias(zeroHoje(), 10)); dc.texto = gerarPrazos(procs, 10); }
-  else if (id === 'fin') { dc.titulo = '💰 Honorários a receber'; dc.texto = gerarFinanceiro(procs, UFESP); }
+  else if (id === 'fin') { dc.titulo = '💰 Situação dos pagamentos'; dc.texto = gerarFinanceiro(procs); }
   if (!state.canais.some(c => c.k === dc.canal) && state.canais.length) dc.canal = state.canais[0].k;
   renderDiscord();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1620,6 +1785,9 @@ document.addEventListener('click', ev => {
     case 'cal-dia': { const d = new Date(Number(ds.t)); state.cal.sel = d.getTime(); if (d.getMonth() !== state.cal.mes) { state.cal.mes = d.getMonth(); state.cal.ano = d.getFullYear(); } render(); if (window.innerWidth < 900) { const l = document.querySelector('.dia-lista'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }); } break; }
     case 'cal-f': state.cal.f[ds.t] = !state.cal.f[ds.t]; render(); break;
     case 'arq': state.arquivo = ds.aba; render(); break;
+    case 'g-filtro': state.gFiltro = state.gFiltro === ds.k ? '' : ds.k; render(); { const t = document.querySelector('.tabela-wrap'); if (t && ds.k) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); } break;
+    case 'gestao-atualizar': carregarGestao(true); recarregar(true); break;
+    case 'csv': exportarCSV(); break;
     case 'doc-ver': {
       const it = fichaItem(), d = it && state.docs[chaveDocs(it)];
       const f = d && d.arquivos && d.arquivos.find(x => x.id === ds.id);
@@ -1688,7 +1856,7 @@ setInterval(() => {
 /* ================= INÍCIO ================= */
 async function iniciar() {
   const v = location.hash.slice(1);
-  if (VIEWS.some(x => x.id === v)) state.view = v;
+  if (v) state.view = v;
   if (!state.token) { mostrarLogin(); return; }
   mostrarApp();
   renderNav();
