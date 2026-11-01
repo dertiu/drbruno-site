@@ -51,6 +51,22 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
+## Tarefas
+
+- Junta em um lugar só, por prazo (atrasadas, hoje, próximos 7 dias, mais adiante, sem prazo):
+  - **tarefas do fluxo**: o que cada processo pede agora (aceite, agendar, peticionar, MLE, renúncia), com o botão do próximo passo;
+  - **tarefas atribuídas**: criadas no app por qualquer usuário, para "assistentes" ou para alguém específico, com prazo e processo opcionais. Ficam na aba **TAREFAS** da planilha (criada sozinha) e podem avisar o #tarefas-assistente.
+- **Conferir nos autos**: processos aguardando decisão, depósito ou pagamento. O botão "Sem novidade" registra a conferência no HISTORICO; os não conferidos há 7 dias ou mais aparecem primeiro.
+- O perito vê por padrão as tarefas do assistente (e pode trocar para "Minhas" ou "Todas"). O assistente vê as dele.
+- Só quem criou a tarefa, ou o perito, pode excluí-la.
+
+## Documentos (gerador)
+
+1. Escolha o modelo (lista da pasta Arquivos base, agrupada por tipo).
+2. O app marca os processos que precisam daquele modelo agora (ex.: todas as perícias futuras do Núcleo para AGENDAMENTO N40; todos com MLE a peticionar para PETICAO MLE). Dá para desmarcar ou buscar outros.
+3. Gerar: cria um documento por processo na pasta de cada periciado (cria a pasta se faltar, opção marcada), com links para abrir e baixar em PDF.
+- Além do que já era preenchido, o formulário MLE recebe o número do processo e o valor nominal do depósito, e o não comparecimento recebe a data da perícia. Modelos do Núcleo mantêm o endereçamento original.
+
 ## Perfis de acesso
 
 - **Perito** (usuários listados em `APP_ADMINS` no topo do `AppPericias.gs`, hoje só `bruno`): vê a página **Gestão** com total a receber, projeção por estágio, recebidos, valor por tipo e por comarca, laudos pendentes, indicadores, atividade da equipe e exportação em CSV.

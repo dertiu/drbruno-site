@@ -170,6 +170,7 @@ function acoesRapidas(m) {
   if (e === 'DECISAO') A.push({ id: 'liberado', rot: 'Pagamento liberado: fazer MLE', dados: { 'PROXIMO PASSO': 'PAGAMENTO', 'OBSERVACAO': 'FAZER MLE' } });
   if (e === 'PAGAMENTO' && /\b(FAZER|PETICIONAR|SOLICITAR|PEDIR)\b/.test(obs)) A.push({ id: 'mle', rot: 'MLE peticionado', dados: { 'PAGO': 'MLE', 'OBSERVACAO': 'MLE PETICIONADO' }, destaque: true });
   if ((e === 'PAGAMENTO' || e === 'DECISAO') && pago !== 'PAGO') A.push({ id: 'recebido', rot: 'Honorários recebidos', dados: { 'PAGO': 'PAGO', 'PROXIMO PASSO': 'PAGAMENTO' } });
+  if (e === 'PETICAO') A.push({ id: 'peticao', rot: 'Petição protocolada', dados: { 'PROXIMO PASSO': 'DECISÃO' }, destaque: true });
   if (e === 'RENUNCIAR') A.push({ id: 'renuncia', rot: 'Renúncia peticionada', mover: 'RENUNCIAS', destaque: true });
   if (pago === 'PAGO' && e !== 'RENUNCIAR') A.push({ id: 'concluir', rot: 'Arquivar em Concluídos', mover: 'CONCLUSOS', destaque: true });
   return A;
@@ -418,8 +419,69 @@ function gerarCSV(linhas) {
   return '﻿' + linhas.map(l => l.map(q).join(';')).join('\r\n');
 }
 
+// ---------- tarefas ----------
+function principalAcao(m) { const a = acoesRapidas(m); return a.find(x => x.destaque) || a[0] || null; }
+function grupoPrazo(d) {
+  if (!d) return 'sem';
+  const n = diasAte(d);
+  return n < 0 ? 'atrasadas' : n === 0 ? 'hoje' : n <= 7 ? 'semana' : 'depois';
+}
+// escopo: 'assistente' (tudo do assistente), 'minhas' (do usuário logado) ou 'todas'
+function montarTarefas(itens, manuais, usuario, papel, escopo, usuarios) {
+  const papelDe = u => u === 'assistentes' ? 'assistente' : ((usuarios || []).find(x => x.u === u) || {}).papel || 'assistente';
+  const meuPapel = papel === 'perito' ? 'perito' : 'assistente';
+  const out = [];
+  itens.forEach(it => {
+    const q = it.c.quem;
+    if (!q || q === 'acompanhar') return;
+    if (escopo === 'todas' || (escopo === 'assistente' && q === 'assistente') || (escopo === 'minhas' && q === meuPapel)) {
+      out.push({ tipo: 'fluxo', id: 'f' + it.linha, titulo: it.c.acao, quem: q, prazo: prazoDe(it.m), it: it });
+    }
+  });
+  (manuais || []).filter(t => t.status !== 'FEITA').forEach(t => {
+    const alvo = papelDe(t.para);
+    const ok = escopo === 'todas' || (escopo === 'assistente' && alvo === 'assistente') ||
+      (escopo === 'minhas' && (t.para === usuario || (meuPapel === 'assistente' && t.para === 'assistentes')));
+    if (ok) out.push({ tipo: 'manual', id: t.id, titulo: t.tarefa, quem: alvo, prazo: parseData(t.prazo), t: t });
+  });
+  return out.sort((a, b) => (a.prazo || 9e15) - (b.prazo || 9e15) || (a.tipo === b.tipo ? 0 : a.tipo === 'manual' ? -1 : 1));
+}
+
+// ---------- gerador de documentos ----------
+const GRUPOS_MODELO = ['Aceite', 'Agendamento', 'Perícia', 'Pagamento (MLE)', 'Renúncia', 'Outros'];
+function grupoModelo(nome) {
+  const t = chave(nome);
+  if (/NAO COMPARECIMENTO|DECLARACAO|AUTORIZACAO|COMPARECIMENTO/.test(t)) return 'Perícia';
+  if (/ACEITE/.test(t)) return 'Aceite';
+  if (/AGENDAMENTO/.test(t)) return 'Agendamento';
+  if (/MLE|HONORARIOS|FORMULARIO/.test(t)) return 'Pagamento (MLE)';
+  if (/RENUNCIA/.test(t)) return 'Renúncia';
+  return 'Outros';
+}
+// processos que normalmente precisam deste modelo agora
+function processosParaModelo(nome, itens) {
+  const t = chave(nome).replace(/[^A-Z0-9 ]/g, ' ');
+  const nuc = it => /NUCLEO/.test(chave(it.m['CIDADE'])) || /NUCLEO/.test(chave(it.m['FORUM']));
+  const futura = (it, max) => { const d = parseData(it.m['PERICIA']); return d && diasAte(d) >= 0 && (max == null || diasAte(d) <= max); };
+  let f;
+  if (/NAO COMPARECIMENTO/.test(t)) f = it => /COMPARECEU/.test(chave(it.m['OBSERVACAO'])) && etapaDe(it.m) === 'DECISAO';
+  else if (/RENUNCIA/.test(t)) f = it => etapaDe(it.m) === 'RENUNCIAR';
+  else if (/MLE|HONORARIOS|FORMULARIO/.test(t)) f = it => it.c.acao === 'Peticionar o pagamento (MLE)';
+  else if (/ACEITE/.test(t)) f = it => etapaDe(it.m) === 'ACEITE';
+  else if (/AGENDAMENTO/.test(t)) f = it => futura(it);
+  else if (/COMPARECIMENTO|AUTORIZACAO|FOTOGRAFIA/.test(t)) f = it => futura(it, 7);
+  else if (/LAUDO/.test(t)) f = it => etapaDe(it.m) === 'LAUDO';
+  else return [];
+  return itens.filter(f)
+    .filter(it => /\bN40\b/.test(t) ? nuc(it) : true)
+    .filter(it => /INTERDICAO/.test(t) ? (/INTERDI|CURATELA/.test(chave(it.m['TIPO'])) || /FAMILIA/.test(chave(it.m['FORUM']))) : true)
+    .filter(it => /HOMECARE/.test(t) ? /HOMECARE/.test(chave(it.m['TIPO'])) : true)
+    .sort((a, b) => (parseData(a.m['PERICIA']) || 9e15) - (parseData(b.m['PERICIA']) || 9e15));
+}
+
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
+    principalAcao, grupoPrazo, montarTarefas, grupoModelo, processosParaModelo,
     estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
@@ -453,7 +515,10 @@ const ICONES = {
   copiar: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
   fechar: '<path d="M6 6l12 12M18 6 6 18"/>',
   externo: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
-  gestao: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>'
+  gestao: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>',
+  tarefas: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>',
+  documentos: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+  mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'
 };
 function ic(nome) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONES[nome] || '') + '</svg>'; }
 
@@ -462,14 +527,17 @@ function views() {
   const perito = state.papel === 'perito';
   return [
     { id: 'painel', rot: 'Painel' },
+    { id: 'tarefas', rot: 'Tarefas' },
     { id: 'processos', rot: 'Processos' },
-    { id: 'calendario', rot: 'Calendário' },
     { id: 'agenda', rot: 'Agenda' },
+    { id: 'calendario', rot: 'Calendário' },
+    { id: 'documentos', rot: 'Documentos' },
     perito ? { id: 'gestao', rot: 'Gestão', icone: 'gestao' } : { id: 'pagamentos', rot: 'Pagamentos', icone: 'financeiro' },
     { id: 'discord', rot: 'Discord' },
     { id: 'arquivo', rot: 'Arquivo' }
   ];
 }
+const NAV_PRINCIPAIS = ['painel', 'tarefas', 'processos', 'agenda']; // no celular, o resto fica em "Mais"
 
 function ler(k, padrao) { try { const v = localStorage.getItem(k); return v == null ? padrao : v; } catch (e) { return padrao; } }
 function gravar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -482,6 +550,13 @@ const state = {
   papel: 'assistente',
   gestao: null,
   gFiltro: '',
+  tarefas: [],
+  verificados: {},
+  usuarios: [],
+  tEscopo: '',
+  verFeitas: false,
+  verTodasConf: false,
+  gd: { modeloId: '', q: '', pq: '', sel: {}, criarPasta: true, resultados: [], rodando: false },
   view: 'painel',
   dados: {},
   agenda: [],
@@ -574,6 +649,9 @@ async function recarregar(silencioso) {
       state.agenda = j.agenda || [];
       state.atividade = j.atividade || [];
       state.canais = j.canais || [];
+      state.tarefas = j.tarefas || [];
+      state.verificados = j.verificados || {};
+      state.usuarios = j.usuarios || [];
       state.hora = j.hora || '';
       $('#nav-user').textContent = state.user;
       $('#sync').textContent = state.hora ? 'Atualizado às ' + state.hora : '';
@@ -614,9 +692,19 @@ function processoDoSlot(a) {
 /* ---------- NAVEGAÇÃO ---------- */
 function renderNav() {
   const urgentes = ativos().filter(it => it.c.quem && it.c.quem !== 'acompanhar' && prazoDe(it.m) && diasAte(prazoDe(it.m)) <= 2).length;
-  $('#nav-itens').innerHTML = views().map(v => '<button type="button" data-acao="ir" data-view="' + v.id + '" class="' + (state.view === v.id ? 'ativa' : '') + '"' + (state.view === v.id ? ' aria-current="page"' : '') + '>' +
-    ic(v.icone || v.id) + '<span>' + v.rot + '</span>' + (v.id === 'painel' && urgentes ? '<span class="badge" title="Prazos vencidos ou em até 2 dias">' + urgentes + '</span>' : '') + '</button>').join('');
+  const minhas = montarTarefas(ativos(), state.tarefas, state.user, state.papel, escopoTarefas(), state.usuarios)
+    .filter(t => ['atrasadas', 'hoje'].indexOf(grupoPrazo(t.prazo)) >= 0).length;
+  const badge = v => v.id === 'painel' && urgentes ? '<span class="badge" title="Prazos vencidos ou em até 2 dias">' + urgentes + '</span>'
+    : v.id === 'tarefas' && minhas ? '<span class="badge" title="Tarefas atrasadas ou para hoje">' + minhas + '</span>' : '';
+  const btn = (v, extra) => '<button type="button" data-acao="ir" data-view="' + v.id + '" class="' + (state.view === v.id ? 'ativa' : '') + (extra ? ' extra' : '') + '"' + (state.view === v.id ? ' aria-current="page"' : '') + '>' +
+    ic(v.icone || v.id) + '<span>' + v.rot + '</span>' + badge(v) + '</button>';
+  const vs = views();
+  const noMais = NAV_PRINCIPAIS.indexOf(state.view) < 0;
+  $('#nav-itens').innerHTML = vs.map(v => btn(v, NAV_PRINCIPAIS.indexOf(v.id) < 0)).join('') +
+    '<button type="button" class="mais-btn' + (noMais ? ' ativa' : '') + '" data-acao="nav-mais" aria-haspopup="true">' + ic('mais') + '<span>' + (noMais ? esc((vs.find(v => v.id === state.view) || {}).rot || 'Mais') : 'Mais') + '</span></button>';
+  $('#nav-mais').innerHTML = vs.filter(v => NAV_PRINCIPAIS.indexOf(v.id) < 0).map(v => btn(v, false)).join('');
 }
+function escopoTarefas() { return state.tEscopo || (state.papel === 'perito' ? 'assistente' : 'minhas'); }
 
 // endereço antigo (#financeiro) ou de outro perfil cai na tela equivalente
 function viewValida(view) {
@@ -638,11 +726,11 @@ function render() {
   state.view = viewValida(state.view);
   renderNav();
   $('#titulo').textContent = (views().find(v => v.id === state.view) || views()[0]).rot;
-  $('#btn-novo').textContent = (state.view === 'agenda' || state.view === 'calendario') ? '+ Horário' : '+ Processo';
-  $('#btn-novo').hidden = state.view === 'discord' || state.view === 'gestao';
+  $('#btn-novo').textContent = (state.view === 'agenda' || state.view === 'calendario') ? '+ Horário' : state.view === 'tarefas' ? '+ Tarefa' : '+ Processo';
+  $('#btn-novo').hidden = ['discord', 'gestao', 'documentos'].indexOf(state.view) >= 0;
   if (!state.dados.PERICIAS) return;
-  ({ painel: renderPainel, processos: renderProcessos, calendario: renderCalendario, agenda: renderAgenda,
-     gestao: renderGestao, pagamentos: renderPagamentos, discord: renderDiscord, arquivo: renderArquivo })[state.view]();
+  ({ painel: renderPainel, tarefas: renderTarefas, processos: renderProcessos, calendario: renderCalendario, agenda: renderAgenda,
+     documentos: renderDocumentos, gestao: renderGestao, pagamentos: renderPagamentos, discord: renderDiscord, arquivo: renderArquivo })[state.view]();
   if (foco) {
     const el = document.getElementById(foco.id);
     if (el) { el.focus(); try { if (foco.s != null) el.setSelectionRange(foco.s, foco.e); } catch (e) {} }
@@ -986,7 +1074,7 @@ function renderFicha() {
   }
   h += '</div>';
 
-  h += '<footer class="ficha-rodape"><button type="button" class="btn discord" data-acao="ficha-discord">' + ic('discord') + 'Enviar ao Discord</button><span class="esp"></span>';
+  h += '<footer class="ficha-rodape"><button type="button" class="btn discord" data-acao="ficha-discord">' + ic('discord') + 'Discord</button><button type="button" class="btn" data-acao="ficha-tarefa">' + ic('tarefas') + 'Tarefa</button><span class="esp"></span>';
   if (f.aba === 'PERICIAS') h += '<button type="button" class="btn" data-acao="mover" data-para="CONCLUSOS">Concluídos</button><button type="button" class="btn perigo" data-acao="mover" data-para="RENUNCIAS">Renunciei</button>';
   h += '</footer>';
   $('#ficha').innerHTML = h;
@@ -1607,6 +1695,221 @@ function renderPagamentos() {
   $('#conteudo').innerHTML = h;
 }
 
+/* ================= TAREFAS ================= */
+const GRUPOS_PRAZO = [
+  { k: 'atrasadas', rot: 'Atrasadas', cls: 'vencido' },
+  { k: 'hoje', rot: 'Hoje', cls: 'critico' },
+  { k: 'semana', rot: 'Próximos 7 dias', cls: 'alerta' },
+  { k: 'depois', rot: 'Mais adiante', cls: 'ok' },
+  { k: 'sem', rot: 'Sem prazo', cls: 'acompanhar' }
+];
+
+function renderTarefas() {
+  const escopo = escopoTarefas();
+  const perito = state.papel === 'perito';
+  const lista = ativos();
+  const tarefas = montarTarefas(lista, state.tarefas, state.user, state.papel, escopo, state.usuarios);
+  const escopos = perito ? [['assistente', 'Do assistente'], ['minhas', 'Minhas'], ['todas', 'Todas']] : [['minhas', 'Minhas'], ['todas', 'Todas']];
+  let h = '<div class="ferramentas"><button type="button" class="btn ouro" data-acao="t-nova">+ Nova tarefa</button>' +
+    '<span class="alternar" role="group" aria-label="Quais tarefas">' + escopos.map(([k, r]) => '<button type="button" data-acao="t-escopo" data-k="' + k + '" class="' + (escopo === k ? 'ativa' : '') + '">' + r + '</button>').join('') + '</span>' +
+    '<span class="contagem" style="margin:0 0 0 auto">' + tarefas.length + ' tarefa(s) em aberto</span></div>';
+
+  h += '<div class="grid"><div class="c8">';
+  if (!tarefas.length) h += '<section class="cartao"><p class="vazio">✅ Nenhuma tarefa em aberto.</p></section>';
+  GRUPOS_PRAZO.forEach(g => {
+    const doGrupo = tarefas.filter(t => grupoPrazo(t.prazo) === g.k);
+    if (!doGrupo.length) return;
+    h += '<section class="cartao grupo-tarefas"><h2><span><span class="ponto ' + g.cls + '"></span> ' + g.rot + '</span><span class="chip">' + doGrupo.length + '</span></h2><div class="lista-tarefas">' + doGrupo.map(tarefaHtml).join('') + '</div></section>';
+  });
+  h += '</div><div class="c4 pilha">';
+
+  // conferência nos autos (processos que só dependem do Juízo ou de pagamento)
+  const mostraConf = escopo !== 'minhas' || !perito;
+  if (mostraConf) {
+    const conf = lista.filter(it => it.c.quem === 'acompanhar').map(it => {
+      const v = state.verificados[digitos(it.m['PROCESSO'])];
+      const d = v ? parseData(String(v.quando).slice(0, 10)) : null;
+      return { it: it, v: v, dias: d ? -diasAte(d) : null };
+    }).sort((a, b) => (b.dias == null ? 9999 : b.dias) - (a.dias == null ? 9999 : a.dias)); // nunca conferidos primeiro
+    const pendConf = conf.filter(x => x.dias == null || x.dias >= 7);
+    const exibir = state.verTodasConf ? conf : pendConf.slice(0, 12);
+    h += '<section class="cartao"><h2>Conferir nos autos <span class="chip ' + (pendConf.length ? 'alerta' : 'ok') + '">' + pendConf.length + ' de ' + conf.length + '</span></h2>' +
+      '<p class="dica">Processos aguardando decisão, depósito ou pagamento. Confira no e-SAJ/eproc ao menos uma vez por semana; se mudou algo, abra o processo e atualize.</p>' +
+      (exibir.length ? '<div class="lista-linhas">' + exibir.map(x => '<div class="linha-item conf"><span class="ponto ' + (x.dias == null ? 'critico' : x.dias >= 7 ? 'alerta' : 'ok') + '"></span>' +
+        '<button type="button" class="meio link-sem" data-acao="ficha" data-aba="PERICIAS" data-linha="' + x.it.linha + '"><b>' + esc(x.it.m['REQUERENTE']) + '</b><small>' + esc(x.it.c.acao) + ' · ' + (x.v ? 'conferido há ' + x.dias + ' dia(s) por ' + esc(x.v.por) : 'nunca conferido pelo app') + '</small></button>' +
+        '<button type="button" class="btn pequeno" data-acao="t-verificado" data-proc="' + esc(x.it.m['PROCESSO']) + '" title="Conferi e não mudou nada">✓ Sem novidade</button></div>').join('') + '</div>' : '<p class="vazio">Tudo conferido nos últimos 7 dias.</p>') +
+      (conf.length > exibir.length || state.verTodasConf ? '<button type="button" class="link" data-acao="t-conf-todos" style="margin-top:8px">' + (state.verTodasConf ? 'Mostrar só os pendentes' : 'Ver todos (' + conf.length + ')') + '</button>' : '') + '</section>';
+  }
+
+  // concluídas recentemente
+  const feitas = state.tarefas.filter(t => t.status === 'FEITA');
+  h += '<section class="cartao"><h2>Concluídas (14 dias) <span class="chip">' + feitas.length + '</span></h2>' +
+    (feitas.length ? (state.verFeitas ? '<div class="lista-linhas">' + feitas.map(t => '<div class="linha-item"><span class="ponto ok"></span><span class="meio"><b style="text-decoration:line-through;color:var(--suave)">' + esc(t.tarefa) + '</b><small>' + esc((t.feitaPor || '') + ' · ' + (t.feitaEm || '')) + '</small></span><button type="button" class="btn pequeno" data-acao="t-reabrir" data-id="' + esc(t.id) + '">Reabrir</button></div>').join('') + '</div>' : '') +
+      '<button type="button" class="link" data-acao="t-ver-feitas">' + (state.verFeitas ? 'Ocultar' : 'Mostrar') + '</button>' : '<p class="vazio">Nenhuma tarefa atribuída foi concluída nos últimos 14 dias.</p>') + '</section>';
+  h += '</div></div>';
+  $('#conteudo').innerHTML = h;
+}
+
+function tarefaHtml(t) {
+  const pz = t.prazo ? '<span class="chip ' + nivelPrazo(diasAte(t.prazo)) + '">' + fmtCurto(t.prazo) + ' · ' + txtDias(diasAte(t.prazo)) + '</span>' : '';
+  const quem = '<span class="chip ' + t.quem + '">' + QUEM_ROT[t.quem] + '</span>';
+  if (t.tipo === 'fluxo') {
+    const it = t.it, ac = principalAcao(it.m);
+    return '<div class="tarefa"><span class="marca-fluxo" title="Vem do andamento do processo">' + ic('processos') + '</span><div class="meio">' +
+      '<b>' + esc(t.titulo) + '</b><small>' + esc((it.m['REQUERENTE'] || '') + ' · ' + formatarCNJ(it.m['PROCESSO'])) + (it.m['OBSERVACAO'] ? ' · ' + esc(abreviar(it.m['OBSERVACAO'], 60)) : '') + '</small>' +
+      '<div class="chips">' + pz + quem + (semReserva(it.m) ? '<span class="chip critico">⚠ Sem reserva</span>' : '') + '</div></div>' +
+      '<div class="acoes-t">' + (ac ? '<button type="button" class="btn pequeno primario" data-acao="t-concluir" data-linha="' + it.linha + '" data-id="' + ac.id + '">' + esc(ac.rot) + '</button>' : '') +
+      '<button type="button" class="btn pequeno" data-acao="ficha" data-aba="PERICIAS" data-linha="' + it.linha + '">Abrir</button></div></div>';
+  }
+  const x = t.t;
+  const proc = x.processo ? ativos().find(i => digitos(i.m['PROCESSO']) === digitos(x.processo)) : null;
+  const podeExcluir = x.por === state.user || state.papel === 'perito';
+  return '<div class="tarefa"><button type="button" class="check-t" data-acao="t-feita" data-id="' + esc(x.id) + '" aria-label="Marcar como feita" title="Marcar como feita"></button><div class="meio">' +
+    '<b>' + esc(t.titulo) + '</b><small>' + (proc ? esc(proc.m['REQUERENTE'] + ' · ' + formatarCNJ(proc.m['PROCESSO']) + ' · ') : (x.processo ? esc(x.processo + ' · ') : '')) + 'de ' + esc(x.por) + ' para ' + esc(x.para === 'assistentes' ? 'assistentes' : x.para) + ' · ' + esc(String(x.criada).slice(0, 10)) + '</small>' +
+    '<div class="chips">' + pz + quem + '<span class="chip">Atribuída</span></div></div>' +
+    '<div class="acoes-t">' + (proc ? '<button type="button" class="btn pequeno" data-acao="ficha" data-aba="PERICIAS" data-linha="' + proc.linha + '">Abrir</button>' : '') +
+    (podeExcluir ? '<button type="button" class="btn pequeno icone perigo" data-acao="t-excluir" data-id="' + esc(x.id) + '" title="Excluir tarefa" aria-label="Excluir tarefa">' + ic('fechar') + '</button>' : '') + '</div></div>';
+}
+
+function abrirNovaTarefa(processo) {
+  modal.classList.remove('grande');
+  const temCanal = state.canais.some(c => c.k === 'ASSISTENTE');
+  const outros = state.usuarios.filter(u => u.u !== state.user || state.papel === 'perito');
+  $('#modal-titulo').textContent = 'Nova tarefa';
+  $('#modal-corpo').innerHTML = '<div class="form-grid">' +
+    '<div class="campo largo"><label for="nt-texto">O que fazer</label><textarea id="nt-texto" placeholder="Ex.: Ligar para o periciando e confirmar o endereço da perícia domiciliar"></textarea></div>' +
+    '<div class="campo"><label for="nt-para">Para</label><select id="nt-para"><option value="assistentes">Assistentes (qualquer um)</option>' + outros.map(u => '<option value="' + esc(u.u) + '"' + (u.u === state.user ? '' : '') + '>' + esc(u.u) + ' (' + u.papel + ')</option>').join('') + '</select></div>' +
+    '<div class="campo"><label for="nt-prazo">Prazo</label><input id="nt-prazo" type="date"></div>' +
+    '<div class="campo largo"><label for="nt-proc">Processo (opcional)</label><input id="nt-proc" list="dl-nt-proc" autocomplete="off" value="' + esc(processo || '') + '" placeholder="Digite número ou nome"><datalist id="dl-nt-proc">' + ativos().map(it => '<option value="' + esc(it.m['PROCESSO']) + '" label="' + esc(it.m['REQUERENTE']) + '">').join('') + '</datalist></div>' +
+    (temCanal ? '<label class="check"><input type="checkbox" id="nt-avisar" checked> Avisar no #tarefas-assistente do Discord</label>' : '') + '</div>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="nt-salvar">Criar tarefa</button>';
+  $('#nt-salvar').onclick = async ev => {
+    const btn = ev.target, texto = $('#nt-texto').value.trim();
+    if (!texto) { toast('Descreva a tarefa.', { erro: true }); return; }
+    btn.disabled = true;
+    try {
+      const j = await api('tarefaCriar', { tarefa: texto, para: $('#nt-para').value, prazo: isoParaBr($('#nt-prazo').value), processo: $('#nt-proc').value.trim(), avisar: !!($('#nt-avisar') && $('#nt-avisar').checked) });
+      if (!j.ok) throw new Error(j.erro || 'Erro ao criar a tarefa');
+      state.tarefas = j.tarefas;
+      modal.close();
+      toast(j.aviso || 'Tarefa criada', { erro: !!j.aviso });
+      render();
+    } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
+  };
+  if (!modal.open) modal.showModal();
+  setTimeout(() => $('#nt-texto').focus(), 50);
+}
+
+async function mudarTarefa(acao, extra, msg) {
+  try {
+    const j = await api(acao, extra);
+    if (!j.ok) throw new Error(j.erro || 'Erro');
+    state.tarefas = j.tarefas;
+    render();
+    if (msg) toast(msg);
+  } catch (e) { toast(e.message, { erro: true }); }
+}
+
+/* ================= DOCUMENTOS (gerador) ================= */
+async function garantirModelos() {
+  if (state.modelos) return true;
+  try {
+    const j = await api('modelos');
+    if (!j.ok) throw new Error(j.erro || 'Erro ao ler os modelos');
+    state.modelos = j.modelos; state.modelosUrl = j.url || '';
+    return true;
+  } catch (e) { toast(e.message, { erro: true }); return false; }
+}
+
+function renderDocumentos() {
+  const gd = state.gd;
+  if (!state.modelos) {
+    $('#conteudo').innerHTML = '<p class="carregando">Carregando os modelos do Drive...</p>';
+    garantirModelos().then(ok => { if (ok && state.view === 'documentos') render(); else if (!ok) $('#conteudo').innerHTML = '<p class="carregando">Não consegui ler a pasta de modelos. Confira se o backend novo foi publicado e se o Drive foi autorizado.</p>'; });
+    return;
+  }
+  const q = chave(gd.q);
+  const modelos = state.modelos.filter(md => !q || chave(md.nome).indexOf(q) >= 0);
+  const modelo = state.modelos.find(md => md.id === gd.modeloId);
+  let h = '<div class="grid"><section class="cartao c5"><h2>1. Modelo</h2><input type="search" id="gd-q" class="busca-modelo" placeholder="Buscar modelo..." value="' + esc(gd.q) + '" autocomplete="off">';
+  GRUPOS_MODELO.forEach(g => {
+    const doGrupo = modelos.filter(md => grupoModelo(md.nome) === g);
+    if (!doGrupo.length) return;
+    h += '<h3 class="sub">' + esc(g) + '</h3><div class="arquivos">' + doGrupo.map(md => '<button type="button" class="arq' + (md.id === gd.modeloId ? ' sel' : '') + '" data-acao="gd-modelo" data-id="' + esc(md.id) + '"><span class="tipo-arq doc">DOCS</span><span class="meio"><b>' + esc(md.nome) + '</b></span>' + (md.id === gd.modeloId ? '<span class="chip ok">escolhido</span>' : '') + '</button>').join('') + '</div>';
+  });
+  if (!modelos.length) h += '<p class="vazio">Nenhum modelo com esse nome.</p>';
+  if (state.modelosUrl) h += '<a class="btn pequeno" style="margin-top:12px" href="' + esc(state.modelosUrl) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir a pasta de modelos</a>';
+  h += '</section><section class="cartao c7"><h2>2. Processos</h2>';
+  if (!modelo) h += '<p class="vazio">Escolha um modelo ao lado. O app sugere os processos que precisam dele agora (por exemplo: todos com MLE a peticionar, ou todas as perícias agendadas do Núcleo).</p>';
+  else {
+    const lista = ativos();
+    const sug = processosParaModelo(modelo.nome, lista);
+    const linhaSel = it => {
+      const d = parseData(it.m['PERICIA']);
+      return '<label class="sel-proc"><input type="checkbox" data-gd-linha="' + it.linha + '"' + (gd.sel[it.linha] ? ' checked' : '') + '><span class="meio"><b>' + esc(it.m['REQUERENTE']) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (it.m['CIDADE'] || '') + ' · ' + (it.m['PROXIMO PASSO'] || '')) + '</small></span>' + (d ? '<span class="chip pericia">Perícia ' + fmtCurto(d) + '</span>' : '') + '</label>';
+    };
+    h += '<p class="dica"><b>' + esc(modelo.nome) + '</b></p>';
+    h += '<h3 class="sub">Sugeridos (' + sug.length + ')' + (sug.length ? ' · <button type="button" class="link" data-acao="gd-todos">marcar todos</button> · <button type="button" class="link" data-acao="gd-nenhum">desmarcar</button>' : '') + '</h3>';
+    h += sug.length ? '<div class="arquivos">' + sug.map(linhaSel).join('') + '</div>' : '<p class="vazio">Nenhum processo precisa deste modelo agora. Busque abaixo.</p>';
+    const pq = chave(gd.pq);
+    const outros = pq ? lista.filter(it => sug.indexOf(it) < 0 && chave(it.v.join(' ') + ' ' + formatarCNJ(it.m['PROCESSO'])).indexOf(pq) >= 0).slice(0, 15) : [];
+    const marcadosFora = lista.filter(it => gd.sel[it.linha] && sug.indexOf(it) < 0 && outros.indexOf(it) < 0);
+    h += '<h3 class="sub">Outros processos</h3><input type="search" id="gd-pq" class="busca-modelo" placeholder="Buscar por nome ou número para incluir..." value="' + esc(gd.pq) + '" autocomplete="off">' +
+      (outros.length || marcadosFora.length ? '<div class="arquivos">' + marcadosFora.concat(outros).map(linhaSel).join('') + '</div>' : '');
+    const n = Object.keys(gd.sel).filter(k => gd.sel[k]).length;
+    h += '<label class="check" style="margin-top:14px"><input type="checkbox" id="gd-pasta"' + (gd.criarPasta ? ' checked' : '') + '> Criar a pasta do periciado no Drive se ainda não existir</label>' +
+      '<div class="acoes" style="margin-top:12px"><button type="button" class="btn primario" data-acao="gd-gerar"' + (n && !gd.rodando ? '' : ' disabled') + '>' + (gd.rodando ? 'Gerando...' : 'Gerar ' + n + ' documento' + (n === 1 ? '' : 's')) + '</button></div>';
+  }
+  h += '</section><section class="cartao c12" id="gd-resultados"' + (gd.resultados.length ? '' : ' hidden') + '></section></div>';
+  $('#conteudo').innerHTML = h;
+  renderResultadosGd();
+  const q1 = $('#gd-q');
+  q1.addEventListener('input', () => { gd.q = q1.value; render(); });
+  const q2 = $('#gd-pq');
+  if (q2) q2.addEventListener('input', () => { gd.pq = q2.value; render(); });
+  const cp = $('#gd-pasta');
+  if (cp) cp.addEventListener('change', () => { gd.criarPasta = cp.checked; });
+  document.querySelectorAll('[data-gd-linha]').forEach(cb => cb.addEventListener('change', () => { gd.sel[cb.dataset.gdLinha] = cb.checked; render(); }));
+}
+
+function renderResultadosGd() {
+  const el = $('#gd-resultados');
+  if (!el) return;
+  const r = state.gd.resultados;
+  el.hidden = !r.length;
+  if (!r.length) return;
+  const feitos = r.filter(x => x.status === 'ok').length;
+  el.innerHTML = '<h2>Resultado <span class="chip ' + (feitos === r.length ? 'ok' : '') + '">' + feitos + ' de ' + r.length + '</span></h2><div class="arquivos">' + r.map(x =>
+    '<div class="arq" style="cursor:default"><span class="tipo-arq ' + (x.status === 'ok' ? 'doc' : x.status === 'erro' ? 'pdf' : '') + '">' + (x.status === 'ok' ? 'OK' : x.status === 'erro' ? 'ERRO' : x.status === 'gerando' ? '...' : 'FILA') + '</span>' +
+    '<span class="meio"><b>' + esc(x.doc ? x.doc.nome : x.nome) + '</b><small>' + esc(x.status === 'erro' ? x.erro : x.status === 'gerando' ? 'Gerando...' : x.status === 'fila' ? 'Na fila' : (x.conferir && x.conferir.length ? 'Conferir: ' + x.conferir.join(', ') : 'Preenchido')) + '</small></span>' +
+    (x.doc ? '<a class="btn pequeno primario" href="' + esc(x.doc.url) + '" target="_blank" rel="noopener">Abrir</a><a class="btn pequeno" href="https://docs.google.com/document/d/' + esc(x.doc.id) + '/export?format=pdf" target="_blank" rel="noopener">PDF</a>' : '') + '</div>').join('') + '</div>' +
+    (state.gd.rodando ? '' : '<p class="dica" style="margin:10px 0 0">Os documentos ficam na pasta de cada periciado. Trechos em amarelo precisam de conferência; tire o realce antes de protocolar.</p>');
+}
+
+async function gerarLote() {
+  const gd = state.gd;
+  const lista = ativos().filter(it => gd.sel[it.linha]);
+  if (!lista.length || gd.rodando) return;
+  gd.rodando = true;
+  gd.resultados = lista.map(it => ({ it: it, nome: it.m['REQUERENTE'] + ' · ' + formatarCNJ(it.m['PROCESSO']), status: 'fila' }));
+  render();
+  for (const x of gd.resultados) {
+    x.status = 'gerando'; renderResultadosGd();
+    try {
+      const j = await api('gerarDoc', { aba: 'PERICIAS', linha: x.it.linha, processoEsperado: x.it.m['PROCESSO'], modeloId: gd.modeloId, criarPasta: gd.criarPasta });
+      if (!j.ok) throw new Error(erroApi(j, 'Erro ao gerar'));
+      x.status = 'ok'; x.doc = j.doc; x.conferir = j.conferir || [];
+      delete state.docs[chaveDocs(x.it)];
+    } catch (e) { x.status = 'erro'; x.erro = e.message; }
+    renderResultadosGd();
+  }
+  gd.rodando = false;
+  gd.sel = {};
+  const ok = gd.resultados.filter(x => x.status === 'ok').length;
+  toast(ok + ' de ' + gd.resultados.length + ' documento(s) gerado(s)', { erro: ok < gd.resultados.length });
+  if (state.view === 'documentos') render();
+}
+
 /* ================= DISCORD ================= */
 const CANAIS_PADRAO = [{ k: 'AGENDA', n: '#agenda' }, { k: 'PRAZOS', n: '#prazos' }, { k: 'DECISOES', n: '#para-o-perito' }, { k: 'HONORARIOS', n: '#honorários-e-mle' }, { k: 'ASSISTENTE', n: '#tarefas-assistente' }];
 const COR_CANAL = { AGENDA: '#9b59b6', PRAZOS: '#e67e22', DECISOES: '#3498db', HONORARIOS: '#f1c40f', ASSISTENTE: '#2ecc71' };
@@ -1742,6 +2045,7 @@ document.addEventListener('click', ev => {
   const el = ev.target.closest('[data-acao]');
   if (!el) return;
   const a = el.dataset.acao, ds = el.dataset;
+  if (a !== 'nav-mais') { const p = $('#nav-mais'); if (p && !p.hidden) p.hidden = true; }
   switch (a) {
     case 'ir': ir(ds.view); break;
     case 'ficha': abrirFicha(ds.aba || 'PERICIAS', ds.linha); break;
@@ -1785,6 +2089,37 @@ document.addEventListener('click', ev => {
     case 'cal-dia': { const d = new Date(Number(ds.t)); state.cal.sel = d.getTime(); if (d.getMonth() !== state.cal.mes) { state.cal.mes = d.getMonth(); state.cal.ano = d.getFullYear(); } render(); if (window.innerWidth < 900) { const l = document.querySelector('.dia-lista'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }); } break; }
     case 'cal-f': state.cal.f[ds.t] = !state.cal.f[ds.t]; render(); break;
     case 'arq': state.arquivo = ds.aba; render(); break;
+    case 'nav-mais': { const p = $('#nav-mais'); p.hidden = !p.hidden; break; }
+    case 't-nova': abrirNovaTarefa(''); break;
+    case 'ficha-tarefa': { const it = fichaItem(); abrirNovaTarefa(it && it.aba === 'PERICIAS' ? it.m['PROCESSO'] : ''); break; }
+    case 't-escopo': state.tEscopo = ds.k; render(); break;
+    case 't-concluir': abrirFicha('PERICIAS', ds.linha); acaoRapida(ds.id); break;
+    case 't-feita': el.disabled = true; mudarTarefa('tarefaStatus', { id: ds.id, feita: true }, 'Tarefa concluída'); break;
+    case 't-reabrir': mudarTarefa('tarefaStatus', { id: ds.id, feita: false }, 'Tarefa reaberta'); break;
+    case 't-excluir': if (confirm('Excluir esta tarefa?')) mudarTarefa('tarefaExcluir', { id: ds.id }, 'Tarefa excluída'); break;
+    case 't-ver-feitas': state.verFeitas = !state.verFeitas; render(); break;
+    case 't-conf-todos': state.verTodasConf = !state.verTodasConf; render(); break;
+    case 't-verificado':
+      el.disabled = true;
+      api('verificado', { processo: ds.proc }).then(j => {
+        if (!j.ok) throw new Error(j.erro || 'Erro');
+        state.verificados[digitos(ds.proc)] = { quando: j.quando, por: j.por, nota: 'sem novidade' };
+        render(); toast('Conferência registrada');
+      }).catch(e => { el.disabled = false; toast(e.message, { erro: true }); });
+      break;
+    case 'gd-modelo': {
+      const gd = state.gd;
+      if (gd.rodando) break;
+      gd.modeloId = ds.id; gd.pq = ''; gd.sel = {}; gd.resultados = [];
+      const md = state.modelos.find(x => x.id === ds.id);
+      processosParaModelo(md.nome, ativos()).forEach(it => { gd.sel[it.linha] = true; });
+      render();
+      if (window.innerWidth < 1180) { const s = document.querySelectorAll('#conteudo .cartao')[1]; if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      break;
+    }
+    case 'gd-todos': { const md = state.modelos.find(x => x.id === state.gd.modeloId); processosParaModelo(md.nome, ativos()).forEach(it => { state.gd.sel[it.linha] = true; }); render(); break; }
+    case 'gd-nenhum': state.gd.sel = {}; render(); break;
+    case 'gd-gerar': gerarLote(); break;
     case 'g-filtro': state.gFiltro = state.gFiltro === ds.k ? '' : ds.k; render(); { const t = document.querySelector('.tabela-wrap'); if (t && ds.k) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); } break;
     case 'gestao-atualizar': carregarGestao(true); recarregar(true); break;
     case 'csv': exportarCSV(); break;
@@ -1837,7 +2172,11 @@ $('#btn-sair-m').addEventListener('click', () => sair(true));
 $('#btn-sair-m').innerHTML = ic('sair');
 $('#btn-atualizar').innerHTML = ic('atualizar');
 $('#btn-atualizar').addEventListener('click', () => recarregar(true).then(() => toast('Dados atualizados')));
-$('#btn-novo').addEventListener('click', () => { if (state.view === 'agenda' || state.view === 'calendario') abrirSlot(null, state.view === 'calendario' ? fmtData(new Date(state.cal.sel)) : ''); else abrirNovoProcesso(); });
+$('#btn-novo').addEventListener('click', () => {
+  if (state.view === 'agenda' || state.view === 'calendario') abrirSlot(null, state.view === 'calendario' ? fmtData(new Date(state.cal.sel)) : '');
+  else if (state.view === 'tarefas') abrirNovaTarefa('');
+  else abrirNovoProcesso();
+});
 $('#busca-global').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   state.filtro = Object.assign(filtroVazio(), { q: e.target.value });
