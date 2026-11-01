@@ -515,6 +515,7 @@ async function recarregar(silencioso) {
   carregando = (async () => {
     try {
       const j = await api('inicial');
+      if (!j.ok && j.erro === 'Ação desconhecida') throw new Error('O backend no Apps Script está desatualizado. Cole o AppPericias.gs novo e publique uma Nova versão em Implantar > Gerenciar implantações.');
       if (!j.ok) throw new Error(j.erro || 'Erro ao carregar');
       state.user = j.usuario || state.user;
       ABAS_PLANILHA.forEach(a => { if (j.abas && j.abas[a]) state.dados[a] = j.abas[a]; });
