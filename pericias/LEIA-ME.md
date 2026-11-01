@@ -56,7 +56,11 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - Junta em um lugar só, por prazo (atrasadas, hoje, próximos 7 dias, mais adiante, sem prazo):
   - **tarefas do fluxo**: o que cada processo pede agora (aceite, agendar, peticionar, MLE, renúncia), com o botão do próximo passo;
   - **tarefas atribuídas**: criadas no app por qualquer usuário, para "assistentes" ou para alguém específico, com prazo e processo opcionais. Ficam na aba **TAREFAS** da planilha (criada sozinha) e podem avisar o #tarefas-assistente.
-- **Conferir nos autos**: processos aguardando decisão, depósito ou pagamento. O botão "Sem novidade" registra a conferência no HISTORICO; os não conferidos há 7 dias ou mais aparecem primeiro.
+- **Conferir nos autos**: processos aguardando decisão, depósito ou pagamento, para conferir no e-SAJ/eproc a cada 3 dias (o intervalo fica em `CONFERIR_DIAS` no `config.js`).
+  - Pendentes: nunca conferidos (vermelho, aparecem primeiro) ou conferidos há 3 dias ou mais (laranja), cada um com a data e quem fez a última conferência.
+  - "Sem novidade" registra a conferência no HISTORICO (data, hora e usuário). O processo passa para "Conferidos nos últimos 3 dias", com a data e quem conferiu, e volta para os pendentes quando completar 3 dias.
+  - Na ficha desses processos aparece a última conferência e o mesmo botão "Sem novidade".
+  - Se algo mudou nos autos, não use "Sem novidade": abra o processo e atualize a etapa ou o pagamento.
 - O perito vê por padrão as tarefas do assistente (e pode trocar para "Minhas" ou "Todas"). O assistente vê as dele.
 - Só quem criou a tarefa, ou o perito, pode excluí-la.
 
