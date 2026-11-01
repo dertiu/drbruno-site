@@ -1,49 +1,59 @@
-# App Perícias: instalação
+# App Perícias: instalação e atualização
 
 O app tem duas partes:
 
 1. **Tela do app** (esta pasta `pericias/`): arquivos estáticos publicados pelo GitHub Pages em brunomichels.com.br/pericias.
-2. **Backend** (`pericias/backend/AppPericias.gs`): fica no Apps Script da própria planilha, ao lado do script do Discord. Faz o login e lê e grava nas abas.
+2. **Backend** (`pericias/backend/AppPericias.gs`): fica no Apps Script da própria planilha, ao lado do script do Discord (`Código.gs`). Faz o login, lê e grava nas abas, registra o histórico e usa o script do Discord para enviar mensagens.
 
-O script do Discord não é alterado e continua funcionando como hoje.
+O script do Discord não é alterado. O app só acrescenta a aba **HISTORICO** (criada sozinha na primeira alteração feita pelo app).
 
-## Parte 1: backend (uns 10 minutos)
+## Primeira instalação
 
-1. Abra a planilha, menu **Extensões > Apps Script** (o mesmo projeto do Discord).
-2. Clique em **+ > Script**, nomeie o arquivo `AppPericias` e cole todo o conteúdo de `backend/AppPericias.gs`.
-3. No arquivo do Discord, dentro de `onOpen()`, acrescente uma linha ao menu, antes de `menu.addToUi();`:
+1. Planilha > **Extensões > Apps Script**.
+2. **+ > Script**, nome `AppPericias`, cole todo o conteúdo de `backend/AppPericias.gs` e salve.
+3. No `Código.gs`, dentro de `onOpen()`, antes de `menu.addToUi();`:
+   `menu.addItem('🔐 App: criar ou trocar senha de usuário', 'appCriarUsuarioDialogo');`
+4. Recarregue a planilha e crie os usuários pelo menu Discord.
+5. **Implantar > Nova implantação > App da Web**. Executar como: **Eu**. Quem pode acessar: **Qualquer pessoa**. Copie a URL (termina em `/exec`) e coloque em `config.js`.
 
-   ```
-   menu.addItem('🔐 App: criar ou trocar senha de usuário', 'appCriarUsuarioDialogo');
-   ```
+## Quando o backend mudar (como nesta versão)
 
-4. Salve. Volte à planilha e **recarregue a página**. Vai aparecer o item no menu Discord.
-5. Clique nele e crie o usuário do Dr. Bruno (ex.: `bruno`) e depois o do assistente (ex.: `assistente`). Senha com pelo menos 8 caracteres. Para trocar uma senha, repita o processo com o mesmo usuário.
-6. No Apps Script, clique em **Implantar > Nova implantação > Tipo: App da Web**:
-   - Executar como: **Eu**
-   - Quem pode acessar: **Qualquer pessoa**
-   - Autorize quando o Google pedir.
-7. Copie a **URL do app da Web** (termina em `/exec`).
+1. Apps Script > arquivo `AppPericias` > apague tudo e cole o novo `backend/AppPericias.gs`. Salve.
+2. **Implantar > Gerenciar implantações** > lápis (editar) > em Versão escolha **Nova versão** > **Implantar**.
+3. A URL continua a mesma. Não crie uma implantação nova, senão a URL muda.
 
-"Qualquer pessoa" só significa que o endereço é acessível. Nenhum dado é devolvido sem usuário e senha válidos.
+Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam erro de "Ação desconhecida".
 
-## Parte 2: tela do app
+### Autorizar o Drive e o Docs (uma vez, na versão com documentos)
 
-1. Abra `pericias/config.js` e troque `COLE_AQUI_A_URL_DO_APPS_SCRIPT` pela URL copiada no passo 7.
-2. Publique a pasta `pericias/` na raiz do repositório `dertiu/drbruno-site` (commit e push). O GitHub Pages publica sozinho.
-3. Acesse **brunomichels.com.br/pericias** e entre com o usuário e a senha criados.
+1. No Apps Script, abra o arquivo `AppPericias`.
+2. Na barra de cima, no seletor de função, escolha **appAutorizarDrive** e clique em **Executar**.
+3. O Google pede permissão para Drive e Docs: **Revisar permissões > sua conta > Avançado > Acessar > Permitir**.
+4. Depois faça a **Nova versão** da implantação (passo 2 acima).
 
-## Uso no celular
+## Documentos e pastas no Drive
 
-Abra o endereço no navegador e use **Adicionar à tela inicial**. O app abre como aplicativo.
+- Estrutura usada: **PERICIAS / CIDADE / Nome do periciado** (Núcleo 4.0 fica em `NUCLEO 4`). Os IDs das pastas PERICIAS e Arquivos base estão no topo da seção DRIVE do `AppPericias.gs`.
+- Ao abrir um processo, o app procura a pasta pelo nome do periciado (requerente, ou a parte requerida na interdição) dentro da pasta da cidade. Achando, guarda o vínculo. Não achando, oferece **criar** ou **vincular** a uma pasta existente.
+- Ao cadastrar um processo novo, a pasta é criada junto (opção marcada por padrão).
+- **Enviar arquivo** pelo app aceita até 15 MB por arquivo. Para a íntegra do processo, se for maior, use **Abrir pasta** e envie pelo Drive. Arquivos com "integra" ou "autos" no nome aparecem primeiro, com a etiqueta Íntegra.
+- **Gerar documento** copia um modelo da pasta Arquivos base para a pasta do periciado e troca: tabela de identificação (processo, requerente, requerida), os mesmos nomes no corpo do texto, o juízo do endereçamento, a data de assinatura e, nos modelos com agendamento, data e horário da perícia. Valores em R$, número de evento e folhas ficam marcados em amarelo para conferir.
+- O modelo original nunca é alterado. Cópias com nome "Cópia de ..." não aparecem na lista de modelos.
 
-## Depois de mudar o backend
+## O que o app faz
 
-Sempre que o arquivo `AppPericias.gs` for alterado, é preciso **Implantar > Gerenciar implantações > Editar > Nova versão** para a mudança valer. A URL continua a mesma.
+- **Painel**: indicadores, perícias de hoje e próximas, prazos com semáforo, alertas, processos por etapa, perícias por mês, tipos e atividade recente.
+- **Processos**: lista com filtros ou **quadro por etapa** (arrastar o cartão muda o PRÓXIMO PASSO).
+- **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
+- **Calendário**: perícias e prazos do mês, com link para o Google Agenda.
+- **Agenda**: horários por dia e fila de processos para agendar. Agendar pelo app cria o horário em AGENDAMENTOS, atualiza o processo (data e etapa PERÍCIA) e pode avisar o #agenda.
+- **Financeiro**: total a receber, situação dos honorários, MLEs a peticionar. UFESP configurável em `config.js`.
+- **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
+- **Arquivo**: Concluídos e Renúncias.
 
 ## Cuidados
 
-- O app grava pelo nome das colunas da linha 1. Não renomeie os cabeçalhos das abas.
-- A aba AGENDAMENTOS segue o formato em blocos por dia que o script do Discord lê. O app insere os horários dentro desses blocos.
-- Ao mover um processo, ele é copiado para a aba de destino e removido da origem.
+- O app grava pelo nome das colunas da linha 1. Não renomeie os cabeçalhos.
+- A aba AGENDAMENTOS segue o formato em blocos por dia que o script do Discord lê.
 - Se duas pessoas editarem a mesma linha ao mesmo tempo, o app avisa para atualizar em vez de sobrescrever.
+- Atualize o valor da UFESP em `config.js` todo mês de janeiro.
