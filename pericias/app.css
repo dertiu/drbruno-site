@@ -274,6 +274,38 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke
 .hist b{font-size:.88rem}
 .hist p{margin:2px 0 0;font-size:.84rem;color:var(--texto2);word-break:break-word}
 
+/* ---------- menu "Mais" (celular) ---------- */
+.mais-btn{display:none!important}
+.nav-mais{display:none}
+
+/* ---------- tarefas ---------- */
+.grupo-tarefas>h2{margin-bottom:6px}
+.grupo-tarefas>h2>span:first-child{display:flex;align-items:center;gap:8px}
+.lista-tarefas{display:flex;flex-direction:column}
+.tarefa{display:flex;gap:12px;align-items:flex-start;padding:12px 2px;border-top:1px solid var(--linha2)}
+.tarefa:first-child{border-top:0}
+.tarefa .meio{flex:1;min-width:0}
+.tarefa .meio b{display:block;font-size:.93rem}
+.tarefa .meio small{display:block;color:var(--suave);font-size:.8rem;margin-top:1px}
+.tarefa .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.acoes-t{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:46%}
+.check-t{flex:0 0 24px;width:24px;height:24px;border-radius:50%;border:2px solid #b9c0ca;background:#fff;cursor:pointer;margin-top:1px;padding:0}
+.check-t:hover{border-color:var(--assist);background:#ecf9f3}
+.marca-fluxo{flex:0 0 24px;height:24px;display:grid;place-items:center;color:var(--suave);margin-top:1px}
+.marca-fluxo svg{width:18px;height:18px}
+.linha-item.conf{cursor:default}
+.link-sem{background:none;border:0;text-align:left;cursor:pointer;padding:0}
+
+/* ---------- gerador de documentos ---------- */
+.arq.sel{background:var(--gold-claro)}
+.sel-proc{display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid var(--linha2);cursor:pointer;background:#fff}
+.sel-proc:first-child{border-top:0}
+.sel-proc:hover{background:#f7f9fc}
+.sel-proc input{width:18px;height:18px;flex:0 0 auto}
+.sel-proc .meio{flex:1;min-width:0}
+.sel-proc .meio b{display:block;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-proc .meio small{display:block;color:var(--suave);font-size:.76rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* ---------- gestão ---------- */
 .estagios{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-top:14px;font-size:.84rem}
 .estagios small{display:block;color:var(--suave);font-size:.76rem;margin-left:15px}
@@ -387,6 +419,14 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
   .nav-itens button{flex-direction:column;gap:2px;padding:6px 0;font-size:.6rem;flex:1;min-width:0;align-items:center}
   .nav-itens button span:not(.badge){max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nav-itens .badge{position:absolute;top:2px;right:calc(50% - 20px);margin:0;padding:0 5px;font-size:.6rem}
+  .nav-itens button.extra{display:none}
+  .mais-btn{display:flex!important}
+  .nav-mais:not([hidden]){display:flex;flex-direction:column;position:fixed;right:8px;bottom:calc(66px + env(safe-area-inset-bottom));background:var(--navy);border-radius:14px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:31;min-width:200px}
+  .nav-mais button{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:none;border:0;color:#dfe5ee;font-weight:700;cursor:pointer;text-align:left}
+  .nav-mais button.ativa{background:rgba(191,164,111,.18);color:#fff}
+  .nav-mais button.ativa svg{color:var(--gold)}
+  .tarefa{flex-wrap:wrap}
+  .acoes-t{max-width:none;width:100%;justify-content:flex-start;padding-left:36px}
   .topo{padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));gap:8px}
   .topo h1{font-size:1.05rem}
   .sync{display:none}

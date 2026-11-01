@@ -59,6 +59,10 @@ function appRotear_(req) {
     case 'discordCanais': return { ok: true, canais: appDiscordCanais_() };
     case 'discordEnviar': return appDiscordEnviar_(req, usuario);
     case 'discordRotina': return appDiscordRotina_(req.rotina, usuario);
+    case 'tarefaCriar': return appComTrava_(() => appTarefaCriar_(req, usuario));
+    case 'tarefaStatus': return appComTrava_(() => appTarefaStatus_(req, usuario));
+    case 'tarefaExcluir': return appComTrava_(() => appTarefaExcluir_(req, usuario));
+    case 'verificado': return appVerificado_(req, usuario);
     case 'docs': return appDocs_(req);
     case 'pastaVincular': return appComTrava_(() => appPastaVincular_(req, usuario));
     case 'pastaCriar': return appComTrava_(() => appPastaCriar_(req, usuario));
@@ -88,6 +92,9 @@ function appInicial_(usuario) {
     abas: abas,
     agenda: appAgenda_().itens,
     atividade: appAtividade_(60),
+    tarefas: appTarefas_(),
+    verificados: appVerificados_(),
+    usuarios: appUsuarios_(),
     canais: canais,
     hora: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'HH:mm')
   };
@@ -465,6 +472,109 @@ function appHistorico_(processo) {
   return { ok: true, itens: itens };
 }
 
+// -------------------- TAREFAS (aba TAREFAS, criada sozinha) --------------------
+const APP_ABA_TAREFAS = 'TAREFAS';
+const APP_CAB_TAREFAS = ['ID', 'CRIADA EM', 'CRIADA POR', 'PARA', 'PROCESSO', 'TAREFA', 'PRAZO', 'STATUS', 'CONCLUÍDA EM', 'CONCLUÍDA POR'];
+
+function appAgoraTxt_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm'); }
+
+function appTarefasAba_(criar) {
+  const ss = SpreadsheetApp.getActive();
+  let aba = ss.getSheetByName(APP_ABA_TAREFAS);
+  if (!aba && criar) {
+    aba = ss.insertSheet(APP_ABA_TAREFAS, ss.getSheets().length);
+    aba.getRange('A:J').setNumberFormat('@');
+    aba.getRange(1, 1, 1, APP_CAB_TAREFAS.length).setValues([APP_CAB_TAREFAS]).setFontWeight('bold');
+    aba.setFrozenRows(1);
+    aba.setColumnWidth(6, 420);
+  }
+  return aba;
+}
+
+function appTarefas_() {
+  const aba = appTarefasAba_(false);
+  if (!aba || aba.getLastRow() < 2) return [];
+  const limite = Date.now() - 14 * 86400000;
+  const quando = s => { const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : 0; };
+  return aba.getRange(2, 1, aba.getLastRow() - 1, APP_CAB_TAREFAS.length).getDisplayValues()
+    .map(l => ({ id: l[0], criada: l[1], por: l[2], para: l[3], processo: l[4], tarefa: l[5], prazo: l[6], status: l[7], feitaEm: l[8], feitaPor: l[9] }))
+    .filter(t => t.id && (t.status !== 'FEITA' || quando(t.feitaEm) >= limite));
+}
+
+function appLinhaTarefa_(aba, id) {
+  if (!id || aba.getLastRow() < 2) return -1;
+  const ids = aba.getRange(2, 1, aba.getLastRow() - 1, 1).getDisplayValues();
+  for (let i = 0; i < ids.length; i++) if (String(ids[i][0]) === String(id)) return i + 2;
+  return -1;
+}
+
+function appTarefaCriar_(req, usuario) {
+  const texto = String(req.tarefa || '').trim();
+  if (!texto) return { ok: false, erro: 'Descreva a tarefa.' };
+  const para = String(req.para || 'assistentes').trim().toLowerCase();
+  const prazo = String(req.prazo || '').trim();
+  if (prazo && !appData_(prazo)) return { ok: false, erro: 'Prazo inválido. Use dd/mm/aaaa.' };
+  const aba = appTarefasAba_(true);
+  const id = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
+  const n = aba.getLastRow() + 1;
+  aba.getRange(n, 1, 1, APP_CAB_TAREFAS.length).setNumberFormat('@')
+    .setValues([[id, appAgoraTxt_(), usuario, para, String(req.processo || '').trim(), texto.slice(0, 1000), prazo, 'ABERTA', '', '']]);
+  appLog_(usuario, req.processo || '', 'Tarefa criada', texto.slice(0, 200) + ' · para ' + para + (prazo ? ' · prazo ' + prazo : ''));
+  let aviso = '';
+  if (req.avisar) {
+    try {
+      appDiscordCheck_();
+      enviarMensagemManual({ canal: 'ASSISTENTE', titulo: '📌 Nova tarefa' + (para !== 'assistentes' ? ' para ' + para : ''),
+        texto: texto + (prazo ? '\nPrazo: ' + prazo : '') + '\n\n_criada por ' + usuario + ' no app_', processo: req.processo || '' });
+    } catch (e) { aviso = 'Tarefa criada, mas o Discord não recebeu o aviso: ' + e.message; }
+  }
+  return { ok: true, tarefas: appTarefas_(), aviso: aviso };
+}
+
+function appTarefaStatus_(req, usuario) {
+  const aba = appTarefasAba_(false);
+  const linha = aba ? appLinhaTarefa_(aba, req.id) : -1;
+  if (linha < 0) return { ok: false, erro: 'Tarefa não encontrada. Atualize a tela.' };
+  const feita = !!req.feita;
+  aba.getRange(linha, 8, 1, 3).setNumberFormat('@').setValues([[feita ? 'FEITA' : 'ABERTA', feita ? appAgoraTxt_() : '', feita ? usuario : '']]);
+  const v = aba.getRange(linha, 1, 1, APP_CAB_TAREFAS.length).getDisplayValues()[0];
+  appLog_(usuario, v[4], feita ? 'Tarefa concluída' : 'Tarefa reaberta', String(v[5]).slice(0, 200));
+  return { ok: true, tarefas: appTarefas_() };
+}
+
+function appTarefaExcluir_(req, usuario) {
+  const aba = appTarefasAba_(false);
+  const linha = aba ? appLinhaTarefa_(aba, req.id) : -1;
+  if (linha < 0) return { ok: false, erro: 'Tarefa não encontrada. Atualize a tela.' };
+  const v = aba.getRange(linha, 1, 1, APP_CAB_TAREFAS.length).getDisplayValues()[0];
+  if (v[2] !== usuario && appPapel_(usuario) !== 'perito') return { ok: false, erro: 'Só quem criou a tarefa (ou o perito) pode excluí-la.' };
+  aba.deleteRow(linha);
+  appLog_(usuario, v[4], 'Tarefa excluída', String(v[5]).slice(0, 200));
+  return { ok: true, tarefas: appTarefas_() };
+}
+
+// conferência semanal nos autos (processos aguardando decisão, depósito ou pagamento)
+function appVerificado_(req, usuario) {
+  if (!req.processo) return { ok: false, erro: 'Processo não informado.' };
+  appLog_(usuario, req.processo, 'Verificado nos autos', String(req.nota || 'sem novidade').slice(0, 300));
+  return { ok: true, quando: appAgoraTxt_(), por: usuario };
+}
+
+function appVerificados_() {
+  const out = {};
+  appLerLog_().forEach(x => {
+    if (x.acao !== 'Verificado nos autos') return;
+    out[String(x.processo).replace(/\D/g, '')] = { quando: x.data, por: x.usuario, nota: x.detalhe };
+  });
+  return out;
+}
+
+function appUsuarios_() {
+  return Object.keys(PropertiesService.getScriptProperties().getProperties())
+    .filter(k => k.indexOf('USR_') === 0).map(k => k.slice(4)).sort()
+    .map(u => ({ u: u, papel: appPapel_(u) }));
+}
+
 // -------------------- DISCORD (usa o script do Discord deste mesmo projeto) --------------------
 const APP_ROTINAS = { dia: 'Resumo do dia', semana: 'Resumo semanal', prazos: 'Alertas de prazo', paineis: 'Painéis de pendências', mudancas: 'Verificar mudanças' };
 
@@ -679,16 +789,20 @@ function appPastaVincular_(req, usuario) {
   return appDocs_(req);
 }
 
-function appPastaCriar_(req, usuario) {
-  const m = appLinhaMapa_(req);
-  const nome = String(req.nome || appPericiado_(m)).replace(/[\/\\]/g, '-').trim();
-  if (!nome) return { ok: false, erro: 'Informe o nome da pasta.' };
+function appCriarPastaPara_(m, nomeDesejado, usuario) {
+  const nome = String(nomeDesejado || appPericiado_(m)).replace(/[\/\\]/g, '-').trim();
+  if (!nome) throw new Error('Informe o nome da pasta.');
   const cidade = appPastaCidade_(m['CIDADE'] || 'A OUTROS', true);
-  let f = null;
   const it = cidade.getFoldersByName(nome);
-  if (it.hasNext()) f = it.next(); else f = cidade.createFolder(nome);
+  const f = it.hasNext() ? it.next() : cidade.createFolder(nome);
   PropertiesService.getScriptProperties().setProperty('PASTA_' + m['PROCESSO'].replace(/\D/g, ''), f.getId());
   appLog_(usuario, m['PROCESSO'], 'Drive: pasta criada', cidade.getName() + ' / ' + nome);
+  return f;
+}
+
+function appPastaCriar_(req, usuario) {
+  const m = appLinhaMapa_(req);
+  appCriarPastaPara_(m, req.nome, usuario);
   return appDocs_(req);
 }
 
@@ -747,11 +861,32 @@ function appTrocarTexto_(el, novo) {
   t.deleteText(novo.length, novo.length + antigo.length - 1);
 }
 
-function appMarcar_(body, padrao) {
+// troca o que vem depois de um rótulo no mesmo parágrafo (ex.: "Número do processo: X"), mantendo a formatação do valor
+function appTrocarAposRotulo_(body, rotulo, novo) {
+  const r = body.findText(rotulo);
+  if (!r) return null;
+  const t = r.getElement().asText();
+  const ini = r.getEndOffsetInclusive() + 1;
+  const texto = t.getText();
+  const velho = texto.slice(ini).replace(/\.\s*$/, '').trim();
+  if (velho === novo) return velho;
+  const attrs = ini < texto.length ? t.getAttributes(ini) : null;
+  if (ini < texto.length) t.deleteText(ini, texto.length - 1);
+  t.insertText(ini, novo);
+  if (attrs) t.setAttributes(ini, ini + novo.length - 1, attrs);
+  return velho;
+}
+
+// marca em amarelo; "ignorar" recebe o texto antes do trecho (ex.: não marcar "até R$ 5.000,00" do formulário)
+function appMarcar_(body, padrao, ignorar) {
   let n = 0, r = body.findText(padrao);
   while (r) {
-    r.getElement().asText().setBackgroundColor(r.getStartOffset(), r.getEndOffsetInclusive(), '#FFF59D');
-    n++;
+    const t = r.getElement().asText();
+    const antes = t.getText().slice(Math.max(0, r.getStartOffset() - 12), r.getStartOffset());
+    if (!ignorar || !ignorar.test(antes)) {
+      t.setBackgroundColor(r.getStartOffset(), r.getEndOffsetInclusive(), '#FFF59D');
+      n++;
+    }
     r = body.findText(padrao, r);
   }
   return n;
@@ -780,6 +915,13 @@ function appPreencherDoc_(doc, m, slot) {
       appTrocarTexto_(cel.getChild(0), novo);
     }
   });
+  // formulários com rótulo no próprio parágrafo (ex.: Formulário MLE)
+  const velhoProc = appTrocarAposRotulo_(body, 'N[úu]mero do processo: ', proc);
+  if (velhoProc && velhoProc !== proc) trocas.push([velhoProc, proc]);
+  if (body.findText('Valor nominal do dep[óo]sito: ')) {
+    if (m['HONORARIOS']) appTrocarAposRotulo_(body, 'Valor nominal do dep[óo]sito: ', m['HONORARIOS'] + '.');
+    else conferir.push('valor nominal do depósito (sem honorários na planilha)');
+  }
   // nomes e número antigos que aparecem no meio do texto
   trocas.forEach(([velho, novo]) => {
     if (velho.length < 5) return;
@@ -791,7 +933,9 @@ function appPreencherDoc_(doc, m, slot) {
   const vara = appEhNucleo_(m)
     ? 'VARA DO NÚCLEO ESPECIALIZADO DE JUSTIÇA 4.0 - ACIDENTES DO TRABALHO DO INTERIOR E DO LITORAL'
     : (m['FORUM'] && m['CIDADE'] ? (m['FORUM'] + ' DO FORO DE ' + m['CIDADE'] + '/SP.').toUpperCase() : '');
-  if (vara && body.findText('JUIZ\\(A\\) DE DIREITO D[AO] ')) body.replaceText('JUIZ\\(A\\) DE DIREITO D[AO] .*', 'JUIZ(A) DE DIREITO DA ' + vara);
+  const jaNucleo = appEhNucleo_(m) && body.findText('JUIZ\\(A\\) DE DIREITO D[AO] (VARA DO )?N[ÚU]CLEO');
+  if (jaNucleo) { /* modelo do Núcleo para processo do Núcleo: endereçamento já está certo */ }
+  else if (vara && body.findText('JUIZ\\(A\\) DE DIREITO D[AO] ')) body.replaceText('JUIZ\\(A\\) DE DIREITO D[AO] .*', 'JUIZ(A) DE DIREITO DA ' + vara);
   else if (!vara) conferir.push('endereçamento (vara e foro)');
 
   // 3) data de assinatura
@@ -810,8 +954,15 @@ function appPreencherDoc_(doc, m, slot) {
     }
   }
 
+  // 4b) data da perícia citada no texto (ex.: não comparecimento: "designada para o dia 22/10/2026")
+  if (body.findText('designada para o dia [0-9]{1,2}/[0-9]{1,2}/[0-9]{4}')) {
+    const dataPericia = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(m['PERICIA'] || '') ? m['PERICIA'] : (slot ? slot.data : '');
+    if (dataPericia) body.replaceText('designada para o dia [0-9]{1,2}/[0-9]{1,2}/[0-9]{4}', 'designada para o dia ' + dataPericia);
+    else { appMarcar_(body, 'designada para o dia [0-9]{1,2}/[0-9]{1,2}/[0-9]{4}'); conferir.push('data da perícia'); }
+  }
+
   // 5) o que o app não sabe: marca em amarelo
-  if (appMarcar_(body, 'R\\$ ?[0-9.]+,[0-9]{2}')) conferir.push('valores em R$');
+  if (appMarcar_(body, 'R\\$ ?[0-9.]+,[0-9]{2}', /(at[ée]|de)\s*$/i)) conferir.push('valores em R$');
   if (appMarcar_(body, '[Ee]vento [0-9]+')) conferir.push('número do evento');
   if (appMarcar_(body, 'fls?\\. ?[0-9]+')) conferir.push('folhas citadas');
   return conferir;
@@ -825,6 +976,7 @@ function appGerarDoc_(req, usuario) {
   while (ps.hasNext()) if (ps.next().getId() === APP_PASTA_MODELOS) doModelo = true;
   if (!doModelo || modelo.getMimeType() !== APP_MIME_DOC) return { ok: false, erro: 'Modelo inválido.' };
   const r = appEncontrarPasta_(m);
+  if (!r.pasta && req.criarPasta) r.pasta = appCriarPastaPara_(m, '', usuario);
   if (!r.pasta) return { ok: false, erro: 'Crie ou vincule a pasta do periciado antes de gerar documentos.' };
   const base = modelo.getName().replace(/^MODELO\s+(DE\s+)?/i, '').replace(/\bBASE\b/ig, '').replace(/\s+/g, ' ').trim();
   const nome = base + ' ' + r.pasta.getName().toUpperCase();
