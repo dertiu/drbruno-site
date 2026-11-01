@@ -101,6 +101,12 @@ Escreva no modelo exatamente assim e o app troca pelo dado do processo ao gerar:
 - Para dar perfil de perito a outra pessoa, acrescente o usuário em `APP_ADMINS` e publique uma Nova versão.
 - Observação: se o assistente tiver acesso de edição à planilha, ele continua vendo a coluna HONORARIOS por lá.
 
+## Tema escuro e claro
+
+- O app abre no **tema escuro**. Para trocar: no computador, botão **Usar tema claro** no pé do menu lateral; no celular, menu **Mais > Usar tema claro**.
+- A escolha fica salva no navegador de cada aparelho (cada pessoa escolhe o seu) e vale até ser trocada de novo.
+- As cores ficam no começo do `app.css`: o bloco `:root` é o tema claro e o bloco `:root[data-tema=escuro]` é o escuro.
+
 ## Cuidados
 
 - O app grava pelo nome das colunas da linha 1. Não renomeie os cabeçalhos.

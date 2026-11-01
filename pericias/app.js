@@ -607,7 +607,9 @@ const ICONES = {
   gestao: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>',
   tarefas: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>',
   documentos: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
-  mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'
+  mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+  sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  lua: '<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z"/>'
 };
 function ic(nome) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONES[nome] || '') + '</svg>'; }
 
@@ -795,7 +797,25 @@ function renderNav() {
   const noMais = NAV_PRINCIPAIS.indexOf(state.view) < 0;
   $('#nav-itens').innerHTML = vs.map(v => btn(v, NAV_PRINCIPAIS.indexOf(v.id) < 0)).join('') +
     '<button type="button" class="mais-btn' + (noMais ? ' ativa' : '') + '" data-acao="nav-mais" aria-haspopup="true">' + ic('mais') + '<span>' + (noMais ? esc((vs.find(v => v.id === state.view) || {}).rot || 'Mais') : 'Mais') + '</span></button>';
-  $('#nav-mais').innerHTML = vs.filter(v => NAV_PRINCIPAIS.indexOf(v.id) < 0).map(v => btn(v, false)).join('');
+  $('#nav-mais').innerHTML = vs.filter(v => NAV_PRINCIPAIS.indexOf(v.id) < 0).map(v => btn(v, false)).join('') +
+    '<button type="button" class="item-tema" data-acao="tema">' + ic(temaAtual() === 'escuro' ? 'sol' : 'lua') + '<span>' + (temaAtual() === 'escuro' ? 'Usar tema claro' : 'Usar tema escuro') + '</span></button>';
+  atualizarBotaoTema();
+}
+
+/* ---------- tema (escuro é o padrão; a escolha fica salva neste aparelho) ---------- */
+function temaAtual() { return document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escuro'; }
+function aplicarTema(t) {
+  document.documentElement.dataset.tema = t;
+  gravar('pericias_tema', t);
+  const m = document.querySelector('meta[name=theme-color]');
+  if (m) m.content = t === 'claro' ? '#0d1b2a' : '#08101a';
+  renderNav();
+}
+function atualizarBotaoTema() {
+  const b = $('#btn-tema');
+  if (!b) return;
+  const escuro = temaAtual() === 'escuro';
+  b.innerHTML = ic(escuro ? 'sol' : 'lua') + '<span>' + (escuro ? 'Usar tema claro' : 'Usar tema escuro') + '</span>';
 }
 function escopoTarefas() { return state.tEscopo || (state.papel === 'perito' ? 'assistente' : 'minhas'); }
 
@@ -898,7 +918,7 @@ function renderPainel() {
   let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(state.user) + '</h2><p>' + esc(fmtExtenso(hoje)) + '</p></div></div>';
 
   h += '<section class="kpis">' +
-    '<button type="button" class="kpi" style="--k:var(--navy)" data-acao="filtrar" data-quem=""><span class="rot">Processos ativos</span><span class="val">' + lista.length + '</span><span class="sub">' + perito.length + ' perito · ' + assist.length + ' assistente · ' + acomp.length + ' aguardando</span></button>' +
+    '<button type="button" class="kpi" style="--k:var(--kpi-neutro)" data-acao="filtrar" data-quem=""><span class="rot">Processos ativos</span><span class="val">' + lista.length + '</span><span class="sub">' + perito.length + ' perito · ' + assist.length + ' assistente · ' + acomp.length + ' aguardando</span></button>' +
     '<button type="button" class="kpi" style="--k:' + (vencidos.length ? 'var(--vencido)' : 'var(--alerta)') + '" data-acao="ir" data-view="calendario"><span class="rot">Prazos em 7 dias</span><span class="val">' + prox7.length + '</span><span class="sub">' + (vencidos.length ? '<b style="color:var(--vencido)">' + vencidos.length + ' vencido(s)</b>' : 'nenhum vencido') + '</span></button>' +
     '<button type="button" class="kpi" style="--k:var(--pericia)" data-acao="ir" data-view="agenda"><span class="rot">Perícias em 14 dias</span><span class="val">' + ag14.length + '</span><span class="sub">' + (agHoje.length ? agHoje.length + ' hoje' : ag14.length ? 'próxima ' + fmtCurto(ag14[0].d) : 'nada agendado') + '</span></button>' +
     (state.papel === 'perito'
@@ -959,7 +979,7 @@ function renderPainel() {
     const atual = x.ano === hoje.getFullYear() && x.mes === hoje.getMonth();
     const futuro = new Date(x.ano, x.mes, 1) > hoje;
     return '<div class="col' + (atual ? ' atual' : futuro ? ' futuro' : '') + '" title="' + MESES[x.mes] + ' de ' + x.ano + ': ' + x.n + ' perícia(s)"><div class="area"><span class="v">' + x.n + '</span><span class="b" style="height:' + (x.n / maxM * 100).toFixed(1) + '%"></span></div><span class="r">' + MESES[x.mes].slice(0, 3) + '</span></div>';
-  }).join('') + '</div><div class="legenda"><span><i style="background:var(--serie)"></i>realizadas</span><span><i style="background:var(--gold)"></i>mês atual</span><span><i style="background:#9cc2ee"></i>agendadas</span></div></section>';
+  }).join('') + '</div><div class="legenda"><span><i style="background:var(--serie)"></i>realizadas</span><span><i style="background:var(--gold)"></i>mês atual</span><span><i style="background:var(--futuro)"></i>agendadas</span></div></section>';
 
   // por tipo
   const tipos = {};
@@ -2460,6 +2480,7 @@ document.addEventListener('click', ev => {
     case 'cal-f': state.cal.f[ds.t] = !state.cal.f[ds.t]; render(); break;
     case 'arq': state.arquivo = ds.aba; render(); break;
     case 'nav-mais': { const p = $('#nav-mais'); p.hidden = !p.hidden; break; }
+    case 'tema': aplicarTema(temaAtual() === 'escuro' ? 'claro' : 'escuro'); break;
     case 't-nova': abrirNovaTarefa(''); break;
     case 'ficha-tarefa': { const it = fichaItem(); abrirNovaTarefa(it && it.aba === 'PERICIAS' ? it.m['PROCESSO'] : ''); break; }
     case 't-escopo': state.tEscopo = ds.k; render(); break;
