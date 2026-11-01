@@ -222,6 +222,35 @@ function montarEventos(pericias, agenda) {
   return ev.sort((a, b) => a.d - b.d || (a.tipo === b.tipo ? 0 : a.tipo === 'prazo' ? -1 : 1) || String(a.hora || '99').localeCompare(String(b.hora || '99')));
 }
 
+// escala do eixo dos gráficos: passo de 1, 2 ou 5 x 10^n (contagens: passo inteiro)
+function escalaBonita(max, partes) {
+  partes = partes || 4;
+  if (!(max > 0)) return { topo: partes, passo: 1 };
+  const bruto = max / partes, pot = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const passo = Math.max(1, Math.round([1, 2, 5, 10].map(f => f * pot).find(p => p >= bruto)));
+  return { topo: Math.ceil(max / passo) * passo, passo: passo };
+}
+// quantas datas caem em cada semana (segunda a domingo), a partir da semana de "base"
+function porSemana(datas, base, n) {
+  const seg = new Date(base.getFullYear(), base.getMonth(), base.getDate() - ((base.getDay() + 6) % 7));
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ ini: new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + i * 7), n: 0 });
+  datas.forEach(d => {
+    if (!d) return;
+    const k = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - seg) / 864e5 / 7);
+    if (k >= 0 && k < n) out[k].n++;
+  });
+  return out;
+}
+// contagem por grupo, os "n" maiores e o resto em "Outros"
+function contarTop(lista, fn, n, rotOutros) {
+  const g = {};
+  lista.forEach(x => { const k = String(fn(x) || '').trim() || 'Sem informação'; g[k] = (g[k] || 0) + 1; });
+  const ord = Object.keys(g).map(k => ({ k: k, n: g[k] })).sort((a, b) => b.n - a.n || a.k.localeCompare(b.k));
+  const resto = ord.slice(n).reduce((s, x) => s + x.n, 0);
+  return ord.slice(0, n).concat(resto ? [{ k: rotOutros || 'Outros', n: resto, outros: true }] : []);
+}
+
 function porMes(listaM, ini, n) {
   const out = [];
   for (let i = 0; i < n; i++) { const d = new Date(ini.getFullYear(), ini.getMonth() + i, 1); out.push({ ano: d.getFullYear(), mes: d.getMonth(), n: 0 }); }
@@ -422,10 +451,10 @@ function sugerirPorNome(modelos, m) {
 
 // ---------- gestão (perfil perito) ----------
 const ESTAGIOS_RECEB = [
-  { k: 'pedido', rot: 'Já pedido', desc: 'MLE peticionado, ofício expedido ou recebido em parte', cor: '#1baf7a' },
-  { k: 'pronto', rot: 'Pronto para pedir', desc: 'Valor reservado e laudo entregue', cor: '#2a78d6' },
-  { k: 'andamento', rot: 'Em andamento', desc: 'Valor reservado, perícia ou laudo por fazer', cor: '#6250d6' },
-  { k: 'incerto', rot: 'Sem reserva', desc: 'Honorários ainda não depositados', cor: '#8a94a3' }
+  { k: 'pedido', rot: 'Já pedido', desc: 'MLE peticionado, ofício expedido ou recebido em parte', cor: 'var(--g-est1)' },
+  { k: 'pronto', rot: 'Pronto para pedir', desc: 'Valor reservado e laudo entregue', cor: 'var(--g-est2)' },
+  { k: 'andamento', rot: 'Em andamento', desc: 'Valor reservado, perícia ou laudo por fazer', cor: 'var(--g-est3)' },
+  { k: 'incerto', rot: 'Sem reserva', desc: 'Honorários ainda não depositados', cor: 'var(--g-est4)' }
 ];
 function estagioRecebimento(m) {
   const pago = chave(m['PAGO']), e = etapaDe(m);
@@ -573,7 +602,7 @@ if (typeof document === 'undefined') {
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
-    montarEventos, porMes, gcalLink, linkEsaj, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
+    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
   };
   return;
 }
@@ -623,7 +652,7 @@ function views() {
     { id: 'agenda', rot: 'Agenda' },
     { id: 'calendario', rot: 'Calendário' },
     { id: 'documentos', rot: 'Documentos' },
-    perito ? { id: 'gestao', rot: 'Gestão', icone: 'gestao' } : { id: 'pagamentos', rot: 'Pagamentos', icone: 'financeiro' },
+    perito ? { id: 'gestao', rot: 'Financeiro', icone: 'gestao' } : { id: 'pagamentos', rot: 'Pagamentos', icone: 'financeiro' },
     { id: 'discord', rot: 'Discord' },
     { id: 'arquivo', rot: 'Arquivo' }
   ];
@@ -887,15 +916,99 @@ function cardProcesso(it) {
     '</button>';
 }
 
-function barras(lista, opt) {
-  opt = opt || {};
+/* ---------- gráficos (HTML e CSS; valores no passar do mouse, no toque ou no foco) ---------- */
+function dicaAttr(valor, rotulo) { return ' data-dica-v="' + esc(valor) + '" data-dica-r="' + esc(rotulo || '') + '"'; }
+
+// barras horizontais (uma série, uma cor); x: { rot, val, txt, dica, cor, attrs }
+function barras(lista) {
   const max = Math.max(1, ...lista.map(x => x.val));
   if (!lista.length) return '<p class="vazio">Sem dados.</p>';
   return '<div class="barras">' + lista.map(x =>
-    '<button type="button" class="barra" ' + (x.attrs || '') + ' title="' + esc(x.rot + ': ' + (x.txt || x.val)) + '">' +
+    '<button type="button" class="barra" ' + (x.attrs || '') + dicaAttr(x.dica || x.txt || x.val, x.rot) + '>' +
     '<span class="rot">' + esc(x.rot) + '</span><span class="trilho"><span class="fill" style="width:' + Math.max(1.5, x.val / max * 100).toFixed(1) + '%;' + (x.cor ? 'background:' + x.cor : '') + '"></span></span>' +
     '<span class="v">' + esc(x.txt || x.val) + '</span></button>').join('') + '</div>';
 }
+
+// colunas com eixo; d: { rot, val, cls ('atual' | 'futuro'), dica, dicaR, rotulo (mostra o valor no topo) }
+function colunas(dados, opt) {
+  opt = opt || {};
+  const esc2 = escalaBonita(Math.max(0, ...dados.map(x => x.val)), 4);
+  const ticks = [];
+  for (let v = 0; v <= esc2.topo; v += esc2.passo) ticks.push(v);
+  const pct = v => (v / esc2.topo * 100).toFixed(2);
+  return '<div class="gcol" style="--h:' + (opt.altura || 150) + 'px" role="img" aria-label="' + esc((opt.titulo || '') + ': ' + dados.map(x => x.rot + ' ' + x.val).join(', ')) + '">' +
+    '<div class="gcol-eixo">' + ticks.map(t => '<span style="bottom:' + pct(t) + '%">' + t + '</span>').join('') + '</div>' +
+    '<div class="gcol-plot">' + ticks.slice(1).map(t => '<i class="gcol-grade" style="bottom:' + pct(t) + '%"></i>').join('') +
+    dados.map(x => '<div class="gcol-item ' + (x.cls || '') + (x.val ? '' : ' zero') + '" tabindex="0"' + dicaAttr(x.dica || x.val, x.dicaR || x.rot) + '>' +
+      (x.rotulo && x.val ? '<span class="gcol-v" style="bottom:calc(' + pct(x.val) + '% + 4px)">' + x.val + '</span>' : '') +
+      '<span class="gcol-b" style="height:' + pct(x.val) + '%"></span></div>').join('') + '</div>' +
+    '<div class="gcol-rots">' + dados.map(x => '<span>' + esc(x.rot) + '</span>').join('') + '</div></div>';
+}
+
+// colunas empilhadas; series: [{ k, rot, cor }], d: { rot, partes: { k: n }, dicaR }
+function colunasPilha(dados, series, opt) {
+  opt = opt || {};
+  const tot = d => series.reduce((s, x) => s + (d.partes[x.k] || 0), 0);
+  const esc2 = escalaBonita(Math.max(0, ...dados.map(tot)), 4);
+  const ticks = [];
+  for (let v = 0; v <= esc2.topo; v += esc2.passo) ticks.push(v);
+  const pct = v => (v / esc2.topo * 100).toFixed(2);
+  return '<div class="gcol" style="--h:' + (opt.altura || 130) + 'px" role="img" aria-label="' + esc(opt.titulo || '') + '">' +
+    '<div class="gcol-eixo">' + ticks.map(t => '<span style="bottom:' + pct(t) + '%">' + t + '</span>').join('') + '</div>' +
+    '<div class="gcol-plot">' + ticks.slice(1).map(t => '<i class="gcol-grade" style="bottom:' + pct(t) + '%"></i>').join('') +
+    dados.map(d => '<div class="gcol-item" tabindex="0"' + dicaAttr(tot(d) + ' ações', (d.dicaR || d.rot) + ' · ' + series.map(x => x.rot + ' ' + (d.partes[x.k] || 0)).join(', ')) + '>' +
+      '<span class="gcol-pilha" style="height:' + pct(tot(d)) + '%">' + series.filter(x => d.partes[x.k]).map(x => '<span style="flex:' + d.partes[x.k] + ' 1 0;background:' + x.cor + '"></span>').join('') + '</span></div>').join('') + '</div>' +
+    '<div class="gcol-rots">' + dados.map(d => '<span>' + esc(d.rot) + '</span>').join('') + '</div></div>';
+}
+
+// barra segmentada fina (parte do todo) + lista com nome, valor e participação
+// p: { rot, val, txt, cor, desc, attrs, ativa }
+function segmentos(partes, opt) {
+  opt = opt || {};
+  const total = partes.reduce((s, p) => s + p.val, 0);
+  if (!total) return '<p class="vazio">Sem dados.</p>';
+  const pc = v => Math.round(v / total * 100) + '%';
+  let h = '<div class="gseg" role="img" aria-label="' + esc((opt.titulo || '') + ': ' + partes.map(p => p.rot + ' ' + (p.txt || p.val) + ' (' + pc(p.val) + ')').join(', ')) + '">' +
+    partes.filter(p => p.val > 0).map(p => '<span' + (opt.semFoco ? '' : ' tabindex="0"') + ' style="flex:' + p.val + ' 1 0;background:' + p.cor + '"' + dicaAttr(p.txt || p.val, p.rot + ' · ' + pc(p.val)) + '></span>').join('') + '</div>';
+  if (opt.semLista) return h;
+  return h + '<div class="gseg-lista">' + partes.map(p => {
+    const tag = p.attrs ? 'button type="button"' : 'div';
+    return '<' + tag + ' class="gseg-linha' + (p.ativa ? ' ativa' : '') + '" ' + (p.attrs || '') + '><span class="sw" style="background:' + p.cor + '"></span><span>' + esc(p.rot) + (p.desc ? '<small>' + esc(p.desc) + '</small>' : '') + '</span>' +
+      '<b>' + esc(p.txt || p.val) + '</b><span class="pct">' + pc(p.val) + '</span></' + tag.split(' ')[0] + '>';
+  }).join('') + '</div>';
+}
+
+// colunas pequenas para os indicadores do topo; d: { n, rot, cls }
+function miniColunas(dados) {
+  const max = Math.max(1, ...dados.map(x => x.n));
+  return '<div class="mini-cols" aria-hidden="true">' + dados.map(x => '<span class="' + (x.cls || '') + (x.n ? '' : ' zero') + '" style="height:' + Math.max(6, x.n / max * 100).toFixed(1) + '%"' + dicaAttr(x.n, x.rot) + '></span>').join('') + '</div>';
+}
+
+// dica flutuante dos gráficos (texto inserido com textContent)
+const dicaGraf = document.createElement('div');
+dicaGraf.className = 'dica-graf';
+dicaGraf.hidden = true;
+dicaGraf.setAttribute('role', 'status');
+document.body.appendChild(dicaGraf);
+function mostrarDica(el, x, y) {
+  dicaGraf.textContent = '';
+  const v = document.createElement('b'); v.textContent = el.dataset.dicaV;
+  const r = document.createElement('span'); r.textContent = el.dataset.dicaR;
+  dicaGraf.append(v, r);
+  dicaGraf.hidden = false;
+  if (x == null) { const b = el.getBoundingClientRect(); x = b.left + b.width / 2; y = b.top; }
+  const w = dicaGraf.offsetWidth, hh = dicaGraf.offsetHeight;
+  dicaGraf.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x - w / 2)) + 'px';
+  dicaGraf.style.top = (y - hh - 12 < 8 ? y + 18 : y - hh - 12) + 'px';
+}
+document.addEventListener('pointermove', e => {
+  const el = e.target.closest && e.target.closest('[data-dica-v]');
+  if (el) mostrarDica(el, e.clientX, e.clientY); else if (!dicaGraf.hidden) dicaGraf.hidden = true;
+});
+document.addEventListener('pointerdown', e => { const el = e.target.closest && e.target.closest('[data-dica-v]'); if (el && e.pointerType !== 'mouse') mostrarDica(el, e.clientX, e.clientY); });
+document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('[data-dica-v]'); if (el) mostrarDica(el); });
+document.addEventListener('focusout', () => { dicaGraf.hidden = true; });
+window.addEventListener('scroll', () => { dicaGraf.hidden = true; }, true);
 
 /* ================= PAINEL ================= */
 function renderPainel() {
@@ -909,24 +1022,32 @@ function renderPainel() {
   const agenda = state.agenda.map(a => Object.assign({ d: parseData(a.data) }, a)).filter(a => a.d);
   const agHoje = agenda.filter(a => mesmoDia(a.d, hoje)).sort((a, b) => a.hora.localeCompare(b.hora));
   const ag14 = agenda.filter(a => { const n = diasAte(a.d); return n > 0 && n <= 14; }).sort((a, b) => a.d - b.d || a.hora.localeCompare(b.hora));
-  const aReceber = lista.filter(i => chave(i.m['PAGO']) !== 'PAGO');
-  const totalReceber = aReceber.reduce((s, i) => s + valorHonorarios(i.m['HONORARIOS'], UFESP), 0);
-  const reservado = aReceber.filter(i => PAGO_LIBERA.indexOf(chave(i.m['PAGO'])) >= 0).reduce((s, i) => s + valorHonorarios(i.m['HONORARIOS'], UFESP), 0);
   const prazosHoje = comPrazo.filter(i => diasAte(prazoDe(i.m)) === 0);
+  const pl = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 
   const hr = new Date().getHours();
-  let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(state.user) + '</h2><p>' + esc(fmtExtenso(hoje)) + '</p></div></div>';
+  const resumo = [agHoje.length ? pl(agHoje.length, 'perícia hoje', 'perícias hoje') : 'nenhuma perícia hoje', prox7.length ? pl(prox7.length, 'prazo nos próximos 7 dias', 'prazos nos próximos 7 dias') : 'nenhum prazo nos próximos 7 dias'];
+  let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(state.user) + '</h2><p>' + esc(fmtExtenso(hoje)) + ' · ' + esc(resumo.join(' e ')) + '</p></div></div>';
 
+  // indicadores do topo (sem valores em dinheiro: os totais ficam só no Financeiro)
+  const diasPrazo = [];
+  for (let i = 0; i < 7; i++) { const d = somaDias(hoje, i); diasPrazo.push({ n: comPrazo.filter(it => mesmoDia(prazoDe(it.m), d)).length, rot: i === 0 ? 'hoje' : DIAS_SEM[d.getDay()] + ' ' + fmtCurto(d), cls: i === 0 ? 'agora' : '' }); }
+  const semanas = porSemana(agenda.map(a => a.d), hoje, 6).map((w, i) => ({ n: w.n, rot: 'semana de ' + fmtCurto(w.ini), cls: i === 0 ? 'agora' : '' }));
+  const laudos = laudosPendentes(lista), laudosAtras = laudos.filter(x => x.dias != null && x.dias > 20);
+  const mleN = lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)').length;
+  const aguardPag = lista.filter(i => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(chave(i.m['PAGO'])) >= 0).length;
   h += '<section class="kpis">' +
-    '<button type="button" class="kpi" style="--k:var(--kpi-neutro)" data-acao="filtrar" data-quem=""><span class="rot">Processos ativos</span><span class="val">' + lista.length + '</span><span class="sub">' + perito.length + ' perito · ' + assist.length + ' assistente · ' + acomp.length + ' aguardando</span></button>' +
-    '<button type="button" class="kpi" style="--k:' + (vencidos.length ? 'var(--vencido)' : 'var(--alerta)') + '" data-acao="ir" data-view="calendario"><span class="rot">Prazos em 7 dias</span><span class="val">' + prox7.length + '</span><span class="sub">' + (vencidos.length ? '<b style="color:var(--vencido)">' + vencidos.length + ' vencido(s)</b>' : 'nenhum vencido') + '</span></button>' +
-    '<button type="button" class="kpi" style="--k:var(--pericia)" data-acao="ir" data-view="agenda"><span class="rot">Perícias em 14 dias</span><span class="val">' + ag14.length + '</span><span class="sub">' + (agHoje.length ? agHoje.length + ' hoje' : ag14.length ? 'próxima ' + fmtCurto(ag14[0].d) : 'nada agendado') + '</span></button>' +
+    '<button type="button" class="kpi" style="--k:var(--kpi-neutro)" data-acao="filtrar" data-quem=""><span class="ic-kpi">' + ic('processos') + '</span><span class="rot">Processos ativos</span><span class="val">' + lista.length + '</span>' +
+      '<div class="kpi-graf">' + segmentos([{ rot: 'Com o perito', val: perito.length, cor: 'var(--g-perito)' }, { rot: 'Com o assistente', val: assist.length, cor: 'var(--g-assist)' }, { rot: 'Aguardando Juízo ou pagamento', val: acomp.length, cor: 'var(--g-neutro)' }], { semLista: true, semFoco: true, titulo: 'Processos por responsável' }) +
+      '<div class="kpi-leg"><span><i style="background:var(--g-perito)"></i>' + perito.length + ' perito</span><span><i style="background:var(--g-assist)"></i>' + assist.length + ' assistente</span><span><i style="background:var(--g-neutro)"></i>' + acomp.length + ' aguardando</span></div></div></button>' +
+    '<button type="button" class="kpi" style="--k:' + (vencidos.length ? 'var(--vencido)' : 'var(--alerta)') + '" data-acao="ir" data-view="calendario"><span class="ic-kpi">' + ic('calendario') + '</span><span class="rot">Prazos em 7 dias</span><span class="val">' + prox7.length + '</span><span class="sub">' + (vencidos.length ? '<b style="color:var(--vencido)">' + pl(vencidos.length, 'vencido', 'vencidos') + '</b>' : 'nenhum vencido') + '</span>' + miniColunas(diasPrazo) + '</button>' +
+    '<button type="button" class="kpi" style="--k:var(--pericia)" data-acao="ir" data-view="agenda"><span class="ic-kpi">' + ic('agenda') + '</span><span class="rot">Perícias em 14 dias</span><span class="val">' + ag14.length + '</span><span class="sub">' + (agHoje.length ? agHoje.length + ' hoje' : ag14.length ? 'próxima ' + fmtCurto(ag14[0].d) : 'nada agendado') + ' · próximas 6 semanas</span>' + miniColunas(semanas) + '</button>' +
     (state.papel === 'perito'
-      ? '<button type="button" class="kpi" style="--k:var(--gold)" data-acao="ir" data-view="gestao"><span class="rot">A receber</span><span class="val">' + fmtBRLcurto(totalReceber) + '</span><span class="sub">' + fmtBRLcurto(reservado) + ' já reservado ou pedido</span></button>'
-      : '<button type="button" class="kpi" style="--k:var(--assist)" data-acao="ir" data-view="pagamentos"><span class="rot">MLE a peticionar</span><span class="val">' + lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)').length + '</span><span class="sub">' + lista.filter(i => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(chave(i.m['PAGO'])) >= 0).length + ' aguardando pagamento</span></button>') +
+      ? '<button type="button" class="kpi" style="--k:' + (laudosAtras.length ? 'var(--critico)' : 'var(--pericia)') + '" data-acao="filtrar" data-etapa="LAUDO"><span class="ic-kpi">' + ic('documentos') + '</span><span class="rot">Laudos a fazer</span><span class="val">' + laudos.length + '</span><span class="sub">' + (laudosAtras.length ? '<b style="color:var(--vencido)">' + laudosAtras.length + ' com perícia há mais de 20 dias</b>' : 'nenhum atrasado') + '</span></button>'
+      : '<button type="button" class="kpi" style="--k:var(--assist)" data-acao="ir" data-view="pagamentos"><span class="ic-kpi">' + ic('financeiro') + '</span><span class="rot">MLE a peticionar</span><span class="val">' + mleN + '</span><span class="sub">' + aguardPag + ' aguardando pagamento</span></button>') +
     '</section>';
 
-  h += '<div class="grid">';
+  h += '<div class="grid alto-livre">';
   // hoje
   h += '<section class="cartao c5"><h2>Hoje</h2>';
   if (!agHoje.length && !prazosHoje.length) h += '<p class="vazio">Sem perícias nem prazos para hoje.</p>';
@@ -956,8 +1077,7 @@ function renderPainel() {
   if (periciaPassada.length) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PERICIA"><span>🩺</span><span><b>' + periciaPassada.length + '</b> perícia(s) com data já passada e etapa ainda em PERÍCIA. Atualize para laudo ou não comparecimento.</span></button>');
   const aConfirmar = agenda.filter(a => diasAte(a.d) >= 0 && chave(a.status) !== 'OK');
   if (aConfirmar.length) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="agenda"><span>📅</span><span><b>' + aConfirmar.length + '</b> horário(s) da agenda ainda sem status OK.</span></button>');
-  const mle = lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)');
-  if (mle.length) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PAGAMENTO"><span>💰</span><span><b>' + mle.length + '</b> pagamento(s) liberado(s) aguardando o MLE.</span></button>');
+  if (mleN) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PAGAMENTO"><span>💰</span><span><b>' + mleN + '</b> pagamento(s) liberado(s) aguardando o MLE.</span></button>');
   const scP = situacaoConferencia(lista, state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE);
   if (scP.vencidos) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="tarefas"><span>🔎</span><span><b>' + scP.vencidos + '</b> processo(s) aguardando sem conferir nos autos há ' + CONFERIR_LIMITE + ' dias ou mais (ou nunca conferidos pelo app).</span></button>');
   const semPrazo = lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && !prazoDe(i.m)).length;
@@ -965,30 +1085,39 @@ function renderPainel() {
   h += alertas.length ? alertas.join('') : '<p class="vazio">Tudo em ordem.</p>';
   h += '</section></div>';
 
-  // funil por etapa
+  // fluxo por etapa (na ordem do trabalho)
   const etapas = ETAPAS.concat([{ k: 'OUTROS', rot: 'Outros' }, { k: 'SEM', rot: 'Sem etapa' }])
     .map(e => ({ e: e, n: lista.filter(i => etapaDe(i.m) === e.k).length })).filter(x => x.n);
-  h += '<section class="cartao c6"><h2>Processos por etapa</h2><p class="dica">Toque numa etapa para ver os processos</p>' +
-    barras(etapas.map(x => ({ rot: x.e.rot, val: x.n, attrs: 'data-acao="filtrar" data-etapa="' + x.e.k + '"' }))) + '</section>';
+  h += '<section class="cartao c7"><div class="cartao-topo"><h2>Fluxo dos processos</h2><button type="button" class="link" data-acao="ir" data-view="processos">Ver quadro</button></div><p class="cartao-sub">Quantos processos estão em cada etapa, na ordem do trabalho. Toque para ver a lista.</p>' +
+    barras(etapas.map(x => ({ rot: x.e.rot, val: x.n, dica: pl(x.n, 'processo', 'processos'), attrs: 'data-acao="filtrar" data-etapa="' + x.e.k + '"' }))) + '</section>';
 
-  // perícias por mês
+  // conferência nos autos
+  h += '<section class="cartao c5"><div class="cartao-topo"><h2>Conferência nos autos</h2><button type="button" class="link" data-acao="ir" data-view="tarefas">Abrir</button></div><p class="cartao-sub">Processos aguardando decisão, depósito ou pagamento (' + scP.total + '). Meta: conferir toda semana, sem passar de ' + CONFERIR_LIMITE + ' dias.</p>' +
+    segmentos([
+      { rot: '✓ Em dia', desc: 'conferidos nos últimos ' + CONFERIR_DIAS + ' dias', val: scP.recentes.length, cor: 'var(--g-bom)', attrs: 'data-acao="ir" data-view="tarefas"' },
+      { rot: '! Conferir esta semana', desc: 'de ' + CONFERIR_DIAS + ' a ' + (CONFERIR_LIMITE - 1) + ' dias sem conferir', val: scP.semana, cor: 'var(--g-aviso)', attrs: 'data-acao="ir" data-view="tarefas"' },
+      { rot: '× No limite', desc: CONFERIR_LIMITE + ' dias ou mais, ou nunca conferidos', val: scP.vencidos, cor: 'var(--g-critico)', attrs: 'data-acao="ir" data-view="tarefas"' }
+    ], { titulo: 'Conferência nos autos' }) + '</section>';
+
+  // perícias por mês: 6 meses para trás, o atual e 2 para frente
   const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1);
   const meses = porMes(itens('PERICIAS').concat(itens('CONCLUSOS')).map(i => i.m), ini, 9);
-  const maxM = Math.max(1, ...meses.map(x => x.n));
-  h += '<section class="cartao c6"><h2>Perícias por mês</h2><div class="colunas" role="img" aria-label="Perícias por mês">' + meses.map(x => {
-    const atual = x.ano === hoje.getFullYear() && x.mes === hoje.getMonth();
-    const futuro = new Date(x.ano, x.mes, 1) > hoje;
-    return '<div class="col' + (atual ? ' atual' : futuro ? ' futuro' : '') + '" title="' + MESES[x.mes] + ' de ' + x.ano + ': ' + x.n + ' perícia(s)"><div class="area"><span class="v">' + x.n + '</span><span class="b" style="height:' + (x.n / maxM * 100).toFixed(1) + '%"></span></div><span class="r">' + MESES[x.mes].slice(0, 3) + '</span></div>';
-  }).join('') + '</div><div class="legenda"><span><i style="background:var(--serie)"></i>realizadas</span><span><i style="background:var(--gold)"></i>mês atual</span><span><i style="background:var(--futuro)"></i>agendadas</span></div></section>';
+  const totPassado = meses.filter(x => new Date(x.ano, x.mes + 1, 1) <= hoje).reduce((s, x) => s + x.n, 0);
+  h += '<section class="cartao c7"><div class="cartao-topo"><h2>Perícias por mês</h2><span class="legenda" style="margin:0"><span><i style="background:var(--g-serie)"></i>realizadas</span><span><i style="background:var(--g-destaque)"></i>mês atual</span><span><i style="background:var(--g-futuro)"></i>agendadas</span></span></div>' +
+    '<p class="cartao-sub">' + totPassado + ' perícias nos últimos 6 meses (pela data da perícia na planilha, ativos e concluídos)</p>' +
+    colunas(meses.map(x => {
+      const atual = x.ano === hoje.getFullYear() && x.mes === hoje.getMonth();
+      const futuro = new Date(x.ano, x.mes, 1) > hoje;
+      return { rot: MESES[x.mes].slice(0, 3), val: x.n, cls: atual ? 'atual' : futuro ? 'futuro' : '', rotulo: atual, dica: pl(x.n, 'perícia', 'perícias'), dicaR: MESES[x.mes] + ' de ' + x.ano + (futuro ? ' (agendadas)' : atual ? ' (mês atual)' : '') };
+    }), { titulo: 'Perícias por mês', altura: 160 }) + '</section>';
 
   // por tipo
-  const tipos = {};
-  lista.forEach(i => { const t = (i.m['TIPO'] || 'Sem tipo').trim(); tipos[t] = (tipos[t] || 0) + 1; });
-  const topTipos = Object.keys(tipos).map(k => ({ rot: k, val: tipos[k] })).sort((a, b) => b.val - a.val);
-  const resto = topTipos.slice(6).reduce((s, x) => s + x.val, 0);
-  const tl = topTipos.slice(0, 6).map(x => ({ rot: x.rot, val: x.val, attrs: 'data-acao="filtrar" data-tipo="' + esc(x.rot) + '"' }));
-  if (resto) tl.push({ rot: 'Outros tipos', val: resto });
-  h += '<section class="cartao c6"><h2>Processos ativos por tipo</h2>' + barras(tl) + '</section>';
+  const tl = contarTop(lista, i => i.m['TIPO'] || 'Sem tipo', 6, 'Outros tipos').map(x => ({ rot: x.k, val: x.n, dica: pl(x.n, 'processo', 'processos'), attrs: x.outros ? '' : 'data-acao="filtrar" data-tipo="' + esc(x.k) + '"' }));
+  h += '<section class="cartao c5"><h2>Processos ativos por tipo</h2>' + barras(tl) + '</section>';
+
+  // por comarca
+  const cl = contarTop(lista, i => /NUCLEO/.test(chave(i.m['CIDADE'])) ? 'Núcleo 4.0 (acidentário)' : i.m['CIDADE'], 7, 'Outras comarcas').map(x => ({ rot: x.k, val: x.n, dica: pl(x.n, 'processo', 'processos') }));
+  h += '<section class="cartao c6"><h2>Processos ativos por comarca</h2>' + barras(cl) + '</section>';
 
   // atividade recente
   h += '<section class="cartao c6"><h2>Atividade recente no app</h2>';
@@ -1768,49 +1897,56 @@ function renderGestao() {
   const atrasados = laudos.filter(x => x.dias != null && x.dias > 20);
   const hoje = zeroHoje();
 
-  let h = '<div class="saudacao"><div><h2>Gestão</h2><p>Só o perfil perito vê esta página. O assistente vê apenas a tela Pagamentos, sem totais.</p></div>' +
+  const pl = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+  let h = '<div class="saudacao"><div><h2>Financeiro</h2><p>Só o perfil perito vê esta página. O assistente vê apenas a tela Pagamentos, sem totais.</p></div>' +
     '<div class="acoes"><button type="button" class="btn" data-acao="csv">Exportar honorários (CSV)</button><button type="button" class="btn icone" data-acao="gestao-atualizar" title="Atualizar" aria-label="Atualizar">' + ic('atualizar') + '</button></div></div>';
 
-  h += '<section class="kpis">' +
-    '<div class="kpi" style="--k:var(--gold);cursor:default"><span class="rot">A receber</span><span class="val">' + fmtBRLcurto(total) + '</span><span class="sub">' + pend.length + ' processos · ' + fmtBRLcurto(est[0].soma + est[1].soma) + ' pedido ou pronto para pedir</span></div>' +
-    '<div class="kpi" style="--k:var(--assist);cursor:default"><span class="rot">Recebido (concluídos)</span><span class="val">' + fmtBRLcurto(totRec) + '</span><span class="sub">' + recebidos.length + ' processos pagos na aba Concluídos</span></div>' +
-    '<div class="kpi" style="--k:var(--perito);cursor:default"><span class="rot">Valor médio</span><span class="val">' + fmtBRLcurto(media) + '</span><span class="sub">por processo ativo com honorários</span></div>' +
-    '<button type="button" class="kpi" style="--k:' + (atrasados.length ? 'var(--critico)' : 'var(--pericia)') + '" data-acao="filtrar" data-etapa="LAUDO"><span class="rot">Laudos pendentes</span><span class="val">' + laudos.length + '</span><span class="sub">' + (atrasados.length ? '<b style="color:var(--vencido)">' + atrasados.length + ' com perícia há mais de 20 dias</b>' : 'nenhum atrasado') + '</span></button></section>';
+  h += '<div class="grid alto-livre">';
+  // número principal e projeção por estágio
+  const semValor = pend.length - pend.filter(i => i.valor).length;
+  h += '<section class="cartao c8"><span class="hero-rot">A receber</span><span class="hero-num">' + fmtBRLcurto(total) + '</span>' +
+    '<p class="hero-sub">' + fmtBRL(total) + ' em ' + pl(pend.length, 'processo', 'processos') + ' · ' + fmtBRLcurto(est[0].soma + est[1].soma) + ' já pedido ou pronto para pedir</p>' +
+    segmentos(est.map(e => ({ rot: e.rot, desc: e.desc + ' · ' + pl(e.its.length, 'processo', 'processos'), val: e.soma, txt: fmtBRLcurto(e.soma), cor: e.cor, ativa: state.gFiltro === e.k, attrs: 'data-acao="g-filtro" data-k="' + e.k + '"' })), { titulo: 'Projeção de recebimento' }) +
+    '<p class="dica" style="margin:10px 0 0">Do mais perto de entrar no caixa ao mais distante. Toque num estágio para filtrar a tabela. UFESP a ' + fmtBRL(UFESP) + '; recebimento parcial conta pelo valor cheio.' + (semValor ? ' ' + pl(semValor, 'processo sem honorários informados fica', 'processos sem honorários informados ficam') + ' de fora das somas.' : '') + '</p></section>';
 
-  h += '<div class="grid">';
-  // projeção por estágio
-  h += '<section class="cartao c7"><h2>Projeção de recebimento</h2><p class="dica">Do mais perto de entrar no caixa ao mais distante. Toque para filtrar a tabela.</p>' +
-    barras(est.map(e => ({ rot: e.rot, val: e.soma, txt: fmtBRLcurto(e.soma), cor: e.cor, attrs: 'data-acao="g-filtro" data-k="' + e.k + '"' }))) +
-    '<div class="estagios">' + est.map(e => '<div><span class="ponto" style="background:' + e.cor + '"></span><b>' + esc(e.rot) + '</b> · ' + e.its.length + ' processo(s)<small>' + esc(e.desc) + '</small></div>').join('') + '</div>' +
-    '<p class="dica" style="margin:10px 0 0">UFESP a ' + fmtBRL(UFESP) + '. Recebimento parcial conta pelo valor cheio. ' + (pend.length - pend.filter(i => i.valor).length ? (pend.length - pend.filter(i => i.valor).length) + ' processo(s) sem honorários informados ficam de fora das somas.' : '') + '</p></section>';
-
-  // equipe
-  const g = state.gestao || {};
-  const abertasA = lista.filter(i => i.c.quem === 'assistente'), abertasP = lista.filter(i => i.c.quem === 'perito');
-  const venc = arr => arr.filter(i => prazoDe(i.m) && diasAte(prazoDe(i.m)) < 0).length;
-  h += '<section class="cartao c5"><h2>Equipe</h2>' +
-    '<div class="mini-kpis"><div><b>' + abertasA.length + '</b><span>tarefas do assistente' + (venc(abertasA) ? ' · <em>' + venc(abertasA) + ' vencida(s)</em>' : '') + '</span></div><div><b>' + abertasP.length + '</b><span>suas pendências' + (venc(abertasP) ? ' · <em>' + venc(abertasP) + ' vencida(s)</em>' : '') + '</span></div></div>';
-  if (g.carregando && !g.equipe) h += '<p class="vazio">Carregando atividade...</p>';
-  else if (g.erro) h += '<p class="vazio">' + esc(g.erro) + '</p>';
-  else if (g.equipe && g.equipe.length) {
-    h += '<table class="tabela compacta"><thead><tr><th>Usuário</th><th class="num">7 dias</th><th class="num">30 dias</th><th>Última ação</th></tr></thead><tbody>' +
-      g.equipe.map(u => '<tr style="cursor:default"><td><b>' + esc(u.usuario) + '</b> <span class="chip ' + (u.papel === 'perito' ? 'perito' : 'assistente') + '">' + (u.papel === 'perito' ? 'perito' : 'assistente') + '</span></td><td class="num">' + u.d7 + '</td><td class="num">' + u.d30 + '</td><td><small>' + esc(u.ultima ? fmtDataHora(u.ultima) + ' · ' + u.ultimaAcao : '') + '</small></td></tr>').join('') + '</tbody></table>';
-    if (g.acoes && g.acoes.length) h += '<p class="dica" style="margin:12px 0 6px">O que mais foi feito nos últimos 30 dias</p><div class="chips-linha">' + g.acoes.slice(0, 6).map(a => '<span class="chip">' + esc(a.acao) + ' · ' + a.n + '</span>').join('') + '</div>';
-    h += '<p class="dica" style="margin:10px 0 0">Conta só o que foi feito pelo app' + (g.desde ? ' (desde ' + esc(String(g.desde).slice(0, 10)) + ')' : '') + '. Edições feitas direto na planilha não entram.</p>';
-  } else h += '<p class="vazio">Ainda não há atividade registrada pelo app.</p>';
-  h += '</section>';
+  h += '<div class="c4 pilha">' +
+    '<div class="kpi" style="--k:var(--assist);cursor:default"><span class="ic-kpi">' + ic('financeiro') + '</span><span class="rot">Recebido (concluídos)</span><span class="val">' + fmtBRLcurto(totRec) + '</span><span class="sub">' + pl(recebidos.length, 'processo pago', 'processos pagos') + ' na aba Concluídos</span></div>' +
+    '<div class="kpi" style="--k:var(--perito);cursor:default"><span class="ic-kpi">' + ic('gestao') + '</span><span class="rot">Valor médio</span><span class="val">' + fmtBRLcurto(media) + '</span><span class="sub">por processo ativo com honorários</span></div>' +
+    '<button type="button" class="kpi" style="--k:' + (atrasados.length ? 'var(--critico)' : 'var(--pericia)') + '" data-acao="filtrar" data-etapa="LAUDO"><span class="ic-kpi">' + ic('documentos') + '</span><span class="rot">Laudos a fazer</span><span class="val">' + laudos.length + '</span><span class="sub">' + (atrasados.length ? '<b style="color:var(--vencido)">' + atrasados.length + ' com perícia há mais de 20 dias</b>' : 'nenhum atrasado') + '</span></button></div>';
 
   // valor por tipo e por comarca
   const porTipo = somarPor(pend, i => i.m['TIPO'], UFESP).filter(x => x.soma);
   const porCidade = somarPor(pend, i => /NUCLEO/.test(chave(i.m['CIDADE'])) ? 'Núcleo 4.0 (acidentário)' : i.m['CIDADE'], UFESP).filter(x => x.soma);
-  const linhaGrupo = x => ({ rot: x.k, val: x.soma, txt: fmtBRLcurto(x.soma) + ' · ' + x.n });
-  h += '<section class="cartao c6"><h2>A receber por tipo de perícia</h2><p class="dica">Total · quantidade de processos. Valor médio ao passar o mouse.</p>' +
-    barras(porTipo.slice(0, 8).map(x => Object.assign(linhaGrupo(x), { attrs: 'title="' + esc(x.k + ': média ' + fmtBRL(x.media) + ' por processo') + '"' }))) + '</section>';
-  h += '<section class="cartao c6"><h2>A receber por comarca</h2><p class="dica">Total · quantidade de processos</p>' +
-    barras(porCidade.slice(0, 8).map(x => Object.assign(linhaGrupo(x), { attrs: 'title="' + esc(x.k + ': média ' + fmtBRL(x.media) + ' por processo') + '"' }))) + '</section>';
+  const linhaGrupo = x => ({ rot: x.k, val: x.soma, txt: fmtBRLcurto(x.soma), dica: fmtBRL(x.soma) + ' · ' + pl(x.n, 'processo', 'processos') + ' · média ' + fmtBRLcurto(x.media) });
+  h += '<section class="cartao c6"><h2>A receber por tipo de perícia</h2><p class="cartao-sub">Ao passar o mouse: total, quantidade e valor médio por processo</p>' +
+    barras(porTipo.slice(0, 8).map(linhaGrupo)) + '</section>';
+  h += '<section class="cartao c6"><h2>A receber por comarca</h2><p class="cartao-sub">Ao passar o mouse: total, quantidade e valor médio por processo</p>' +
+    barras(porCidade.slice(0, 8).map(linhaGrupo)) + '</section>';
+
+  // equipe: atividade no app por semana
+  const g = state.gestao || {};
+  const abertasA = lista.filter(i => i.c.quem === 'assistente'), abertasP = lista.filter(i => i.c.quem === 'perito');
+  const venc = arr => arr.filter(i => prazoDe(i.m) && diasAte(prazoDe(i.m)) < 0).length;
+  h += '<section class="cartao c7"><h2>Equipe</h2>' +
+    '<div class="mini-kpis"><div><b>' + abertasA.length + '</b><span>tarefas do assistente' + (venc(abertasA) ? ' · <em>' + venc(abertasA) + ' vencida(s)</em>' : '') + '</span></div><div><b>' + abertasP.length + '</b><span>suas pendências' + (venc(abertasP) ? ' · <em>' + venc(abertasP) + ' vencida(s)</em>' : '') + '</span></div></div>';
+  if (g.carregando && !g.equipe) h += '<p class="vazio">Carregando atividade...</p>';
+  else if (g.erro) h += '<p class="vazio">' + esc(g.erro) + '</p>';
+  else if (g.equipe && g.equipe.length) {
+    if (g.semanas && g.semanas.length) {
+      let nAssist = 0;
+      const series = g.equipe.slice(0, 3).map(u => ({ k: u.usuario, rot: u.usuario, cor: u.papel === 'perito' ? 'var(--g-perito)' : (nAssist++ === 0 ? 'var(--g-assist)' : 'var(--g-neutro)') }));
+      h += '<div class="cartao-topo" style="margin:4px 0 0"><h2 style="font-size:.85rem">Ações no app por semana</h2><span class="legenda" style="margin:0">' + series.map(x => '<span><i style="background:' + x.cor + '"></i>' + esc(x.rot) + '</span>').join('') + '</span></div>' +
+        colunasPilha(g.semanas.map(w => { const f = new Date(w.fim); return { rot: fmtCurto(f), dicaR: 'semana até ' + fmtCurto(f), partes: w.porUsuario || {} }; }), series, { titulo: 'Ações no app por semana', altura: 120 });
+    }
+    h += '<table class="tabela compacta" style="margin-top:12px"><thead><tr><th>Usuário</th><th class="num">7 dias</th><th class="num">30 dias</th><th>Última ação</th></tr></thead><tbody>' +
+      g.equipe.map(u => '<tr style="cursor:default"><td><b>' + esc(u.usuario) + '</b> <span class="chip ' + (u.papel === 'perito' ? 'perito' : 'assistente') + '">' + (u.papel === 'perito' ? 'perito' : 'assistente') + '</span></td><td class="num">' + u.d7 + '</td><td class="num">' + u.d30 + '</td><td><small>' + esc(u.ultima ? fmtDataHora(u.ultima) + ' · ' + u.ultimaAcao : '') + '</small></td></tr>').join('') + '</tbody></table>';
+    if (g.acoes && g.acoes.length) h += '<p class="dica" style="margin:12px 0 6px">O que mais foi feito nos últimos 30 dias</p><div class="chips-linha">' + g.acoes.slice(0, 6).map(a => '<span class="chip">' + esc(a.acao) + ' · ' + a.n + '</span>').join('') + '</div>';
+    h += '<p class="dica" style="margin:10px 0 0">Conta só o que foi feito pelo app' + (g.desde ? ' (desde ' + esc(String(g.desde).slice(0, 10)) + ')' : '') + '. Edições feitas direto na planilha não entram.</p>';
+  } else h += '<p class="vazio">Ainda não há atividade registrada pelo app.</p>';
+  h += '</section><div class="c5 pilha">';
 
   // laudos pendentes
-  h += '<section class="cartao c6"><h2>Laudos pendentes</h2>' + (laudos.length ? '<div class="lista-linhas">' + laudos.map(x =>
+  h += '<section class="cartao"><h2>Laudos a fazer</h2>' + (laudos.length ? '<div class="lista-linhas">' + laudos.map(x =>
     '<button type="button" class="linha-item" data-acao="ficha" data-aba="PERICIAS" data-linha="' + x.it.linha + '"><span class="ponto ' + (x.dias == null ? 'acompanhar' : x.dias > 30 ? 'vencido' : x.dias > 20 ? 'alerta' : 'ok') + '"></span><span class="meio"><b>' + esc(x.it.m['REQUERENTE']) + '</b><small>' + esc(x.it.c.acao + ' · ' + (x.it.m['TIPO'] || formatarCNJ(x.it.m['PROCESSO']))) + '</small></span>' +
     '<span class="chip ' + (x.dias > 20 ? 'alerta' : '') + '">' + (x.dias == null ? esc(x.it.m['PERICIA'] || 'sem data') : 'perícia há ' + x.dias + ' dias') + '</span>' + chipPrazo(x.it.m, true) + '</button>').join('') + '</div>' : '<p class="vazio">Nenhum laudo pendente.</p>') + '</section>';
 
@@ -1830,7 +1966,7 @@ function renderGestao() {
     ['Sem honorários informados', String(lista.filter(i => !i.m['HONORARIOS']).length)],
     ['Tarefas sem prazo cadastrado', String(lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && !prazoDe(i.m)).length)]
   ];
-  h += '<section class="cartao c6"><h2>Indicadores</h2><dl class="indicadores">' + ind.map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl></section>';
+  h += '<section class="cartao"><h2>Indicadores</h2><dl class="indicadores">' + ind.map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl></section></div>';
 
   // tabela
   const filtro = state.gFiltro;

@@ -42,12 +42,13 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 
 ## O que o app faz
 
-- **Painel**: indicadores, perícias de hoje e próximas, prazos com semáforo, alertas, processos por etapa, perícias por mês, tipos e atividade recente.
+- **Painel**: indicadores do dia (processos ativos por responsável, prazos dos próximos 7 dias, perícias das próximas semanas, laudos a fazer ou MLE a peticionar), hoje e próximas perícias, prazos com semáforo, avisos e gráficos (fluxo por etapa, conferência nos autos, perícias por mês, processos por tipo e por comarca). O Painel não mostra valores em dinheiro; os totais ficam só no Financeiro.
 - **Processos**: lista com filtros ou **quadro por etapa** (arrastar o cartão muda o PRÓXIMO PASSO).
 - **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
 - **Calendário**: perícias e prazos do mês, com link para o Google Agenda.
 - **Agenda**: horários por dia e fila de processos para agendar. Agendar pelo app cria o horário em AGENDAMENTOS, atualiza o processo (data e etapa PERÍCIA) e pode avisar o #agenda.
-- **Gestão** (perito) ou **Pagamentos** (assistente): veja Perfis de acesso. UFESP configurável em `config.js`.
+- **Financeiro** (perito) ou **Pagamentos** (assistente): veja Perfis de acesso. UFESP configurável em `config.js`.
+- Nos gráficos, passe o mouse (ou toque, no celular) numa barra ou coluna para ver o número exato.
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
@@ -95,9 +96,9 @@ Escreva no modelo exatamente assim e o app troca pelo dado do processo ao gerar:
 
 ## Perfis de acesso
 
-- **Perito** (usuários listados em `APP_ADMINS` no topo do `AppPericias.gs`, hoje só `bruno`): vê a página **Gestão** com total a receber, projeção por estágio, recebidos, valor por tipo e por comarca, laudos pendentes, indicadores, atividade da equipe e exportação em CSV.
+- **Perito** (usuários listados em `APP_ADMINS` no topo do `AppPericias.gs`, hoje só `bruno`): vê a página **Financeiro** com o total a receber em destaque, a projeção por estágio (toque num estágio para filtrar a tabela), recebidos, valor médio, valor por tipo e por comarca, atividade da equipe por semana, laudos a fazer, indicadores e exportação em CSV.
 - **Assistente** (qualquer outro usuário): vê a página **Pagamentos**, só com o operacional (MLE a peticionar, aguardando pagamento, travados por falta de reserva, aguardando depósito). Vê os honorários de cada processo, como na planilha, mas nenhum total. O painel e as mensagens geradas para o Discord também não mostram somas.
-- A Gestão é bloqueada no servidor: mesmo digitando o endereço, o assistente não recebe os dados.
+- O Financeiro é bloqueado no servidor: mesmo digitando o endereço, o assistente não recebe os dados.
 - Para dar perfil de perito a outra pessoa, acrescente o usuário em `APP_ADMINS` e publique uma Nova versão.
 - Observação: se o assistente tiver acesso de edição à planilha, ele continua vendo a coluna HONORARIOS por lá.
 
