@@ -56,10 +56,11 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - Junta em um lugar só, por prazo (atrasadas, hoje, próximos 7 dias, mais adiante, sem prazo):
   - **tarefas do fluxo**: o que cada processo pede agora (aceite, agendar, peticionar, MLE, renúncia), com o botão do próximo passo;
   - **tarefas atribuídas**: criadas no app por qualquer usuário, para "assistentes" ou para alguém específico, com prazo e processo opcionais. Ficam na aba **TAREFAS** da planilha (criada sozinha) e podem avisar o #tarefas-assistente.
-- **Conferir nos autos**: processos aguardando decisão, depósito ou pagamento, para conferir no e-SAJ/eproc a cada 3 dias (o intervalo fica em `CONFERIR_DIAS` no `config.js`).
-  - Pendentes: nunca conferidos (vermelho, aparecem primeiro) ou conferidos há 3 dias ou mais (laranja), cada um com a data e quem fez a última conferência.
-  - "Sem novidade" registra a conferência no HISTORICO (data, hora e usuário). O processo passa para "Conferidos nos últimos 3 dias", com a data e quem conferiu, e volta para os pendentes quando completar 3 dias.
-  - Na ficha desses processos aparece a última conferência e o mesmo botão "Sem novidade".
+- **Conferir nos autos**: processos aguardando decisão, depósito ou pagamento. A meta é conferir no e-SAJ/eproc uma vez por semana e nunca passar de 15 dias (ajustável em `CONFERIR_DIAS` e `CONFERIR_LIMITE` no `config.js`).
+  - Conferido há menos de 7 dias: fica em "Conferidos nos últimos 7 dias", com a data, quem conferiu e até quando vale a conferência. Não precisa conferir de novo.
+  - De 7 a 14 dias: laranja, "esta semana", com quantos dias faltam para o limite.
+  - 15 dias ou mais, ou nunca conferido: vermelho, "no limite". Também aparece um aviso no Painel.
+  - "Sem novidade" registra a conferência no HISTORICO (data, hora e usuário). Na ficha desses processos aparece a última conferência e o mesmo botão.
   - Se algo mudou nos autos, não use "Sem novidade": abra o processo e atualize a etapa ou o pagamento.
 - O perito vê por padrão as tarefas do assistente (e pode trocar para "Minhas" ou "Todas"). O assistente vê as dele.
 - Só quem criou a tarefa, ou o perito, pode excluí-la.

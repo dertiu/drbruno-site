@@ -473,24 +473,36 @@ function grupoPrazo(d) {
   return n < 0 ? 'atrasadas' : n === 0 ? 'hoje' : n <= 7 ? 'semana' : 'depois';
 }
 // conferência nos autos dos processos que só aguardam (decisão, depósito, pagamento)
-// pendentes: nunca conferidos ou conferidos há "intervalo" dias ou mais; recentes: conferidos dentro do intervalo
-function situacaoConferencia(itens, verificados, intervalo) {
+// meta: conferir a cada "meta" dias (7); limite: nunca passar de "limite" dias (15)
+// nivel: 'ok' (conferido há menos que a meta), 'semana' (passou da meta), 'vencido' (chegou ao limite ou nunca conferido)
+function situacaoConferencia(itens, verificados, meta, limite) {
+  limite = limite || meta * 2;
+  const chaveData = v => String(v.quando).replace(/^(\d\d)\/(\d\d)\/(\d{4})/, '$3$2$1');
   const todos = itens.filter(it => it.c.quem === 'acompanhar').map(it => {
     const v = (verificados || {})[digitos(it.m['PROCESSO'])] || null;
     const d = v ? parseData(String(v.quando).slice(0, 10)) : null;
-    return { it: it, v: v, dias: d ? -diasAte(d) : null };
+    const dias = d ? -diasAte(d) : null;
+    return { it: it, v: v, d: d, dias: dias, nivel: dias == null || dias >= limite ? 'vencido' : dias >= meta ? 'semana' : 'ok' };
   });
-  const pendentes = todos.filter(x => x.dias == null || x.dias >= intervalo)
-    .sort((a, b) => (b.dias == null ? 9999 : b.dias) - (a.dias == null ? 9999 : a.dias)); // nunca conferidos primeiro
-  const recentes = todos.filter(x => x.dias != null && x.dias < intervalo)
-    .sort((a, b) => String(b.v.quando).replace(/^(\d\d)\/(\d\d)\/(\d{4})/, '$3$2$1').localeCompare(String(a.v.quando).replace(/^(\d\d)\/(\d\d)\/(\d{4})/, '$3$2$1')));
-  return { total: todos.length, pendentes: pendentes, recentes: recentes };
+  const pendentes = todos.filter(x => x.nivel !== 'ok')
+    .sort((a, b) => (b.dias == null ? 9999 : b.dias) - (a.dias == null ? 9999 : a.dias)); // nunca conferidos e mais antigos primeiro
+  const recentes = todos.filter(x => x.nivel === 'ok').sort((a, b) => chaveData(b.v).localeCompare(chaveData(a.v)));
+  return { total: todos.length, pendentes: pendentes, recentes: recentes, vencidos: pendentes.filter(x => x.nivel === 'vencido').length, semana: pendentes.filter(x => x.nivel === 'semana').length };
+}
+// texto do prazo de cada processo da conferência
+function prazoConferencia(x, meta, limite) {
+  if (!x.v) return 'nunca conferido pelo app';
+  const ha = 'há ' + x.dias + ' dia' + (x.dias === 1 ? '' : 's');
+  if (x.nivel === 'vencido') return ha + (x.dias === limite ? ', chegou ao limite de ' + limite : ', passou do limite de ' + limite);
+  if (x.nivel === 'semana') { const f = limite - x.dias; return ha + ' · limite ' + (f === 1 ? 'amanhã' : 'em ' + f + ' dias'); }
+  const prox = new Date(x.d.getTime()); prox.setDate(prox.getDate() + meta);
+  return 'próxima até ' + String(prox.getDate()).padStart(2, '0') + '/' + String(prox.getMonth() + 1).padStart(2, '0');
 }
 // "01/11/2026 15:24" + "daian" -> "01/11/2026 às 15:24 por daian"
 function txtConferencia(v) {
   if (!v) return 'Nunca conferido pelo app';
   const m = String(v.quando).match(/^(\d{1,2}\/\d{1,2}\/\d{4})(?:\s+(\d{1,2}:\d{2}))?/);
-  return (m ? m[1] + (m[2] ? ' às ' + m[2] : '') : String(v.quando)) + (v.por ? ' por ' + v.por : '');
+  return (m ? m[1] + (m[2] ? ' às ' + m[2] : '') : String(v.quando)) + (v.por ? ' por ' + v.por : '') + (v.tipo === 'atualizado' ? ' (processo atualizado)' : '');
 }
 
 // escopo: 'assistente' (tudo do assistente), 'minhas' (do usuário logado) ou 'todas'
@@ -556,7 +568,7 @@ function processosPeloNome(nome, itens) {
 
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
-    principalAcao, grupoPrazo, montarTarefas, situacaoConferencia, txtConferencia, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
+    principalAcao, grupoPrazo, montarTarefas, situacaoConferencia, prazoConferencia, txtConferencia, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
     estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
@@ -572,7 +584,8 @@ if (typeof document === 'undefined') {
 const CFG = window.PERICIAS_CONFIG || {};
 const API = CFG.API || '';
 const UFESP = Number(CFG.UFESP) || 0;
-const CONFERIR_DIAS = Math.max(1, Math.round(Number(CFG.CONFERIR_DIAS) || 3)); // conferir nos autos a cada N dias
+const CONFERIR_DIAS = Math.max(1, Math.round(Number(CFG.CONFERIR_DIAS) || 7)); // meta: conferir nos autos a cada N dias
+const CONFERIR_LIMITE = Math.max(CONFERIR_DIAS + 1, Math.round(Number(CFG.CONFERIR_LIMITE) || 15)); // nunca passar de N dias sem conferir
 const $ = s => document.querySelector(s);
 const ABAS_PLANILHA = ['PERICIAS', 'CONCLUSOS', 'RENUNCIAS'];
 const TITULO_ABA = { PERICIAS: 'Perícias', CONCLUSOS: 'Concluídos', RENUNCIAS: 'Renúncias' };
@@ -925,6 +938,8 @@ function renderPainel() {
   if (aConfirmar.length) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="agenda"><span>📅</span><span><b>' + aConfirmar.length + '</b> horário(s) da agenda ainda sem status OK.</span></button>');
   const mle = lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)');
   if (mle.length) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PAGAMENTO"><span>💰</span><span><b>' + mle.length + '</b> pagamento(s) liberado(s) aguardando o MLE.</span></button>');
+  const scP = situacaoConferencia(lista, state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE);
+  if (scP.vencidos) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="tarefas"><span>🔎</span><span><b>' + scP.vencidos + '</b> processo(s) aguardando sem conferir nos autos há ' + CONFERIR_LIMITE + ' dias ou mais (ou nunca conferidos pelo app).</span></button>');
   const semPrazo = lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && !prazoDe(i.m)).length;
   if (semPrazo) alertas.push('<button type="button" class="alerta-box azul" data-acao="ir" data-view="processos"><span>🗓️</span><span><b>' + semPrazo + '</b> tarefa(s) do perito ou do assistente sem prazo cadastrado.</span></button>');
   h += alertas.length ? alertas.join('') : '<p class="vazio">Tudo em ordem.</p>';
@@ -1129,8 +1144,8 @@ function renderFicha() {
     h += '<div class="prox"><span class="ponto ' + (c.quem || 'ok') + '" style="width:12px;height:12px"></span><div class="meio"><small>Próxima ação' + (c.quem ? ' · ' + QUEM_ROT[c.quem] : '') + '</small><b>' + esc(c.acao || 'Nenhuma pendência') + '</b>' +
       (m['OBSERVACAO'] ? '<div style="font-size:.85rem;color:var(--texto2);margin-top:2px">' + esc(m['OBSERVACAO']) + '</div>' : '') + '</div>' + chipPrazo(m) + '</div>';
     if (c.quem === 'acompanhar') {
-      const v = state.verificados[digitos(proc)];
-      h += '<div class="conf-ficha"><span>🔎 ' + esc(v ? 'Última conferência nos autos: ' + txtConferencia(v) : 'Ainda não conferido nos autos pelo app') + '</span>' +
+      const sc = situacaoConferencia([it], state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE), x = sc.pendentes[0] || sc.recentes[0];
+      h += '<div class="conf-ficha ' + x.nivel + '"><span>🔎 ' + esc(x.v ? 'Última conferência nos autos: ' + txtConferencia(x.v) + ' (' + prazoConferencia(x, CONFERIR_DIAS, CONFERIR_LIMITE) + ')' : 'Ainda não conferido nos autos pelo app') + '</span>' +
         '<button type="button" class="btn pequeno" data-acao="ficha-verificado" data-proc="' + esc(proc) + '" title="Conferi nos autos e não mudou nada">✓ Sem novidade</button></div>';
     }
     if (semReserva(m)) h += '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>Honorários ainda não reservados: não agendar nem realizar a perícia antes do depósito.</span></div>';
@@ -1871,22 +1886,24 @@ function renderTarefas() {
   // conferência nos autos (processos que só dependem do Juízo ou de pagamento)
   const mostraConf = escopo !== 'minhas' || !perito;
   if (mostraConf) {
-    const sc = situacaoConferencia(lista, state.verificados, CONFERIR_DIAS);
+    const sc = situacaoConferencia(lista, state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE);
     const pend = state.verTodasConf ? sc.pendentes : sc.pendentes.slice(0, 12);
     const rec = state.verConfRecentes ? sc.recentes : sc.recentes.slice(0, 5);
-    const ultima = x => x.v ? 'Última conferência: ' + txtConferencia(x.v) : 'Nunca conferido pelo app';
-    h += '<section class="cartao"><h2>Conferir nos autos <span class="chip ' + (sc.pendentes.length ? 'alerta' : 'ok') + '">' + sc.pendentes.length + ' de ' + sc.total + '</span></h2>' +
-      '<p class="dica">Processos aguardando decisão, depósito ou pagamento. Confira no e-SAJ/eproc a cada ' + CONFERIR_DIAS + ' dias; se mudou algo, abra o processo e atualize.</p>' +
-      (pend.length ? '<div class="lista-linhas">' + pend.map(x => '<div class="linha-item conf"><span class="ponto ' + (x.dias == null ? 'critico' : 'alerta') + '"></span>' +
+    const resumo = (sc.vencidos ? '<span class="chip critico" title="Nunca conferidos ou ' + CONFERIR_LIMITE + ' dias ou mais sem conferir">' + sc.vencidos + ' no limite</span>' : '') +
+      (sc.semana ? '<span class="chip alerta" title="Passaram de ' + CONFERIR_DIAS + ' dias">' + sc.semana + ' esta semana</span>' : '') +
+      (!sc.pendentes.length ? '<span class="chip ok">em dia</span>' : '');
+    h += '<section class="cartao"><h2><span>Conferir nos autos</span><span class="chips-linha">' + resumo + '</span></h2>' +
+      '<p class="dica">Processos aguardando decisão, depósito ou pagamento (' + sc.total + '). Confira no e-SAJ/eproc uma vez por semana e nunca deixe passar de ' + CONFERIR_LIMITE + ' dias. Se mudou algo, abra o processo e atualize.</p>' +
+      (pend.length ? '<div class="lista-linhas">' + pend.map(x => '<div class="linha-item conf"><span class="ponto ' + (x.nivel === 'vencido' ? 'critico' : 'alerta') + '"></span>' +
         '<button type="button" class="meio link-sem" data-acao="ficha" data-aba="PERICIAS" data-linha="' + x.it.linha + '"><b>' + esc(x.it.m['REQUERENTE']) + '</b><small>' + esc(x.it.c.acao) + '</small>' +
-        '<small class="ult-conf' + (x.v ? '' : ' nunca') + '">' + esc(ultima(x)) + (x.v ? ' (há ' + x.dias + ' dia' + (x.dias === 1 ? '' : 's') + ')' : '') + '</small></button>' +
+        '<small class="ult-conf ' + x.nivel + '">' + esc((x.v ? 'Conferido em ' + txtConferencia(x.v) + ' · ' : '') + prazoConferencia(x, CONFERIR_DIAS, CONFERIR_LIMITE)).replace(/^nunca/, 'Nunca') + '</small></button>' +
         '<button type="button" class="btn pequeno" data-acao="t-verificado" data-proc="' + esc(x.it.m['PROCESSO']) + '" title="Conferi e não mudou nada">✓ Sem novidade</button></div>').join('') + '</div>'
-        : '<p class="vazio">✅ Tudo conferido nos últimos ' + CONFERIR_DIAS + ' dias.</p>') +
+        : '<p class="vazio">✅ Todos conferidos nos últimos ' + CONFERIR_DIAS + ' dias.</p>') +
       (sc.pendentes.length > 12 ? '<button type="button" class="link" data-acao="t-conf-todos" style="margin-top:8px">' + (state.verTodasConf ? 'Mostrar só os 12 primeiros' : 'Ver todos os pendentes (' + sc.pendentes.length + ')') + '</button>' : '');
     if (sc.recentes.length) {
       h += '<h3 class="sub">Conferidos nos últimos ' + CONFERIR_DIAS + ' dias (' + sc.recentes.length + ')</h3><div class="lista-linhas">' + rec.map(x =>
         '<button type="button" class="linha-item conf feito" data-acao="ficha" data-aba="PERICIAS" data-linha="' + x.it.linha + '"><span class="ponto ok"></span><span class="meio"><b>' + esc(x.it.m['REQUERENTE']) + '</b>' +
-        '<small class="ult-conf">✓ ' + esc(txtConferencia(x.v)) + '</small></span></button>').join('') + '</div>' +
+        '<small class="ult-conf">✓ ' + esc(txtConferencia(x.v) + ' · ' + prazoConferencia(x, CONFERIR_DIAS, CONFERIR_LIMITE)) + '</small></span></button>').join('') + '</div>' +
         (sc.recentes.length > 5 ? '<button type="button" class="link" data-acao="t-conf-recentes" style="margin-top:8px">' + (state.verConfRecentes ? 'Mostrar menos' : 'Ver todos os conferidos (' + sc.recentes.length + ')') + '</button>' : '');
     }
     h += '</section>';
