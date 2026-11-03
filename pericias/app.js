@@ -153,13 +153,18 @@ function prazoDe(m) { return parseData(m['PRAZOS'] || m['PRAZO']); }
 function nivelPrazo(n) { return n < 0 ? 'vencido' : n <= 2 ? 'critico' : n <= 5 ? 'alerta' : n <= 10 ? 'atencao' : 'ok'; }
 
 // atalhos do fluxo: cada um diz exatamente quais colunas mudam (chaves normalizadas)
-function acoesRapidas(m) {
+// ctx.slot: horário da agenda já reservado para o periciado (status AGENDAR enquanto falta peticionar)
+function acoesRapidas(m, ctx) {
   const e = etapaDe(m), pago = chave(m['PAGO']), obs = chave(m['OBSERVACAO']);
+  const slot = ctx && ctx.slot;
   const c = classificar(m);
   const A = [];
   if (e === 'ACEITE') A.push({ id: 'aceite', rot: 'Aceite peticionado', dados: { 'STATUS': 'ACEITE', 'PROXIMO PASSO': PAGO_LIBERA.indexOf(pago) >= 0 ? 'AGENDAMENTO' : 'RESERVA' } });
   if (e === 'RESERVA' || (e === 'AGENDAMENTO' && PAGO_LIBERA.indexOf(pago) < 0)) A.push({ id: 'reserva', rot: 'Honorários reservados', dados: { 'PAGO': 'RESERVADO', 'PROXIMO PASSO': 'AGENDAMENTO' } });
-  if (e === 'AGENDAMENTO') A.push({ id: 'agendar', rot: 'Agendar perícia', especial: 'agendar', destaque: true });
+  if (e === 'AGENDAMENTO' && slot) {
+    A.push({ id: 'confirmar-ag', rot: 'Agendamento peticionado', especial: 'confirmar-ag', destaque: true });
+    A.push({ id: 'agendar', rot: 'Trocar horário', especial: 'agendar' });
+  } else if (e === 'AGENDAMENTO') A.push({ id: 'agendar', rot: 'Agendar perícia', especial: 'agendar', destaque: true });
   if (e === 'PERICIA') {
     A.push({ id: 'realizada', rot: 'Perícia realizada', dados: { 'PROXIMO PASSO': 'LAUDO', 'LAUDO': 'PRODUÇÃO' }, destaque: true });
     A.push({ id: 'faltou', rot: 'Não compareceu', dados: { 'PROXIMO PASSO': 'DECISÃO', 'OBSERVACAO': 'NÃO COMPARECEU' } });
@@ -495,7 +500,32 @@ function gerarCSV(linhas) {
 }
 
 // ---------- tarefas ----------
-function principalAcao(m) { const a = acoesRapidas(m); return a.find(x => x.destaque) || a[0] || null; }
+function principalAcao(m, ctx) { const a = acoesRapidas(m, ctx); return a.find(x => x.destaque) || a[0] || null; }
+
+// ---------- agenda: horário reservado do processo e horários livres ----------
+// horário de hoje em diante com o nome do periciado (o que ainda não está OK vem primeiro)
+function slotDoProcesso(m, agenda) {
+  const nomes = [periciadoDe(m), m['REQUERENTE'], m['REQUERIDA']].map(chave).filter(n => n.split(' ').length >= 2);
+  if (!nomes.length) return null;
+  const casa = n => { n = chave(n); return n && nomes.some(x => x === n || (n.split(' ').length >= 2 && x.indexOf(n + ' ') === 0)); };
+  const c = (agenda || []).filter(a => casa(a.nome)).map(a => Object.assign({ d: parseData(a.data) }, a))
+    .filter(a => a.d && diasAte(a.d) >= 0).sort((a, b) => a.d - b.d || String(a.hora).localeCompare(String(b.hora)));
+  return c.find(a => chave(a.status) !== 'OK') || null;
+}
+// horas de "ini" a "fim" (inclusive) a cada "passo" minutos
+function horariosIntervalo(ini, fim, passo) {
+  const min = h => { const m = String(h || '').match(/^(\d{1,2}):(\d{2})$/); return m ? +m[1] * 60 + +m[2] : null; };
+  const a = min(ini), b = min(fim), p = Math.round(Number(passo));
+  if (a == null || b == null || !(p >= 5) || b < a) return [];
+  const out = [];
+  for (let t = a; t <= b && out.length < 60; t += p) out.push(pad2(Math.floor(t / 60)) + ':' + pad2(t % 60));
+  return out;
+}
+// horários livres de hoje em diante, em ordem
+function livresFuturos(livres) {
+  return (livres || []).map(a => Object.assign({ d: parseData(a.data) }, a)).filter(a => a.d && diasAte(a.d) >= 0)
+    .sort((a, b) => a.d - b.d || String(a.hora).localeCompare(String(b.hora)));
+}
 function grupoPrazo(d) {
   if (!d) return 'sem';
   const n = diasAte(d);
@@ -597,7 +627,7 @@ function processosPeloNome(nome, itens) {
 
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
-    principalAcao, grupoPrazo, montarTarefas, situacaoConferencia, prazoConferencia, txtConferencia, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
+    principalAcao, slotDoProcesso, horariosIntervalo, livresFuturos, grupoPrazo, montarTarefas, situacaoConferencia, prazoConferencia, txtConferencia, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
     estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
@@ -681,6 +711,7 @@ const state = {
   view: 'painel',
   dados: {},
   agenda: [],
+  livres: [],
   atividade: [],
   canais: [],
   hora: '',
@@ -731,7 +762,7 @@ function mostrarApp() { $('#tela-login').hidden = true; $('#tela-app').hidden = 
 
 function sair(avisarServidor) {
   if (avisarServidor && state.token) api('logout').catch(() => {});
-  state.token = ''; state.dados = {}; state.agenda = []; state.papel = 'assistente'; state.gestao = null; state.docs = {};
+  state.token = ''; state.dados = {}; state.agenda = []; state.livres = []; state.papel = 'assistente'; state.gestao = null; state.docs = {};
   apagar('pericias_token');
   fecharFicha();
   mostrarLogin();
@@ -771,6 +802,7 @@ async function recarregar(silencioso) {
       state.papel = j.papel || 'assistente';
       ABAS_PLANILHA.forEach(a => { if (j.abas && j.abas[a]) state.dados[a] = j.abas[a]; });
       state.agenda = j.agenda || [];
+      state.livres = j.livres || [];
       state.atividade = j.atividade || [];
       state.canais = j.canais || [];
       state.tarefas = j.tarefas || [];
@@ -780,6 +812,7 @@ async function recarregar(silencioso) {
       $('#nav-user').textContent = state.user;
       $('#sync').textContent = state.hora ? 'Atualizado às ' + state.hora : '';
       render();
+      atualizarFichaAberta();
     } catch (e) {
       $('#sync').textContent = '';
       toast(e.message, { erro: true });
@@ -808,6 +841,10 @@ function cabDe(aba, norm) {
   if (norm === 'PRAZOS') return d.cabecalho.find(x => chave(x) === 'PRAZO') || null;
   return null;
 }
+function slotDe(it) { return it && it.aba === 'PERICIAS' ? slotDoProcesso(it.m, state.agenda) : null; }
+function acoesDe(it) { return acoesRapidas(it.m, { slot: slotDe(it) }); }
+function hn(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})$/); return m ? pad2(+m[1]) + ':' + m[2] : String(h || '').trim(); }
+function txtSlot(sl) { const d = parseData(sl.data); return (d ? DIAS_SEM[d.getDay()] + ' ' + fmtCurto(d) : sl.data) + ' às ' + sl.hora; }
 function processoDoSlot(a) {
   const n = chave(a.nome);
   return ativos().find(it => chave(it.m['REQUERENTE']) === n || chave(it.m['REQUERIDA']) === n);
@@ -1076,7 +1113,7 @@ function renderPainel() {
   const periciaPassada = lista.filter(i => etapaDe(i.m) === 'PERICIA' && parseData(i.m['PERICIA']) && diasAte(parseData(i.m['PERICIA'])) < 0);
   if (periciaPassada.length) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PERICIA"><span>🩺</span><span><b>' + periciaPassada.length + '</b> perícia(s) com data já passada e etapa ainda em PERÍCIA. Atualize para laudo ou não comparecimento.</span></button>');
   const aConfirmar = agenda.filter(a => diasAte(a.d) >= 0 && chave(a.status) !== 'OK');
-  if (aConfirmar.length) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="agenda"><span>📅</span><span><b>' + aConfirmar.length + '</b> horário(s) da agenda ainda sem status OK.</span></button>');
+  if (aConfirmar.length) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="agenda"><span>📅</span><span><b>' + aConfirmar.length + '</b> horário(s) reservado(s) ainda sem status OK: falta peticionar o agendamento e confirmar.</span></button>');
   if (mleN) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PAGAMENTO"><span>💰</span><span><b>' + mleN + '</b> pagamento(s) liberado(s) aguardando o MLE.</span></button>');
   const scP = situacaoConferencia(lista, state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE);
   if (scP.vencidos) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="tarefas"><span>🔎</span><span><b>' + scP.vencidos + '</b> processo(s) aguardando sem conferir nos autos há ' + CONFERIR_LIMITE + ' dias ou mais (ou nunca conferidos pelo app).</span></button>');
@@ -1298,13 +1335,23 @@ function renderFicha() {
         '<button type="button" class="btn pequeno" data-acao="ficha-verificado" data-proc="' + esc(proc) + '" title="Conferi nos autos e não mudou nada">✓ Sem novidade</button></div>';
     }
     if (semReserva(m)) h += '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>Honorários ainda não reservados: não agendar nem realizar a perícia antes do depósito.</span></div>';
+    if (etapaDe(m) === 'AGENDAMENTO') {
+      const sl = slotDe(it);
+      if (sl) h += '<div class="ag-ficha reservado"><div class="meio"><b>📅 Horário reservado: ' + esc(fmtExtenso(parseData(sl.data))) + ' às ' + esc(sl.hora) + '</b><small>' + esc([sl.local, 'status ' + (sl.status || 'sem status') + ' na aba AGENDAMENTOS'].filter(Boolean).join(' · ')) + '. Gere a petição de agendamento, protocole e depois toque em "Agendamento peticionado".</small></div>' +
+        '<button type="button" class="btn pequeno" data-acao="doc-gerar">' + ic('documentos') + 'Gerar petição</button></div>';
+      else {
+        const lv = livresFuturos(state.livres).slice(0, 4);
+        h += '<div class="ag-ficha"><div class="meio"><b>📅 Ainda sem horário na agenda</b><small>' + (lv.length ? 'Próximos horários livres (toque para reservar):' : 'Nenhum horário livre cadastrado. Cadastre em Agenda > Horários livres ou use "Agendar perícia".') + '</small>' +
+          (lv.length ? '<div class="chips-linha" style="margin-top:6px">' + lv.map(x => '<button type="button" class="filtro-chip" data-acao="ficha-agendar" data-livre="' + x.linha + '">' + esc(txtSlot(x)) + '</button>').join('') + '</div>' : '') + '</div></div>';
+      }
+    }
   }
 
   h += '<div class="subabas" role="tablist">' + [['acoes', 'Ações'], ['dados', 'Dados'], ['hist', 'Histórico']].map(([k, r]) => '<button type="button" role="tab" data-acao="ficha-aba" data-k="' + k + '" class="' + (f.aba2 === k ? 'ativa' : '') + '" aria-selected="' + (f.aba2 === k) + '">' + r + '</button>').join('') + '</div>';
 
   if (f.aba2 === 'acoes') {
     if (f.aba === 'PERICIAS') {
-      const acs = acoesRapidas(m);
+      const acs = acoesDe(it);
       h += acs.length ? '<div class="acoes">' + acs.map(a => '<button type="button" class="btn' + (a.destaque ? ' primario' : '') + '" data-acao="rapida" data-id="' + a.id + '">' + esc(a.rot) + '</button>').join('') + '</div>' : '';
       h += '<div class="sug-doc" id="sug-doc"></div>';
       h += '<div class="campo" style="margin-top:14px;max-width:320px"><label for="f-etapa-mudar">Mudar etapa (próximo passo)</label><select id="f-etapa-mudar"><option value="">Escolha...</option>' + ETAPAS.map(e => '<option value="' + e.k + '"' + (etapaDe(m) === e.k ? ' disabled' : '') + '>' + e.rot + '</option>').join('') + '</select></div>';
@@ -1516,11 +1563,45 @@ function pedirConfirmacao(it, titulo, dadosNorm, motivo) {
   renderFicha();
 }
 
+function avisarAgendaDiscord(sl, it) {
+  const d = parseData(sl.data);
+  api('discordEnviar', { canal: 'AGENDA', titulo: '📅 Perícia agendada', texto: 'Data: ' + fmtExtenso(d) + ' (' + sl.data + ') às ' + sl.hora + '\nPericiando: ' + nomeCurto(sl.nome) + '\nTipo: ' + (sl.tipo || '') + '\nLocal: ' + (sl.local || ''), processo: it ? it.m['PROCESSO'] : '' })
+    .then(r => { if (!r.ok) toast('Agendado, mas o Discord recusou: ' + (r.erro || ''), { erro: true }); })
+    .catch(e => toast('Agendado, mas não consegui avisar o Discord: ' + e.message, { erro: true }));
+}
+function pedirConfirmacaoAgenda(it) {
+  const sl = slotDe(it);
+  if (!sl) { toast('Não achei o horário reservado na agenda. Atualize a tela.', { erro: true }); return; }
+  const temAgenda = state.canais.some(c => c.k === 'AGENDA');
+  state.ficha.aba2 = 'acoes';
+  state.ficha.confirma = { titulo: 'Agendamento peticionado', linhas: [
+    'Na aba AGENDAMENTOS, o horário de <b>' + esc(txtSlot(sl)) + '</b> passa de ' + esc(sl.status || 'sem status') + ' para <b>OK</b>.',
+    'O processo passa para a etapa <b>PERÍCIA</b>, com a data ' + esc(sl.data) + '.'
+  ].concat(temAgenda ? ['<label class="check"><input type="checkbox" id="cf-discord" checked> Avisar no #agenda do Discord</label>'] : []),
+    fn: () => confirmarAgendamento(it, sl, !!($('#cf-discord') && $('#cf-discord').checked)) };
+  renderFicha();
+}
+async function confirmarAgendamento(it, sl, avisar) {
+  const dp = {}, hP = cabDe('PERICIAS', 'PERICIA'), hPasso = cabDe('PERICIAS', 'PROXIMO PASSO');
+  if (hP) dp[hP] = sl.data;
+  if (hPasso) dp[hPasso] = 'PERICIA';
+  try {
+    const j = await api('agendaConfirmar', { linhaSlot: sl.linha, nomeEsperado: sl.nome, aba: 'PERICIAS', linha: it.linha, processoEsperado: it.m['PROCESSO'], dadosProcesso: dp });
+    if (!j.ok) throw new Error(erroApi(j, 'Erro ao confirmar o agendamento'));
+    toast('Agendamento confirmado: ' + txtSlot(sl));
+    if (avisar) avisarAgendaDiscord(sl, it);
+    await recarregar(true);
+    if (state.ficha) renderFicha();
+    return true;
+  } catch (e) { toast(e.message, { erro: true }); if (state.ficha) renderFicha(); return false; }
+}
+
 function acaoRapida(id) {
   const it = acharItem(state.ficha.aba, state.ficha.linha);
-  const a = acoesRapidas(it.m).find(x => x.id === id);
+  const a = acoesDe(it).find(x => x.id === id);
   if (!a) return;
   if (a.especial === 'agendar') { abrirSlot(null, '', { vincular: it }); return; }
+  if (a.especial === 'confirmar-ag') { pedirConfirmacaoAgenda(it); return; }
   if (a.mover) {
     state.ficha.confirma = { titulo: a.rot, linhas: ['O processo sai de Perícias e vai para <b>' + TITULO_ABA[a.mover] + '</b>.'], fn: () => mover('PERICIAS', it, a.mover, a.mover === 'RENUNCIAS' ? { 'STATUS': 'RENUNCIA', 'PROXIMO PASSO': 'RENUNCIEI' } : {}) };
     renderFicha();
@@ -1664,25 +1745,31 @@ async function mostrarCadastrado(linha, proc, m, pastaPronta, recarga, criando) 
     else if (r.ok && r.pasta) el.innerHTML = 'Pasta no Drive: <b>' + esc(r.pasta.caminho) + '</b>';
     else el.textContent = 'A pasta não foi criada: ' + erroApi(r, 'erro no Drive') + '. Tente pela ficha do processo.';
   });
-  const ok = await garantirModelos(true);
-  const box = $('#cad-docs');
+  painelDocsSugeridos($('#cad-docs'), { linha: linha, proc: proc, m: m }, 'Documentos sugeridos para começar', pastaPronta);
+}
+
+// lista de modelos sugeridos com botão Gerar (usado depois do cadastro e depois de reservar um horário)
+async function painelDocsSugeridos(box, ref, titulo, antes) {
   if (!box) return;
-  const sug = ok ? sugerirModelos(state.modelos, m) : [];
+  box.innerHTML = '<p class="vazio">Procurando modelos para esta etapa...</p>';
+  const ok = await garantirModelos(true);
+  if (!box.isConnected) return;
+  const sug = ok ? sugerirModelos(state.modelos, ref.m) : [];
   if (!sug.length) {
-    box.innerHTML = ok ? '<p class="vazio">Nenhum modelo configurado para a etapa ' + esc(rotEtapa(etapaDe(m))) + '. Dá para definir isso em Documentos > Modelos.</p>' : '';
+    box.innerHTML = ok ? '<p class="vazio">Nenhum modelo configurado para a etapa ' + esc(rotEtapa(etapaDe(ref.m))) + '. Dá para definir isso em Documentos > Modelos.</p>' : '';
     return;
   }
-  box.innerHTML = '<h3 class="sub">Documentos sugeridos para começar</h3><div class="arquivos">' + sug.map(md =>
+  box.innerHTML = '<h3 class="sub">' + esc(titulo) + '</h3><div class="arquivos">' + sug.map(md =>
     '<div class="arq" style="cursor:default"><span class="tipo-arq doc">DOCS</span><span class="meio"><b class="quebra">' + esc(nomeModeloCurto(md.nome)) + '</b><small data-cad-info>' + esc((md.cfg && md.cfg.desc) || 'Gera na pasta do periciado, já preenchido') + '</small></span>' +
     '<span class="acoes-md"><button type="button" class="btn pequeno primario" data-cad-gerar="' + esc(md.id) + '">Gerar</button></span></div>').join('') + '</div>';
   box.querySelectorAll('[data-cad-gerar]').forEach(b => { b.onclick = async () => {
     const linhaEl = b.closest('.arq'), alvo = b.parentNode;
     b.disabled = true; b.textContent = 'Gerando...';
     try {
-      await pastaPronta;
-      const r = await api('gerarDoc', { aba: 'PERICIAS', linha: linha, processoEsperado: proc, modeloId: b.dataset.cadGerar, criarPasta: true });
+      if (antes) await antes;
+      const r = await api('gerarDoc', { aba: 'PERICIAS', linha: ref.linha, processoEsperado: ref.proc, modeloId: b.dataset.cadGerar, criarPasta: true });
       if (!r.ok) throw new Error(erroApi(r, 'Erro ao gerar'));
-      delete state.docs[digitos(proc)];
+      delete state.docs[digitos(ref.proc)];
       linhaEl.querySelector('[data-cad-info]').textContent = r.conferir && r.conferir.length ? 'Gerado. Conferir: ' + r.conferir.join(', ') : 'Gerado e preenchido';
       alvo.innerHTML = '<a class="btn pequeno primario" href="' + esc(r.doc.url) + '" target="_blank" rel="noopener">Abrir</a><a class="btn pequeno" href="' + esc(linkPdf(r.doc.id)) + '" target="_blank" rel="noopener">PDF</a>';
     } catch (e) { b.disabled = false; b.textContent = 'Tentar de novo'; toast(e.message, { erro: true }); }
@@ -1724,7 +1811,9 @@ function renderCalendario() {
   const evSel = porDia[cal.sel] || [];
   h += '<section class="cartao c4 dia-lista"><h3>' + esc(fmtExtenso(sel)) + '</h3>';
   h += evSel.length ? evSel.map((e, i) => eventoHtml(e, i)).join('') : '<p class="vazio">Nada neste dia.</p>';
-  h += '<div class="acoes" style="margin-top:12px"><button type="button" class="btn pequeno" data-acao="novo-slot-dia" data-dia="' + fmtData(sel) + '">+ Horário neste dia</button></div></section></div>';
+  const livresDia = state.livres.filter(x => x.data === fmtData(sel)).sort((a, b) => hn(a.hora).localeCompare(hn(b.hora)));
+  if (livresDia.length) h += '<p class="livres-cal"><b>Horários livres:</b> ' + livresDia.map(x => '<button type="button" class="hora-chip sel" data-acao="livre-usar" data-linha="' + x.linha + '">' + esc(x.hora) + '</button>').join(' ') + '</p>';
+  h += '<div class="acoes" style="margin-top:12px"><button type="button" class="btn pequeno" data-acao="novo-livres" data-dia="' + fmtData(sel) + '">+ Horários livres</button><button type="button" class="btn pequeno" data-acao="novo-slot-dia" data-dia="' + fmtData(sel) + '">+ Horário neste dia</button></div></section></div>';
   $('#conteudo').innerHTML = h;
 }
 function eventoHtml(e, i) {
@@ -1741,84 +1830,137 @@ function renderAgenda() {
   const todos = state.agenda.filter(a => parseData(a.data));
   const futuros = todos.filter(a => diasAte(parseData(a.data)) >= 0);
   const passados = todos.filter(a => diasAte(parseData(a.data)) < 0);
+  const livres = livresFuturos(state.livres);
   const fila = ativos().filter(it => etapaDe(it.m) === 'AGENDAMENTO');
-  let h = '<div class="ferramentas"><button type="button" class="btn ouro" data-acao="novo-slot">+ Novo horário</button>' +
-    '<button type="button" class="btn" data-acao="passadas">' + (state.verPassadas ? 'Ocultar' : 'Ver') + ' passadas (' + passados.length + ')</button></div>';
-  h += '<div class="grid"><div class="c8">';
-  h += futuros.length ? diasAgenda(futuros, false) : '<p class="vazio">Nenhuma perícia agendada daqui para frente.</p>';
-  if (state.verPassadas && passados.length) h += '<h2 class="secao" style="font-size:1rem;margin:20px 0 10px">Passadas</h2>' + diasAgenda(passados, true);
+  let h = '<div class="ferramentas"><button type="button" class="btn ouro" data-acao="novo-livres">+ Horários livres</button><button type="button" class="btn" data-acao="novo-slot">+ Horário com periciado</button>' +
+    '<button type="button" class="btn" data-acao="passadas">' + (state.verPassadas ? 'Ocultar' : 'Ver') + ' passadas (' + passados.length + ')</button>' +
+    '<span class="contagem" style="margin:0 0 0 auto">' + livres.length + ' horário(s) livre(s) daqui para frente</span></div>';
+  h += '<div class="grid alto-livre"><div class="c8">';
+  h += futuros.length || livres.length ? diasAgenda(futuros, false, livres) : '<p class="vazio">Nenhuma perícia nem horário livre daqui para frente. Use "+ Horários livres" para abrir a agenda.</p>';
+  if (state.verPassadas && passados.length) h += '<h2 class="secao" style="font-size:1rem;margin:20px 0 10px">Passadas</h2>' + diasAgenda(passados, true, []);
   h += '</div><section class="cartao c4"><h2>Fila para agendar (' + fila.length + ')</h2><p class="dica">Processos com próximo passo AGENDAMENTO</p>';
-  h += fila.length ? '<div class="lista-linhas">' + fila.map(it => '<button type="button" class="linha-item" data-acao="agendar-proc" data-linha="' + it.linha + '"><span class="ponto ' + (semReserva(it.m) ? 'critico' : 'ok') + '"></span><span class="meio"><b>' + esc(periciadoDe(it.m)) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (it.m['CIDADE'] || '')) + '</small></span>' + (semReserva(it.m) ? '<span class="chip critico">sem reserva</span>' : '<span class="chip ok">agendar</span>') + '</button>').join('') + '</div>' : '<p class="vazio">Ninguém aguardando agendamento.</p>';
+  h += fila.length ? '<div class="lista-linhas">' + fila.map(it => {
+    const sl = slotDe(it);
+    if (sl) return '<button type="button" class="linha-item" data-acao="ficha" data-aba="PERICIAS" data-linha="' + it.linha + '"><span class="ponto alerta"></span><span class="meio"><b>' + esc(periciadoDe(it.m)) + '</b><small>' + esc('Reservado ' + txtSlot(sl) + ' · falta peticionar') + '</small></span><span class="chip alerta">peticionar</span></button>';
+    return '<button type="button" class="linha-item" data-acao="agendar-proc" data-linha="' + it.linha + '"><span class="ponto ' + (semReserva(it.m) ? 'critico' : 'ok') + '"></span><span class="meio"><b>' + esc(periciadoDe(it.m)) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (it.m['CIDADE'] || '')) + '</small></span>' + (semReserva(it.m) ? '<span class="chip critico">sem reserva</span>' : '<span class="chip ok">agendar</span>') + '</button>';
+  }).join('') + '</div>' : '<p class="vazio">Ninguém aguardando agendamento.</p>';
   h += '</section></div>';
   $('#conteudo').innerHTML = h;
 }
-function diasAgenda(lista, desc) {
-  const g = {};
+function livreLinha(a) {
+  return '<div class="linha-item livre"><span class="hora">' + esc(a.hora) + '</span><span class="meio"><b>Horário livre</b><small>' + esc([a.tipo, a.local].filter(Boolean).join(' · ') || 'status AGENDAR, sem periciado') + '</small></span>' +
+    '<button type="button" class="btn pequeno primario" data-acao="livre-usar" data-linha="' + a.linha + '">Agendar</button>' +
+    '<button type="button" class="btn pequeno icone" data-acao="livre-remover" data-linha="' + a.linha + '" title="Apagar horário livre" aria-label="Apagar horário livre">' + ic('fechar') + '</button></div>';
+}
+function diasAgenda(lista, desc, livres) {
+  const g = {}, gl = {};
   lista.forEach(a => { (g[a.data] = g[a.data] || []).push(a); });
-  const dias = Object.keys(g).sort((x, y) => parseData(x) - parseData(y));
+  (livres || []).forEach(a => { (gl[a.data] = gl[a.data] || []).push(a); });
+  const dias = Array.from(new Set(Object.keys(g).concat(Object.keys(gl)))).sort((x, y) => parseData(x) - parseData(y));
   if (desc) dias.reverse();
   return dias.map(dia => {
     const d = parseData(dia), n = diasAte(d);
-    const slots = g[dia].sort((a, b) => a.hora.localeCompare(b.hora));
-    return '<div class="dia' + (n === 0 ? ' hoje' : '') + '"><h3><span>' + esc(fmtExtenso(d)) + ' · ' + slots.length + (n > 0 ? ' · ' + txtDias(n) : '') + '</span>' +
-      '<button type="button" class="btn pequeno" data-acao="novo-slot-dia" data-dia="' + esc(dia) + '">+ horário</button></h3>' + slots.map(slotLinha).join('') + '</div>';
+    const linhas = (g[dia] || []).map(a => ({ a: a, livre: false })).concat((gl[dia] || []).map(a => ({ a: a, livre: true })))
+      .sort((x, y) => hn(x.a.hora).localeCompare(hn(y.a.hora)));
+    const nM = (g[dia] || []).length, nL = (gl[dia] || []).length;
+    return '<div class="dia' + (n === 0 ? ' hoje' : '') + '"><h3><span>' + esc(fmtExtenso(d)) + ' · ' + nM + ' marcado' + (nM === 1 ? '' : 's') + (nL ? ' · ' + nL + ' livre' + (nL === 1 ? '' : 's') : '') + (n > 0 ? ' · ' + txtDias(n) : '') + '</span>' +
+      '<span class="acoes-dia"><button type="button" class="btn pequeno" data-acao="novo-livres" data-dia="' + esc(dia) + '">+ livres</button><button type="button" class="btn pequeno" data-acao="novo-slot-dia" data-dia="' + esc(dia) + '">+ horário</button></span></h3>' +
+      linhas.map(x => x.livre ? livreLinha(x.a) : slotLinha(x.a)).join('') + '</div>';
   }).join('');
 }
 
 function abrirSlot(a, diaPadrao, op) {
   op = op || {};
+  modal.classList.remove('grande');
   const vinc = op.vincular;
   const novo = !a;
   const lista = state.agenda;
-  let dia = novo ? (diaPadrao || '') : a.data;
+  const livres = livresFuturos(state.livres);
+  let selLivre = op.livre || null;
+  let dia = novo ? (selLivre ? selLivre.data : (diaPadrao || '')) : a.data;
   const tipoVinc = vinc ? tipoAgendaDe(vinc.m) : '';
   if (novo && !dia) {
-    // sugere o próximo dia que já tem perícias do mesmo tipo (ex.: mutirão do INSS); senão o próximo dia com agenda
+    // primeiro horário livre; senão o próximo dia que já tem perícias do mesmo tipo (ex.: mutirão do INSS); senão o próximo dia com agenda
     const futuros = lista.filter(x => parseData(x.data) && diasAte(parseData(x.data)) >= 0).sort((x, y) => parseData(x.data) - parseData(y.data));
     const prox = (tipoVinc && futuros.find(x => chave(x.tipo) === chave(tipoVinc))) || futuros[0];
-    dia = prox ? prox.data : fmtData(zeroHoje());
+    dia = livres.length ? livres[0].data : prox ? prox.data : fmtData(zeroHoje());
   }
   const doDia = lista.filter(x => x.data === dia).sort((x, y) => x.hora.localeCompare(y.hora));
   const ult = doDia[doDia.length - 1];
   const base = novo ? {
-    hora: ult ? somaMinutos(ult.hora, 15) : '08:00',
+    hora: selLivre ? selLivre.hora : ult ? somaMinutos(ult.hora, 15) : '08:00',
     nome: vinc ? periciadoDe(vinc.m) : '',
-    tipo: vinc ? tipoVinc : (ult ? ult.tipo : 'INSS'),
-    status: 'OK',
-    local: 'CONSULTORIO'
+    tipo: vinc ? tipoVinc : (selLivre && selLivre.tipo) || (ult ? ult.tipo : 'INSS'),
+    status: vinc ? 'AGENDAR' : 'OK',
+    local: (selLivre && selLivre.local) || 'CONSULTORIO'
   } : a;
   const ligado = vinc || (a && processoDoSlot(a));
   const fila = ativos().filter(it => etapaDe(it.m) === 'AGENDAMENTO');
   const nomes = Array.from(new Set(fila.map(it => periciadoDe(it.m)).concat(vinc ? [vinc.m['REQUERENTE'], vinc.m['REQUERIDA']] : []).filter(Boolean)));
   const temAgenda = state.canais.some(c => c.k === 'AGENDA');
 
+  const chipsLivres = () => {
+    const ls = livres.slice(0, 30);
+    if (!ls.length) return '<p class="dica-gerador" style="margin:0 0 12px">Nenhum horário livre cadastrado. Marque abaixo um horário novo ou cadastre horários livres em Agenda.</p>';
+    const g = {};
+    ls.forEach(x => { (g[x.data] = g[x.data] || []).push(x); });
+    return '<h3 class="sub" style="margin-top:0">Horários livres</h3><div class="livres-escolha">' + Object.keys(g).map(d => '<div class="livres-dia"><span>' + esc(DIAS_SEM[parseData(d).getDay()] + ' ' + fmtCurto(parseData(d))) + '</span>' +
+      g[d].map(x => '<button type="button" class="hora-chip' + (selLivre && selLivre.linha === x.linha ? ' sel' : '') + '" data-livre-sel="' + x.linha + '" title="' + esc([x.tipo, x.local].filter(Boolean).join(' · ')) + '">' + esc(x.hora) + '</button>').join('') + '</div>').join('') + '</div>';
+  };
+
   $('#modal-titulo').textContent = vinc ? 'Agendar perícia' : novo ? 'Novo horário' : 'Horário de ' + a.nome;
   $('#modal-corpo').innerHTML =
-    (vinc ? '<p style="margin:0 0 12px;font-size:.88rem;color:var(--texto2)">Processo <b>' + esc(formatarCNJ(vinc.m['PROCESSO'])) + '</b>. Ao salvar, o horário entra na aba AGENDAMENTOS e o processo passa para a etapa PERÍCIA com a data preenchida.</p>' : '') +
+    (vinc ? '<p style="margin:0 0 12px;font-size:.88rem;color:var(--texto2)">Processo <b>' + esc(formatarCNJ(vinc.m['PROCESSO'])) + '</b>. Com status <b>AGENDAR</b> o horário fica reservado e o processo continua em AGENDAMENTO até a petição ser protocolada. Com <b>OK</b> o processo já passa para PERÍCIA.</p>' : '') +
     (vinc && semReserva(vinc.m) ? '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>Honorários ainda não reservados neste processo.</span></div>' : '') +
+    (novo ? '<div id="ag-livres">' + chipsLivres() + '</div>' : '') +
     '<div class="form-grid">' +
     '<div class="campo"><label for="ag-data">Data</label>' + (novo ? '<input id="ag-data" type="date" value="' + brParaIso(dia) + '">' : '<input id="ag-data" value="' + esc(dia) + '" disabled>') + '</div>' +
     '<div class="campo"><label for="ag-hora">Hora</label><input id="ag-hora" value="' + esc(base.hora) + '" placeholder="08:00" inputmode="numeric"></div>' +
     '<div class="campo largo"><label for="ag-nome">Periciando</label><input id="ag-nome" value="' + esc(base.nome) + '" list="dl-ag" autocomplete="off"><datalist id="dl-ag">' + nomes.map(n => '<option value="' + esc(n) + '">').join('') + '</datalist></div>' +
     '<div class="campo"><label for="ag-tipo">Tipo</label><input id="ag-tipo" value="' + esc(base.tipo) + '" list="dl-tipo"><datalist id="dl-tipo">' + ['INSS', 'ERRO MÉDICO', 'INTERDIÇÃO', 'DANOS MORAIS', 'OUTROS'].map(o => '<option value="' + o + '">').join('') + '</datalist></div>' +
-    '<div class="campo"><label for="ag-status">Status</label><input id="ag-status" value="' + esc(base.status) + '" list="dl-st"><datalist id="dl-st"><option value="OK"><option value="AGENDAR"><option value="CONFIRMAR"></datalist></div>' +
+    '<div class="campo"><label for="ag-status">Status</label><select id="ag-status">' + Array.from(new Set(['AGENDAR', 'OK', String(base.status || '').toUpperCase()].filter(Boolean))).map(o => '<option' + (chave(o) === chave(base.status) ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select></div>' +
     '<div class="campo largo"><label for="ag-local">Local</label><input id="ag-local" value="' + esc(base.local) + '" placeholder="CONSULTORIO ou endereço completo" list="dl-local"><datalist id="dl-local"><option value="CONSULTORIO"></datalist></div>' +
-    (novo && temAgenda ? '<label class="check"><input type="checkbox" id="ag-discord" checked> Avisar no #agenda do Discord</label>' : '') +
+    (novo && temAgenda ? '<label class="check"><input type="checkbox" id="ag-discord" checked> Avisar no #agenda do Discord (quando o agendamento estiver OK)</label>' : '') +
     '</div><p id="ag-ocupado" style="font-size:.82rem;color:var(--suave);margin:10px 0 0"></p>';
-  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="ag-salvar">' + (vinc ? 'Agendar' : 'Salvar') + '</button>' +
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="ag-salvar">' + (vinc ? 'Reservar horário' : 'Salvar') + '</button>' +
     (ligado && !vinc ? '<button type="button" class="btn" id="ag-abrir">Abrir processo</button>' : '');
+  const atualizarBotao = () => { if (vinc) $('#ag-salvar').textContent = chave($('#ag-status').value) === 'OK' ? 'Agendar (já peticionado)' : 'Reservar horário'; };
+  if (vinc) { $('#ag-status').addEventListener('change', atualizarBotao); atualizarBotao(); }
 
   const mostrarOcupados = br => {
     const dd = lista.filter(x => x.data === br).sort((x, y) => x.hora.localeCompare(y.hora));
-    $('#ag-ocupado').textContent = dd.length ? 'Já marcados neste dia: ' + dd.map(x => x.hora).join(', ') : 'Dia livre.';
+    const lv = livres.filter(x => x.data === br);
+    $('#ag-ocupado').textContent = (dd.length ? 'Já marcados neste dia: ' + dd.map(x => x.hora).join(', ') : 'Nenhuma perícia marcada neste dia.') + (lv.length ? ' · Livres: ' + lv.map(x => x.hora).join(', ') : '');
   };
   mostrarOcupados(dia);
-  if (novo) $('#ag-data').addEventListener('change', e => {
-    const br = isoParaBr(e.target.value);
-    const dd = lista.filter(x => x.data === br).sort((x, y) => x.hora.localeCompare(y.hora));
-    $('#ag-hora').value = dd.length ? somaMinutos(dd[dd.length - 1].hora, 15) : '08:00';
-    mostrarOcupados(br);
+  let dataAntes = novo ? $('#ag-data').value : '';
+  if (novo) $('#ag-livres').addEventListener('click', e => {
+    const b = e.target.closest('[data-livre-sel]');
+    if (!b) return;
+    const x = livres.find(l => String(l.linha) === b.dataset.livreSel);
+    if (!x) return;
+    selLivre = selLivre && selLivre.linha === x.linha ? null : x;
+    if (selLivre) {
+      $('#ag-data').value = brParaIso(x.data); dataAntes = $('#ag-data').value; $('#ag-hora').value = x.hora;
+      if (x.local) $('#ag-local').value = x.local;
+      if (x.tipo && !vinc) $('#ag-tipo').value = x.tipo;
+      mostrarOcupados(x.data);
+    }
+    $('#ag-livres').innerHTML = chipsLivres();
   });
+  if (novo) {
+    $('#ag-data').addEventListener('change', e => {
+      if (e.target.value === dataAntes) return;
+      dataAntes = e.target.value;
+      const br = isoParaBr(e.target.value);
+      const lv = livres.filter(x => x.data === br);
+      const dd = lista.filter(x => x.data === br).sort((x, y) => x.hora.localeCompare(y.hora));
+      $('#ag-hora').value = lv.length ? lv[0].hora : dd.length ? somaMinutos(dd[dd.length - 1].hora, 15) : '08:00';
+      selLivre = lv[0] || null;
+      $('#ag-livres').innerHTML = chipsLivres();
+      mostrarOcupados(br);
+    });
+  }
   if ($('#ag-abrir')) $('#ag-abrir').onclick = () => { modal.close(); abrirFicha('PERICIAS', ligado.linha); };
 
   $('#ag-salvar').onclick = async ev => {
@@ -1827,11 +1969,15 @@ function abrirSlot(a, diaPadrao, op) {
     if (!/^\d{1,2}:\d{2}$/.test(hora)) { toast('Hora no formato 08:00', { erro: true }); return; }
     const dados = { hora: pad2(+hora.split(':')[0]) + ':' + hora.split(':')[1], nome: $('#ag-nome').value.trim(), tipo: $('#ag-tipo').value.trim(), status: $('#ag-status').value.trim(), local: $('#ag-local').value.trim() };
     if (!dados.nome) { toast('Informe o periciando', { erro: true }); return; }
+    let livre = null;
     if (novo) {
       dados.data = isoParaBr($('#ag-data').value);
       if (!dados.data) { toast('Escolha a data', { erro: true }); return; }
-      if (lista.some(x => x.data === dados.data && x.hora === dados.hora) && !confirm('Já existe alguém às ' + dados.hora + ' nesse dia. Marcar mesmo assim?')) return;
+      // usa o horário livre com a mesma data e hora, se houver (em vez de criar outra linha)
+      livre = livres.find(x => x.data === dados.data && hn(x.hora) === dados.hora) || null;
+      if (!livre && lista.some(x => x.data === dados.data && hn(x.hora) === dados.hora) && !confirm('Já existe alguém às ' + dados.hora + ' nesse dia. Marcar mesmo assim?')) return;
     }
+    const ok = chave(dados.status) === 'OK';
     const avisar = $('#ag-discord') && $('#ag-discord').checked;
     btn.disabled = true;
     try {
@@ -1840,28 +1986,114 @@ function abrirSlot(a, diaPadrao, op) {
         const dp = {};
         const hP = cabDe('PERICIAS', 'PERICIA'), hPasso = cabDe('PERICIAS', 'PROXIMO PASSO');
         if (hP) dp[hP] = dados.data;
-        if (hPasso) dp[hPasso] = 'PERICIA';
-        j = await api('agendar', { slot: dados, linha: vinc.linha, processoEsperado: vinc.m['PROCESSO'], dadosProcesso: dp });
+        if (hPasso && ok) dp[hPasso] = 'PERICIA';
+        const req = { slot: dados, linha: vinc.linha, processoEsperado: vinc.m['PROCESSO'], dadosProcesso: dp };
+        if (livre) { req.linhaLivre = livre.linha; req.horaLivre = livre.hora; }
+        j = await api('agendar', req);
       } else {
         const req = { dados: dados };
         if (!novo) { req.linha = a.linha; req.nomeEsperado = a.nome; }
+        else if (livre) { req.linha = livre.linha; req.nomeEsperado = ''; req.horaEsperada = livre.hora; }
         if (ligado) req.processo = ligado.m['PROCESSO'];
         j = await api('agendaSalvar', req);
       }
       if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? 'A agenda foi alterada. Atualize e tente de novo.' : (j.erro || 'Erro ao salvar'));
+      if (avisar && novo && ok) avisarAgendaDiscord(dados, vinc || ligado);
+      if (vinc && !ok) { mostrarReservado(vinc, dados, recarregar(true), !!avisar); return; }
       modal.close();
-      fecharFicha();
+      if (vinc) fecharFicha();
       toast(vinc ? 'Perícia agendada' : 'Agenda atualizada');
-      if (avisar) {
-        const d = parseData(dados.data);
-        api('discordEnviar', { canal: 'AGENDA', titulo: '📅 Perícia agendada', texto: 'Data: ' + fmtExtenso(d) + ' (' + dados.data + ') às ' + dados.hora + '\nPericiando: ' + nomeCurto(dados.nome) + '\nTipo: ' + dados.tipo + '\nLocal: ' + dados.local, processo: vinc ? vinc.m['PROCESSO'] : (ligado ? ligado.m['PROCESSO'] : '') })
-          .then(r => { if (!r.ok) toast('Agendado, mas o Discord recusou: ' + (r.erro || ''), { erro: true }); })
-          .catch(e => toast('Agendado, mas não consegui avisar o Discord: ' + e.message, { erro: true }));
-      }
       await recarregar(true);
     } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
   };
-  modal.showModal();
+  if (!modal.open) modal.showModal();
+}
+
+// depois de reservar: gerar a petição de agendamento e confirmar quando protocolar
+function mostrarReservado(vinc, dados, recarga, avisar) {
+  const temAgenda = state.canais.some(c => c.k === 'AGENDA');
+  const m = Object.assign({}, vinc.m, { 'PERICIA': dados.data });
+  $('#modal-titulo').textContent = 'Horário reservado';
+  $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq img">📅</span><div><b>' + esc(fmtExtenso(parseData(dados.data)) + ' às ' + dados.hora) + '</b><small>' + esc(dados.nome + ' · ' + (dados.local || '') + ' · status AGENDAR na aba AGENDAMENTOS') + '</small></div></div>' +
+    '<ol class="passos-ag"><li>Gere a petição de agendamento abaixo e confira os trechos em amarelo.</li><li>Protocole no ' + esc(chave(vinc.m['SISTEMA']) === 'EPROC' ? 'eproc' : 'e-SAJ') + '.</li><li>Toque em <b>Já protocolei</b>: o horário passa para OK e o processo para PERÍCIA. Dá para fazer isso depois, pela ficha ou pelas Tarefas.</li></ol>' +
+    '<div id="ag-docs"></div>' +
+    (temAgenda ? '<label class="check" style="margin-top:12px"><input type="checkbox" id="ag-discord2"' + (avisar ? ' checked' : '') + '> Avisar no #agenda do Discord ao confirmar</label>' : '');
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="ag-confirmar">Já protocolei: confirmar agendamento</button><span class="esp"></span><button type="button" class="btn" id="ag-depois">Fazer depois</button>';
+  painelDocsSugeridos($('#ag-docs'), { linha: vinc.linha, proc: vinc.m['PROCESSO'], m: m }, 'Petição de agendamento', recarga);
+  $('#ag-depois').onclick = () => { modal.close(); toast('Horário reservado. Falta peticionar o agendamento.'); };
+  $('#ag-confirmar').onclick = async ev => {
+    const btn = ev.target, av = !!($('#ag-discord2') && $('#ag-discord2').checked);
+    btn.disabled = true; btn.textContent = 'Confirmando...';
+    await recarga;
+    const it = itens('PERICIAS').find(i => digitos(i.m['PROCESSO']) === digitos(vinc.m['PROCESSO'])) || vinc;
+    const sl = slotDe(it);
+    if (!sl) { toast('Não achei o horário reservado na agenda. Atualize a tela.', { erro: true }); btn.disabled = false; btn.textContent = 'Já protocolei: confirmar agendamento'; return; }
+    if (await confirmarAgendamento(it, sl, av)) modal.close();
+    else { btn.disabled = false; btn.textContent = 'Já protocolei: confirmar agendamento'; }
+  };
+}
+
+// horários livres: cadastro em lote
+function abrirLivres(diaPadrao) {
+  modal.classList.remove('grande');
+  const hojeIso = brParaIso(fmtData(zeroHoje()));
+  let excluidas = {}, ultimo = '';
+  $('#modal-titulo').textContent = 'Horários livres';
+  $('#modal-corpo').innerHTML = '<p class="dica-gerador">Os horários entram na aba AGENDAMENTOS só com data, hora e status <b>AGENDAR</b>, sem periciado. Na hora de agendar, é só escolher um deles.</p>' +
+    '<div class="form-grid"><div class="campo"><label for="lv-data">Data</label><input id="lv-data" type="date" min="' + hojeIso + '" value="' + (diaPadrao ? brParaIso(diaPadrao) : '') + '"></div>' +
+    '<div class="campo"><label for="lv-passo">De quanto em quanto tempo</label><select id="lv-passo">' + [10, 15, 20, 30, 45, 60].map(n => '<option value="' + n + '"' + (n === 15 ? ' selected' : '') + '>' + n + ' minutos</option>').join('') + '</select></div>' +
+    '<div class="campo"><label for="lv-ini">Primeiro horário</label><input id="lv-ini" value="08:00" inputmode="numeric"></div>' +
+    '<div class="campo"><label for="lv-fim">Último horário</label><input id="lv-fim" value="11:45" inputmode="numeric"></div>' +
+    '<div class="campo"><label for="lv-local">Local</label><input id="lv-local" value="CONSULTORIO" list="dl-local2"><datalist id="dl-local2"><option value="CONSULTORIO"></datalist></div>' +
+    '<div class="campo"><label for="lv-tipo">Tipo (opcional)</label><input id="lv-tipo" placeholder="ex.: INSS" list="dl-tipo2"><datalist id="dl-tipo2">' + ['INSS', 'ERRO MÉDICO', 'INTERDIÇÃO', 'DANOS MORAIS'].map(o => '<option value="' + o + '">').join('') + '</datalist></div></div>' +
+    '<h3 class="sub">Horários que serão criados <small style="text-transform:none;letter-spacing:0">(toque para tirar ou pôr de volta)</small></h3><div id="lv-previa" class="livres-dia" style="flex-wrap:wrap"></div><p id="lv-info" class="dica" style="margin:8px 0 0"></p>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="lv-criar">Criar horários</button>';
+  const horas = () => horariosIntervalo($('#lv-ini').value.trim(), $('#lv-fim').value.trim(), $('#lv-passo').value);
+  const prev = () => {
+    const br = isoParaBr($('#lv-data').value);
+    const ocup = state.agenda.filter(x => x.data === br).map(x => hn(x.hora)), liv = state.livres.filter(x => x.data === br).map(x => hn(x.hora));
+    const hs = horas();
+    const n = hs.filter(h => !excluidas[h] && ocup.indexOf(h) < 0 && liv.indexOf(h) < 0).length;
+    const html = hs.length ? hs.map(h => {
+      const ja = ocup.indexOf(h) >= 0 ? 'marcado' : liv.indexOf(h) >= 0 ? 'já livre' : '';
+      return '<button type="button" class="hora-chip' + (ja ? ' ja' : excluidas[h] ? ' fora' : ' sel') + '" data-h="' + h + '"' + (ja ? ' disabled title="' + ja + '"' : '') + '>' + h + (ja ? ' · ' + ja : '') + '</button>';
+    }).join('') : '<span class="vazio">Confira o primeiro e o último horário (formato 08:00).</span>';
+    if (html !== ultimo) { ultimo = html; $('#lv-previa').innerHTML = html; }
+    $('#lv-info').textContent = br ? (n ? n + ' horário(s) novo(s) em ' + fmtExtenso(parseData(br)) + '.' : 'Nenhum horário novo para criar nesse dia.') : 'Escolha a data.';
+    $('#lv-criar').textContent = n ? 'Criar ' + n + ' horário' + (n === 1 ? '' : 's') : 'Criar horários';
+    $('#lv-criar').disabled = !br || !n;
+  };
+  $('#lv-previa').addEventListener('click', e => { const b = e.target.closest('[data-h]'); if (!b || b.disabled) return; excluidas[b.dataset.h] = !excluidas[b.dataset.h]; prev(); });
+  ['lv-data', 'lv-ini', 'lv-fim', 'lv-passo'].forEach(id => { $('#' + id).addEventListener('input', () => { excluidas = {}; prev(); }); $('#' + id).addEventListener('change', prev); });
+  prev();
+  $('#lv-criar').onclick = async ev => {
+    const btn = ev.target, br = isoParaBr($('#lv-data').value);
+    const hs = horas().filter(h => !excluidas[h]);
+    btn.disabled = true; btn.textContent = 'Criando...';
+    try {
+      const j = await api('agendaLivres', { data: br, horas: hs, local: $('#lv-local').value.trim(), tipo: $('#lv-tipo').value.trim() });
+      if (!j.ok) throw new Error(j.erro || 'Erro ao criar os horários');
+      state.agenda = j.itens || state.agenda; state.livres = j.livres || state.livres;
+      modal.close();
+      render();
+      toast(j.criados.length + ' horário(s) livre(s) criado(s) em ' + br + (j.ignorados && j.ignorados.length ? ' · ' + j.ignorados.length + ' já existiam' : ''));
+    } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; prev(); }
+  };
+  if (!modal.open) modal.showModal();
+}
+
+// horário livre escolhido na Agenda: qual processo vai nele
+function escolherProcessoParaLivre(lv) {
+  modal.classList.remove('grande');
+  const fila = ativos().filter(it => etapaDe(it.m) === 'AGENDAMENTO' && !slotDe(it));
+  $('#modal-titulo').textContent = 'Agendar em ' + txtSlot(lv);
+  $('#modal-corpo').innerHTML = '<p class="dica-gerador">Escolha o processo. Os que estão sem honorários reservados aparecem marcados.</p>' +
+    (fila.length ? '<div class="arquivos">' + fila.map(it => '<button type="button" class="arq" data-fila="' + it.linha + '"><span class="meio"><b>' + esc(periciadoDe(it.m)) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (it.m['CIDADE'] || '') + (it.m['TIPO'] ? ' · ' + it.m['TIPO'] : '')) + '</small></span>' + (semReserva(it.m) ? '<span class="chip critico">sem reserva</span>' : '<span class="chip ok">agendar</span>') + '</button>').join('') + '</div>'
+      : '<p class="vazio">Nenhum processo aguardando agendamento sem horário reservado.</p>');
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn" id="lv-outro">Marcar outra pessoa (sem processo)</button>';
+  document.querySelectorAll('[data-fila]').forEach(b => b.addEventListener('click', () => { const it = acharItem('PERICIAS', b.dataset.fila); if (it) abrirSlot(null, '', { vincular: it, livre: lv }); }));
+  $('#lv-outro').onclick = () => abrirSlot(null, lv.data, { livre: lv });
+  if (!modal.open) modal.showModal();
 }
 
 /* ================= GESTÃO (só perito) ================= */
@@ -2078,11 +2310,13 @@ function tarefaHtml(t) {
   const pz = t.prazo ? '<span class="chip ' + nivelPrazo(diasAte(t.prazo)) + '">' + fmtCurto(t.prazo) + ' · ' + txtDias(diasAte(t.prazo)) + '</span>' : '';
   const quem = '<span class="chip ' + t.quem + '">' + QUEM_ROT[t.quem] + '</span>';
   if (t.tipo === 'fluxo') {
-    const it = t.it, ac = principalAcao(it.m);
+    const it = t.it, sl = slotDe(it), ac = principalAcao(it.m, { slot: sl });
+    const reservado = sl && etapaDe(it.m) === 'AGENDAMENTO';
     return '<div class="tarefa"><span class="marca-fluxo" title="Vem do andamento do processo">' + ic('processos') + '</span><div class="meio">' +
-      '<b>' + esc(t.titulo) + '</b><small>' + esc((it.m['REQUERENTE'] || '') + ' · ' + formatarCNJ(it.m['PROCESSO'])) + (it.m['OBSERVACAO'] ? ' · ' + esc(abreviar(it.m['OBSERVACAO'], 60)) : '') + '</small>' +
-      '<div class="chips">' + pz + quem + (semReserva(it.m) ? '<span class="chip critico">⚠ Sem reserva</span>' : '') + '</div></div>' +
-      '<div class="acoes-t">' + (ac ? '<button type="button" class="btn pequeno primario" data-acao="t-concluir" data-linha="' + it.linha + '" data-id="' + ac.id + '">' + esc(ac.rot) + '</button>' : '') +
+      '<b>' + esc(reservado ? 'Peticionar o agendamento e intimar as partes' : t.titulo) + '</b><small>' + esc((it.m['REQUERENTE'] || '') + ' · ' + formatarCNJ(it.m['PROCESSO'])) + (it.m['OBSERVACAO'] ? ' · ' + esc(abreviar(it.m['OBSERVACAO'], 60)) : '') + '</small>' +
+      '<div class="chips">' + pz + quem + (reservado ? '<span class="chip pericia">📅 Reservado ' + esc(txtSlot(sl)) + '</span>' : '') + (semReserva(it.m) ? '<span class="chip critico">⚠ Sem reserva</span>' : '') + '</div></div>' +
+      '<div class="acoes-t">' + (reservado ? '<button type="button" class="btn pequeno" data-acao="t-gerar" data-linha="' + it.linha + '">' + ic('documentos') + 'Gerar petição</button>' : '') +
+      (ac ? '<button type="button" class="btn pequeno primario" data-acao="t-concluir" data-linha="' + it.linha + '" data-id="' + ac.id + '">' + esc(ac.rot) + '</button>' : '') +
       '<button type="button" class="btn pequeno" data-acao="ficha" data-aba="PERICIAS" data-linha="' + it.linha + '">Abrir</button></div></div>';
   }
   const x = t.t;
@@ -2621,6 +2855,22 @@ document.addEventListener('click', ev => {
     case 'ficha-tarefa': { const it = fichaItem(); abrirNovaTarefa(it && it.aba === 'PERICIAS' ? it.m['PROCESSO'] : ''); break; }
     case 't-escopo': state.tEscopo = ds.k; render(); break;
     case 't-concluir': abrirFicha('PERICIAS', ds.linha); acaoRapida(ds.id); break;
+    case 't-gerar': { abrirFicha('PERICIAS', ds.linha); const it = fichaItem(); if (it) abrirGerador(it); break; }
+    case 'ficha-confirmar-ag': { const it = fichaItem(); if (it) pedirConfirmacaoAgenda(it); break; }
+    case 'ficha-agendar': { const it = fichaItem(); const lv = ds.livre ? state.livres.find(x => String(x.linha) === ds.livre) : null; if (it) abrirSlot(null, '', { vincular: it, livre: lv }); break; }
+    case 'novo-livres': abrirLivres(ds.dia || ''); break;
+    case 'livre-usar': { const lv = state.livres.find(x => String(x.linha) === ds.linha); if (lv) escolherProcessoParaLivre(lv); break; }
+    case 'livre-remover': {
+      const lv = state.livres.find(x => String(x.linha) === ds.linha);
+      if (!lv || !confirm('Apagar o horário livre de ' + lv.data + ' às ' + lv.hora + '?')) break;
+      el.disabled = true;
+      api('agendaRemover', { linha: lv.linha, horaEsperada: lv.hora }).then(j => {
+        if (!j.ok) throw new Error(j.erro || 'Erro ao apagar');
+        state.agenda = j.itens || state.agenda; state.livres = j.livres || [];
+        render(); toast('Horário livre apagado');
+      }).catch(e => { el.disabled = false; toast(e.message, { erro: true }); recarregar(true); });
+      break;
+    }
     case 't-feita': el.disabled = true; mudarTarefa('tarefaStatus', { id: ds.id, feita: true }, 'Tarefa concluída'); break;
     case 't-reabrir': mudarTarefa('tarefaStatus', { id: ds.id, feita: false }, 'Tarefa reaberta'); break;
     case 't-excluir': if (confirm('Excluir esta tarefa?')) mudarTarefa('tarefaExcluir', { id: ds.id }, 'Tarefa excluída'); break;

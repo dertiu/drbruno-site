@@ -320,6 +320,26 @@ button.gseg-linha.ativa{background:var(--gold-claro)}
 .dia h3 .btn{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:inherit}
 .dia.hoje h3 .btn{background:rgba(255,255,255,.4);border-color:rgba(13,27,42,.2)}
 .dia .linha-item{padding:10px 14px}
+.dia h3 .acoes-dia{display:flex;gap:6px}
+.linha-item.livre{cursor:default;background:repeating-linear-gradient(135deg,transparent 0 10px,var(--hover) 10px 11px)}
+.linha-item.livre .hora{color:var(--c-ok)}
+.linha-item.livre .meio b{color:var(--c-ok);font-weight:700}
+.livres-escolha{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:190px;overflow:auto;padding-right:4px}
+.livres-dia{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.livres-dia>span{font-size:.78rem;font-weight:900;color:var(--texto2);min-width:70px}
+.hora-chip{border:1px solid var(--borda-campo);background:var(--btn-bg);color:var(--texto);border-radius:999px;padding:4px 10px;font-weight:700;font-size:.8rem;cursor:pointer;font-variant-numeric:tabular-nums}
+.hora-chip:hover{background:var(--btn-hover)}
+.hora-chip.sel{background:var(--c-ok-bg);border-color:var(--c-ok);color:var(--c-ok)}
+.hora-chip.fora{text-decoration:line-through;opacity:.6}
+.hora-chip.ja{opacity:.55;cursor:default}
+.ag-ficha{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--azul-borda);background:var(--azul-bg);border-radius:12px;padding:10px 12px;margin:0 0 12px}
+.ag-ficha.reservado{border-color:var(--aviso-borda);background:var(--aviso-bg)}
+.ag-ficha .meio{flex:1;min-width:220px}
+.ag-ficha b{display:block;font-size:.9rem}
+.ag-ficha small{display:block;color:var(--texto2);font-size:.8rem;margin-top:2px}
+.passos-ag{margin:0 0 12px;padding-left:20px;font-size:.86rem;color:var(--texto2)}
+.passos-ag li{margin:3px 0}
+.livres-cal{margin:12px 0 0;font-size:.84rem;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 
 /* ---------- tabela ---------- */
 .tabela-wrap{overflow-x:auto}
