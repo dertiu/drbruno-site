@@ -45,6 +45,8 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Painel**: indicadores do dia (processos ativos por responsável, prazos dos próximos 7 dias, perícias das próximas semanas, laudos a fazer ou MLE a peticionar), hoje e próximas perícias, prazos com semáforo, avisos e gráficos (fluxo por etapa, conferência nos autos, perícias por mês, processos por tipo e por comarca). O Painel não mostra valores em dinheiro; os totais ficam só no Financeiro.
 - **Processos**: lista com filtros ou **quadro por etapa** (arrastar o cartão muda o PRÓXIMO PASSO).
 - **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
+  - Na aba **Dados**, o rodapé mostra **Salvar alterações** e **Descartar**. Nas outras abas, o rodapé tem só Discord e Tarefa.
+  - **Encerrar o processo** (Concluídos ou Renúncias) fica no fim da aba **Ações**, dentro da seção recolhida "Encerrar este processo". É preciso abrir a seção, escolher a opção e confirmar no quadro vermelho ("Sim, mover para Concluídos" / "Sim, registrar renúncia"). Logo depois aparece **Desfazer**, que devolve o processo para Perícias com todos os dados originais (prazo, próximo passo etc.). Depois disso, ele pode ser trazido de volta pelo Arquivo.
 - **Calendário**: perícias e prazos do mês, com link para o Google Agenda.
 - **Agenda**: horários por dia (marcados e livres) e fila de processos para agendar. Veja "Agendamento" abaixo.
 - **Financeiro** (perito) ou **Pagamentos** (assistente): veja Perfis de acesso. UFESP configurável em `config.js`.
