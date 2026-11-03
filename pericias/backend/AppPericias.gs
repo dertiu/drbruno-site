@@ -54,6 +54,9 @@ function appRotear_(req) {
     case 'agenda': return appAgenda_();
     case 'agendaSalvar': return appComTrava_(() => appAgendaSalvar_(req, usuario));
     case 'agendar': return appComTrava_(() => appAgendar_(req, usuario));
+    case 'agendaLivres': return appComTrava_(() => appAgendaLivres_(req, usuario));
+    case 'agendaRemover': return appComTrava_(() => appAgendaRemover_(req, usuario));
+    case 'agendaConfirmar': return appComTrava_(() => appAgendaConfirmar_(req, usuario));
     case 'historico': return appHistorico_(req.processo);
     case 'atividade': return { ok: true, itens: appAtividade_(60) };
     case 'discordCanais': return { ok: true, canais: appDiscordCanais_() };
@@ -89,12 +92,14 @@ function appInicial_(usuario) {
   APP_ABAS.forEach(n => { abas[n] = appListar_(n); });
   let canais = [];
   try { canais = appDiscordCanais_(); } catch (e) {}
+  const ag = appAgenda_();
   return {
     ok: true,
     usuario: usuario,
     papel: appPapel_(usuario),
     abas: abas,
-    agenda: appAgenda_().itens,
+    agenda: ag.itens,
+    livres: ag.livres,
     atividade: appAtividade_(60),
     tarefas: appTarefas_(),
     verificados: appVerificados_(),
@@ -359,74 +364,153 @@ function appData_(txt) {
   return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : null;
 }
 
-function appAgenda_() {
-  const aba = appAgendaAba_();
-  const dados = aba.getDataRange().getDisplayValues();
-  const itens = [];
-  let dia = null;
+// Formato da aba AGENDAMENTOS (o mesmo que o script do Discord lê):
+//   linha do dia:      dd/mm/aaaa | (vazio) | (vazio) | STATUS | LOCAL
+//   cabeçalho:         HORA | PERICIADO | TIPO          (alguns blocos antigos têm STATUS e TIPO trocados)
+//   horário marcado:   08:00 | Nome | TIPO | OK ou AGENDAR | LOCAL
+//   horário LIVRE:     08:00 | (sem nome) | (tipo opcional) | AGENDAR | LOCAL
+// O script do Discord ignora linhas sem nome, então os horários livres não aparecem nas mensagens.
+function appHoraNorm_(h) { const m = String(h || '').trim().match(/^(\d{1,2}):(\d{2})$/); return m ? ('0' + m[1]).slice(-2) + ':' + m[2] : ''; }
+
+function appAgendaMapa_(dados) {
+  const rows = [];
+  let dia = null, iTipo = 2, iStatus = 3;
   dados.forEach((l, i) => {
     const a = String(l[0] || '').trim(), b = String(l[1] || '').trim();
-    if (appData_(a) && !b) { dia = a; return; }
-    if (appChave_(a) === 'HORA') return;
-    if (dia && b) itens.push({ linha: i + 1, data: dia, hora: a, nome: b, tipo: String(l[2] || '').trim(), status: String(l[3] || '').trim(), local: String(l[4] || '').trim() });
+    if (appData_(a) && !b) { dia = a; rows.push({ linha: i + 1, k: 'dia', data: a }); return; }
+    if (appChave_(a) === 'HORA') {
+      const t = l.map(appChave_).indexOf('TIPO');
+      if (t === 3) { iTipo = 3; iStatus = 2; } else { iTipo = 2; iStatus = 3; }
+      rows.push({ linha: i + 1, k: 'cab', data: dia });
+      return;
+    }
+    if (!dia) return;
+    const base = { linha: i + 1, data: dia, hora: a, tipo: String(l[iTipo] || '').trim(), status: String(l[iStatus] || '').trim(), local: String(l[4] || '').trim(), iTipo: iTipo, iStatus: iStatus };
+    if (b) rows.push(Object.assign(base, { k: 'item', nome: b }));
+    else if (appHoraNorm_(a)) rows.push(Object.assign(base, { k: 'livre', nome: '' }));
+    else if (!a) rows.push({ linha: i + 1, k: 'vazio', data: dia });
   });
-  return { ok: true, itens: itens };
+  return rows;
+}
+
+function appLinhaAgenda_(iTipo, iStatus, v) {
+  const out = [v.hora, v.nome, '', '', v.local];
+  out[iTipo] = v.tipo; out[iStatus] = v.status;
+  return out;
+}
+
+function appAgenda_() {
+  const rows = appAgendaMapa_(appAgendaAba_().getDataRange().getDisplayValues());
+  const limpa = r => ({ linha: r.linha, data: r.data, hora: r.hora, nome: r.nome, tipo: r.tipo, status: r.status, local: r.local });
+  return { ok: true, itens: rows.filter(r => r.k === 'item').map(limpa), livres: rows.filter(r => r.k === 'livre').map(limpa) };
+}
+
+// insere uma linha no bloco do dia (cria o bloco se faltar), em ordem de horário
+function appInserirNoDia_(aba, dia, v) {
+  const dados = aba.getDataRange().getDisplayValues();
+  const rows = appAgendaMapa_(dados);
+  const iDia = rows.findIndex(r => r.k === 'dia' && r.data === dia);
+  if (iDia < 0) {
+    const base = aba.getLastRow() + 2;
+    aba.getRange(base, 1).setNumberFormat('@').setValue(dia);
+    aba.getRange(base, 4, 1, 2).setValues([['STATUS', 'LOCAL']]);
+    aba.getRange(base + 1, 1, 1, 3).setValues([['HORA', 'PERICIADO', 'TIPO']]);
+    aba.getRange(base + 2, 1, 1, 5).setNumberFormat('@').setValues([appLinhaAgenda_(2, 3, v)]);
+    return base + 2;
+  }
+  // linhas do bloco: até a próxima linha vazia ou o próximo dia
+  const bloco = [];
+  for (let j = iDia + 1; j < rows.length && rows[j].k !== 'dia' && rows[j].k !== 'vazio'; j++) bloco.push(rows[j]);
+  const cab = bloco.filter(r => r.k === 'cab')[0];
+  const ref = bloco.filter(r => r.k === 'item' || r.k === 'livre')[0];
+  const iTipo = ref ? ref.iTipo : 2, iStatus = ref ? ref.iStatus : 3;
+  const h = appHoraNorm_(v.hora);
+  const depois = bloco.filter(r => (r.k === 'item' || r.k === 'livre') && appHoraNorm_(r.hora) > h)[0];
+  let linha;
+  if (depois) { aba.insertRowAfter(depois.linha - 1); linha = depois.linha; }
+  else { const ult = bloco.length ? bloco[bloco.length - 1].linha : (cab ? cab.linha : rows[iDia].linha); aba.insertRowAfter(ult); linha = ult + 1; }
+  aba.getRange(linha, 1, 1, 5).setNumberFormat('@').setValues([appLinhaAgenda_(iTipo, iStatus, v)]);
+  return linha;
 }
 
 function appAgendaSalvar_(req, usuario) {
   const aba = appAgendaAba_();
   const d = req.dados || {};
-  const vals = [String(d.hora || '').trim(), String(d.nome || '').trim(), String(d.tipo || '').trim(), String(d.status || '').trim(), String(d.local || '').trim()];
-  if (!vals[0] || !vals[1]) return { ok: false, erro: 'Informe hora e nome do periciando.' };
+  const v = { hora: appHoraNorm_(d.hora) || String(d.hora || '').trim(), nome: String(d.nome || '').trim(), tipo: String(d.tipo || '').trim(), status: String(d.status || '').trim(), local: String(d.local || '').trim() };
+  if (!v.hora || !v.nome) return { ok: false, erro: 'Informe hora e nome do periciando.' };
 
-  if (req.linha) { // editar um horário existente
+  if (req.linha) { // editar um horário existente (ou preencher um horário livre)
     const linha = Number(req.linha);
-    if (linha < 1 || linha > aba.getLastRow()) return { ok: false, erro: 'CONFLITO' };
-    const antes = aba.getRange(linha, 1, 1, 5).getDisplayValues()[0];
-    if (String(antes[1]).trim() !== String(req.nomeEsperado || '').trim()) return { ok: false, erro: 'CONFLITO' };
-    aba.getRange(linha, 1, 1, 5).setNumberFormat('@').setValues([vals]);
-    appLog_(usuario, req.processo || '', 'Agenda: horário editado', antes.join(' | ') + ' → ' + vals.join(' | '));
-    return { ok: true, linha: linha };
+    const r = appAgendaMapa_(aba.getDataRange().getDisplayValues()).filter(x => x.linha === linha)[0];
+    if (!r || (r.k !== 'item' && r.k !== 'livre')) return { ok: false, erro: 'CONFLITO' };
+    if (String(r.nome).trim() !== String(req.nomeEsperado || '').trim()) return { ok: false, erro: 'CONFLITO' };
+    if (req.horaEsperada && appHoraNorm_(r.hora) !== appHoraNorm_(req.horaEsperada)) return { ok: false, erro: 'CONFLITO' };
+    const antes = [r.hora, r.nome, r.tipo, r.status, r.local];
+    aba.getRange(linha, 1, 1, 5).setNumberFormat('@').setValues([appLinhaAgenda_(r.iTipo, r.iStatus, v)]);
+    appLog_(usuario, req.processo || '', r.k === 'livre' ? 'Agenda: horário livre ocupado' : 'Agenda: horário editado', r.data + ' · ' + antes.join(' | ') + ' → ' + [v.hora, v.nome, v.tipo, v.status, v.local].join(' | '));
+    return { ok: true, linha: linha, data: r.data };
   }
 
   const dia = String(d.data || '').trim();
   if (!appData_(dia)) return { ok: false, erro: 'Data inválida. Use dd/mm/aaaa.' };
-  const dados = aba.getDataRange().getDisplayValues();
-  let linhaDia = -1;
-  for (let i = 0; i < dados.length; i++) {
-    if (String(dados[i][0]).trim() === dia && !String(dados[i][1]).trim()) { linhaDia = i + 1; break; }
-  }
-  let linhaNova;
-  if (linhaDia < 0) { // dia novo: cria bloco no fim
-    const base = aba.getLastRow() + 2;
-    aba.getRange(base, 1).setNumberFormat('@').setValue(dia);
-    aba.getRange(base, 4, 1, 2).setValues([['STATUS', 'LOCAL']]);
-    aba.getRange(base + 1, 1, 1, 3).setValues([['HORA', 'PERICIADO', 'TIPO']]);
-    aba.getRange(base + 2, 1, 1, 5).setNumberFormat('@').setValues([vals]);
-    linhaNova = base + 2;
-  } else { // dia existente: insere depois da última linha do bloco
-    let ultima = linhaDia + 1; // pula a linha de cabeçalho HORA/PERICIADO/TIPO
-    for (let r = linhaDia + 2; r <= dados.length; r++) {
-      const a = String(dados[r - 1][0]).trim(), b = String(dados[r - 1][1]).trim();
-      if (!a && !b) break;
-      if (appData_(a) && !b) break;
-      ultima = r;
-    }
-    aba.insertRowAfter(ultima);
-    aba.getRange(ultima + 1, 1, 1, 5).setNumberFormat('@').setValues([vals]);
-    linhaNova = ultima + 1;
-  }
-  appLog_(usuario, req.processo || '', 'Agenda: perícia marcada', dia + ' ' + vals[0] + ' · ' + vals[1] + (vals[4] ? ' · ' + vals[4] : ''));
-  return { ok: true, linha: linhaNova };
+  const linhaNova = appInserirNoDia_(aba, dia, v);
+  appLog_(usuario, req.processo || '', 'Agenda: horário marcado', dia + ' ' + v.hora + ' · ' + v.nome + ' · ' + (v.status || 'sem status') + (v.local ? ' · ' + v.local : ''));
+  return { ok: true, linha: linhaNova, data: dia };
 }
 
-// cria o horário na agenda e atualiza o processo (data da perícia e próximo passo) de uma vez
+// horários livres: data + lista de horas, sem nome e com status AGENDAR
+function appAgendaLivres_(req, usuario) {
+  const aba = appAgendaAba_();
+  const dia = String(req.data || '').trim();
+  if (!appData_(dia)) return { ok: false, erro: 'Data inválida. Use dd/mm/aaaa.' };
+  const horas = Array.from(new Set((req.horas || []).map(appHoraNorm_).filter(Boolean))).sort();
+  if (!horas.length) return { ok: false, erro: 'Informe pelo menos um horário (08:00).' };
+  if (horas.length > 60) return { ok: false, erro: 'No máximo 60 horários por vez.' };
+  const ocupadas = appAgendaMapa_(aba.getDataRange().getDisplayValues()).filter(r => r.data === dia && (r.k === 'item' || r.k === 'livre')).map(r => appHoraNorm_(r.hora));
+  const criados = [], ignorados = [];
+  horas.forEach(h => {
+    if (ocupadas.indexOf(h) >= 0) { ignorados.push(h); return; }
+    appInserirNoDia_(aba, dia, { hora: h, nome: '', tipo: String(req.tipo || '').trim(), status: 'AGENDAR', local: String(req.local || '').trim() || 'CONSULTORIO' });
+    criados.push(h);
+  });
+  if (criados.length) appLog_(usuario, '', 'Agenda: horários livres criados', dia + ' · ' + criados.join(', '));
+  return Object.assign(appAgenda_(), { criados: criados, ignorados: ignorados });
+}
+
+// apaga um horário livre (só se continuar sem nome)
+function appAgendaRemover_(req, usuario) {
+  const aba = appAgendaAba_();
+  const linha = Number(req.linha);
+  const r = appAgendaMapa_(aba.getDataRange().getDisplayValues()).filter(x => x.linha === linha)[0];
+  if (!r || r.k !== 'livre' || appHoraNorm_(r.hora) !== appHoraNorm_(req.horaEsperada)) return { ok: false, erro: 'Esse horário não está mais livre. Atualize a agenda.' };
+  aba.deleteRow(linha);
+  appLog_(usuario, '', 'Agenda: horário livre removido', r.data + ' ' + r.hora);
+  return appAgenda_();
+}
+
+// reserva o horário (novo ou livre) e atualiza o processo; com status AGENDAR o processo continua em AGENDAMENTO
 function appAgendar_(req, usuario) {
-  const r1 = appAgendaSalvar_({ dados: req.slot, processo: req.processoEsperado }, usuario);
-  if (!r1.ok) return r1;
-  const r2 = appSalvar_({ aba: 'PERICIAS', linha: req.linha, processoEsperado: req.processoEsperado, dados: req.dadosProcesso || {}, motivo: 'Perícia agendada' }, usuario);
-  if (!r2.ok) return { ok: false, erro: 'O horário foi criado na agenda, mas não consegui atualizar o processo (' + r2.erro + '). Atualize a tela e ajuste o processo.' };
-  return { ok: true };
+  const r1 = req.linhaLivre
+    ? appAgendaSalvar_({ linha: req.linhaLivre, nomeEsperado: '', horaEsperada: req.horaLivre, dados: req.slot, processo: req.processoEsperado }, usuario)
+    : appAgendaSalvar_({ dados: req.slot, processo: req.processoEsperado }, usuario);
+  if (!r1.ok) return r1.erro === 'CONFLITO' ? { ok: false, erro: 'Esse horário não está mais livre. Atualize a agenda e escolha outro.' } : r1;
+  const ok = appChave_((req.slot || {}).status) === 'OK';
+  const r2 = appSalvar_({ aba: 'PERICIAS', linha: req.linha, processoEsperado: req.processoEsperado, dados: req.dadosProcesso || {}, motivo: ok ? 'Perícia agendada' : 'Horário reservado (falta peticionar o agendamento)' }, usuario);
+  if (!r2.ok) return { ok: false, erro: 'O horário foi gravado na agenda, mas não consegui atualizar o processo (' + r2.erro + '). Atualize a tela e ajuste o processo.' };
+  return { ok: true, linhaSlot: r1.linha, data: r1.data };
+}
+
+// depois de protocolar a petição: horário vira OK e o processo vai para PERÍCIA
+function appAgendaConfirmar_(req, usuario) {
+  const aba = appAgendaAba_();
+  const linha = Number(req.linhaSlot);
+  const r = appAgendaMapa_(aba.getDataRange().getDisplayValues()).filter(x => x.linha === linha)[0];
+  if (!r || r.k !== 'item' || appChave_(r.nome) !== appChave_(req.nomeEsperado)) return { ok: false, erro: 'A agenda foi alterada. Atualize e tente de novo.' };
+  aba.getRange(linha, r.iStatus + 1).setNumberFormat('@').setValue('OK');
+  appLog_(usuario, req.processoEsperado || '', 'Agenda: agendamento confirmado', r.data + ' ' + r.hora + ' · ' + r.nome + ' · status OK');
+  const r2 = appSalvar_({ aba: 'PERICIAS', linha: req.linha, processoEsperado: req.processoEsperado, dados: req.dadosProcesso || {}, motivo: 'Agendamento peticionado: perícia marcada' }, usuario);
+  if (!r2.ok) return { ok: false, erro: 'O horário ficou OK, mas não consegui atualizar o processo (' + r2.erro + '). Atualize a tela e ajuste o processo.' };
+  return { ok: true, data: r.data, hora: r.hora };
 }
 
 // -------------------- HISTÓRICO --------------------

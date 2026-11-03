@@ -46,11 +46,20 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Processos**: lista com filtros ou **quadro por etapa** (arrastar o cartão muda o PRÓXIMO PASSO).
 - **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
 - **Calendário**: perícias e prazos do mês, com link para o Google Agenda.
-- **Agenda**: horários por dia e fila de processos para agendar. Agendar pelo app cria o horário em AGENDAMENTOS, atualiza o processo (data e etapa PERÍCIA) e pode avisar o #agenda.
+- **Agenda**: horários por dia (marcados e livres) e fila de processos para agendar. Veja "Agendamento" abaixo.
 - **Financeiro** (perito) ou **Pagamentos** (assistente): veja Perfis de acesso. UFESP configurável em `config.js`.
 - Nos gráficos, passe o mouse (ou toque, no celular) numa barra ou coluna para ver o número exato.
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
+
+## Agendamento
+
+- **Horários livres**: em Agenda > **+ Horários livres**, escolha a data, o primeiro e o último horário e o intervalo (toque num horário para tirar). Cada horário entra na aba AGENDAMENTOS só com hora, status **AGENDAR** e local, **sem periciado**. Linha assim significa horário livre. O script do Discord ignora essas linhas. Um horário livre pode ser apagado pelo × enquanto ninguém estiver nele.
+- **Reservar**: "Agendar perícia" (na ficha, nas Tarefas ou na fila da Agenda) mostra os horários livres; escolha um (ou digite outro). Com status **AGENDAR**, o horário recebe o nome do periciado, a data da perícia vai para o processo e o **próximo passo continua AGENDAMENTO**.
+- **Petição**: logo depois de reservar, o app sugere os modelos de petição de agendamento já com data, horário e local preenchidos. A tarefa do assistente passa a "Peticionar o agendamento e intimar as partes", com o botão "Gerar petição".
+- **Confirmar**: depois de protocolar, toque em **Agendamento peticionado** (na ficha ou nas Tarefas) ou em "Já protocolei" logo após reservar. O horário passa para **OK** na aba AGENDAMENTOS, o processo vai para **PERÍCIA** e, se marcado, o #agenda do Discord é avisado.
+- Se o horário for marcado direto com status **OK**, o processo já vai para PERÍCIA, como antes.
+- Blocos antigos da aba AGENDAMENTOS com as colunas STATUS e TIPO trocadas continuam funcionando: o app lê e grava na coluna certa de cada bloco.
 
 ## Tarefas
 
