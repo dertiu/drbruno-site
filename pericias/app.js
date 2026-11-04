@@ -1730,7 +1730,7 @@ function abrirAjudaEproc() {
     '<ol class="passos-ag">' +
     '<li>Instale a extensão <b>Tampermonkey</b> no Chrome: <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">abrir na Chrome Web Store</a>.</li>' +
     '<li>Em <b>chrome://extensions</b>, abra <b>Detalhes</b> do Tampermonkey e ligue <b>Permitir scripts de usuário</b> (e o <b>Modo do desenvolvedor</b>, se o Chrome pedir).</li>' +
-    '<li>Toque em <a href="eproc-atalho.user.js" target="_blank" rel="noopener"><b>Instalar o atalho do eproc</b></a> e confirme em <b>Instalar</b> na tela do Tampermonkey.</li>' +
+    '<li>Toque em <a href="eproc-atalho.user.js" target="_blank" rel="noopener"><b>Instalar o atalho do eproc</b></a> e confirme em <b>Instalar</b> (ou <b>Atualizar</b>, se já tiver uma versão anterior) na tela do Tampermonkey.</li>' +
     '<li>Atualize esta página. Pronto: o botão eproc passa a abrir o processo direto.</li></ol>' +
     '<p class="dica">Vale para cada computador e navegador onde o app é usado. No celular o Chrome não aceita extensões: lá o botão abre o eproc e copia o número para colar na busca.</p>';
   $('#modal-rodape').innerHTML = '<button type="button" class="btn" id="aj-eproc-ok">Fechar</button>';
