@@ -378,6 +378,17 @@ button.gseg-linha.ativa{background:var(--gold-claro)}
 .acoes .btn{font-size:.85rem}
 .confirma{background:var(--aviso-bg);border:1px solid var(--aviso-borda);border-radius:12px;padding:12px 14px;margin-top:12px}
 .confirma ul{margin:6px 0 10px;padding-left:18px;font-size:.86rem}
+.confirma.perigo{background:var(--verm-bg);border-color:var(--verm-borda)}
+.btn.perigo-forte{background:var(--erro-bg);border-color:var(--erro-bg);color:#fff}
+.btn.perigo-forte:hover{filter:brightness(1.1);background:var(--erro-bg)}
+.encerrar{margin-top:26px;border:1px solid var(--linha);border-radius:12px;padding:0 14px;background:var(--card2)}
+.encerrar summary{cursor:pointer;padding:12px 0;font-weight:700;font-size:.88rem;color:var(--suave);list-style:none;display:flex;align-items:center;gap:8px}
+.encerrar summary::-webkit-details-marker{display:none}
+.encerrar summary::before{content:"▸";transition:transform .15s}
+.encerrar[open] summary::before{transform:rotate(90deg)}
+.encerrar p{margin:0 0 10px;font-size:.84rem;color:var(--texto2)}
+.encerrar .acoes{margin-bottom:14px}
+.encerrar .confirma{margin:0 0 14px}
 .confirma li{margin:2px 0}
 .subabas{display:flex;gap:4px;border-bottom:1px solid var(--linha);margin:20px 0 14px}
 .subabas button{background:none;border:0;padding:9px 12px;font-weight:700;color:var(--suave);border-bottom:3px solid transparent;cursor:pointer}

@@ -1294,8 +1294,19 @@ async function mover(aba, it, para, extraNorm) {
     const j = await api('mover', { de: aba, para: para, linha: it.linha, processoEsperado: it.m['PROCESSO'], extra: extra });
     if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || 'Erro ao mover'));
     fecharFicha();
-    toast('Movido para ' + TITULO_ABA[para]);
+    const original = {};
+    (state.dados[aba] ? state.dados[aba].cabecalho : []).forEach((h, i) => { original[h] = it.v[i] == null ? '' : String(it.v[i]); });
+    toast('Movido para ' + TITULO_ABA[para], { acao: { rot: 'Desfazer', fn: () => desfazerMover(para, j.linha, it.m['PROCESSO'], aba, original) } });
     await recarregar(true);
+  } catch (e) { toast(e.message, { erro: true }); }
+}
+async function desfazerMover(de, linha, proc, para, original) {
+  try {
+    const j = await api('mover', { de: de, para: para, linha: linha, processoEsperado: proc, extra: original });
+    if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? 'O processo já foi alterado. Abra o Arquivo para trazê-lo de volta.' : (j.erro || 'Erro ao desfazer'));
+    toast('Desfeito: o processo voltou para ' + TITULO_ABA[para]);
+    await recarregar(true);
+    if (j.linha) abrirFicha(para, j.linha);
   } catch (e) { toast(e.message, { erro: true }); }
 }
 
@@ -1309,6 +1320,10 @@ function abrirFicha(aba, linha, aba2) {
 function fecharFicha() { state.ficha = null; $('#drawer').hidden = true; document.body.style.overflow = ''; }
 function atualizarFichaAberta() { if (state.ficha && state.ficha.aba2 !== 'dados') renderFicha(); }
 
+function htmlConfirma(c) {
+  return '<div class="confirma' + (c.perigo ? ' perigo' : '') + '" id="confirma"><b>' + esc(c.titulo) + '</b><ul>' + c.linhas.map(l => '<li>' + l + '</li>').join('') + '</ul>' +
+    '<div class="acoes"><button type="button" class="btn ' + (c.perigo ? 'perigo-forte' : 'primario') + '" data-acao="confirmar">' + esc(c.botao || 'Confirmar') + '</button><button type="button" class="btn" data-acao="cancelar-confirma">Cancelar</button></div></div>';
+}
 function renderFicha() {
   const f = state.ficha;
   if (!f) return;
@@ -1358,12 +1373,17 @@ function renderFicha() {
     } else {
       h += '<p class="vazio">Processo em ' + TITULO_ABA[f.aba] + '.</p><div class="acoes"><button type="button" class="btn primario" data-acao="mover" data-para="PERICIAS">Voltar para Perícias</button></div>';
     }
-    if (f.confirma) {
-      h += '<div class="confirma"><b>' + esc(f.confirma.titulo) + '</b><ul>' + f.confirma.linhas.map(l => '<li>' + l + '</li>').join('') + '</ul><div class="acoes"><button type="button" class="btn primario" data-acao="confirmar">Confirmar</button><button type="button" class="btn" data-acao="cancelar-confirma">Cancelar</button></div></div>';
-    }
+    if (f.confirma && f.confirma.local !== 'encerrar') h += htmlConfirma(f.confirma);
     h += '<section class="docs" id="docs-bloco"></section>';
+    if (f.aba === 'PERICIAS') {
+      const aberto = f.confirma && f.confirma.local === 'encerrar';
+      h += '<details class="encerrar" id="encerrar"' + (aberto ? ' open' : '') + '><summary>Encerrar este processo</summary>' +
+        '<p>Use só quando o processo terminou (vai para <b>Concluídos</b>) ou quando você renunciou à nomeação (vai para <b>Renúncias</b>). Ele sai das Tarefas, do Painel e da Agenda, mas continua no Arquivo e pode voltar.</p>' +
+        '<div class="acoes"><button type="button" class="btn" data-acao="mover" data-para="CONCLUSOS">Mover para Concluídos</button><button type="button" class="btn perigo" data-acao="mover" data-para="RENUNCIAS">Registrar renúncia</button></div>' +
+        (aberto ? htmlConfirma(f.confirma) : '') + '</details>';
+    }
   } else if (f.aba2 === 'dados') {
-    h += '<div class="form-grid" id="ficha-form">' + camposForm(f.aba, it) + '</div><div class="acoes" style="margin-top:14px"><button type="button" class="btn primario" data-acao="salvar-dados">Salvar alterações</button></div>';
+    h += '<div class="form-grid" id="ficha-form">' + camposForm(f.aba, it) + '</div>';
   } else {
     if (!f.hist) h += '<p class="vazio">Carregando histórico...</p>';
     else if (!f.hist.length) h += '<p class="vazio">Nenhuma alteração registrada pelo app ainda. As próximas mudanças (etapa, pagamento, agenda, Discord) aparecem aqui com data e autor.</p>';
@@ -1371,9 +1391,9 @@ function renderFicha() {
   }
   h += '</div>';
 
-  h += '<footer class="ficha-rodape"><button type="button" class="btn discord" data-acao="ficha-discord">' + ic('discord') + 'Discord</button><button type="button" class="btn" data-acao="ficha-tarefa">' + ic('tarefas') + 'Tarefa</button><span class="esp"></span>';
-  if (f.aba === 'PERICIAS') h += '<button type="button" class="btn" data-acao="mover" data-para="CONCLUSOS">Concluídos</button><button type="button" class="btn perigo" data-acao="mover" data-para="RENUNCIAS">Renunciei</button>';
-  h += '</footer>';
+  // rodapé: na aba Dados só Salvar e Descartar; nas outras, Discord e Tarefa (encerrar fica no fim das Ações)
+  if (f.aba2 === 'dados') h += '<footer class="ficha-rodape"><button type="button" class="btn primario" data-acao="salvar-dados">Salvar alterações</button><button type="button" class="btn" data-acao="dados-descartar">Descartar</button></footer>';
+  else h += '<footer class="ficha-rodape"><button type="button" class="btn discord" data-acao="ficha-discord">' + ic('discord') + 'Discord</button><button type="button" class="btn" data-acao="ficha-tarefa">' + ic('tarefas') + 'Tarefa</button></footer>';
   $('#ficha').innerHTML = h;
 
   const sel = $('#f-etapa-mudar');
@@ -2815,13 +2835,19 @@ document.addEventListener('click', ev => {
     case 'confirmar': { const fn = state.ficha.confirma.fn; state.ficha.confirma = null; fn(); break; }
     case 'cancelar-confirma': state.ficha.confirma = null; renderFicha(); break;
     case 'salvar-dados': salvarDadosFicha(); break;
+    case 'dados-descartar': renderFicha(); toast('Alterações descartadas'); break;
     case 'mover': {
       const it = acharItem(state.ficha.aba, state.ficha.linha);
       const para = ds.para;
       state.ficha.aba2 = 'acoes';
-      state.ficha.confirma = { titulo: para === 'RENUNCIAS' ? 'Registrar renúncia' : 'Mover para ' + TITULO_ABA[para], linhas: ['O processo sai de ' + TITULO_ABA[state.ficha.aba] + ' e vai para <b>' + TITULO_ABA[para] + '</b>.'],
+      const encerrar = para !== 'PERICIAS';
+      state.ficha.confirma = { titulo: para === 'RENUNCIAS' ? 'Registrar renúncia deste processo?' : encerrar ? 'Mover este processo para Concluídos?' : 'Voltar para Perícias',
+        linhas: ['<b>' + esc(it.m['REQUERENTE'] || '') + '</b> · ' + esc(formatarCNJ(it.m['PROCESSO'])), 'O processo sai de ' + TITULO_ABA[state.ficha.aba] + ' e vai para <b>' + TITULO_ABA[para] + '</b>.']
+          .concat(encerrar ? ['Ele deixa de aparecer nas Tarefas, no Painel e na Agenda. Dá para desfazer logo em seguida ou trazer de volta pelo Arquivo.'] : []),
+        local: encerrar ? 'encerrar' : '', perigo: encerrar, botao: para === 'RENUNCIAS' ? 'Sim, registrar renúncia' : encerrar ? 'Sim, mover para Concluídos' : 'Confirmar',
         fn: () => mover(state.ficha.aba, it, para, para === 'RENUNCIAS' ? { 'STATUS': 'RENUNCIA', 'PROXIMO PASSO': 'RENUNCIEI' } : {}) };
       renderFicha();
+      { const c = $('#confirma'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       break;
     }
     case 'ficha-discord': {
