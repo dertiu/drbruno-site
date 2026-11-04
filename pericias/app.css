@@ -653,3 +653,7 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
   .modelo-linha{flex-wrap:wrap}
   .modelo-linha .acoes-md{width:100%;justify-content:flex-start;padding-left:56px}
 }
+
+/* ajuda do atalho do eproc */
+.ok-msg{background:color-mix(in srgb,var(--g-bom) 14%,transparent);border:1px solid color-mix(in srgb,var(--g-bom) 40%,transparent);border-radius:10px;padding:10px 12px;margin:0 0 12px}
+@media (pointer:coarse){.so-desk{display:none}}

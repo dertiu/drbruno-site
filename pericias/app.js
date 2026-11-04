@@ -286,8 +286,9 @@ function gcalLink(ev) {
     (ev.slot && ev.slot.local ? '&location=' + encodeURIComponent(ev.slot.local) : '');
 }
 
-// eproc do TJSP: não aceita link direto para o processo (exige login e assinatura no link).
-// O app abre a base certa e copia o número para colar na busca do topo.
+// eproc do TJSP: não aceita link direto para o processo (o link precisa de assinatura gerada pelo próprio eproc).
+// O app abre a base certa com #pericias=<número> e copia o número. Com o atalho (eproc-atalho.user.js,
+// instalado no Tampermonkey) o eproc preenche a busca rápida sozinho e abre o processo.
 const EPROC_BASES = { '1G': 'https://eproc1g.tjsp.jus.br/eproc/', 'EF': 'https://eproc1g-ef.tjsp.jus.br/eproc/' };
 function baseEproc(m) {
   const t = String((m && (m['FORUM'] || '')) + ' ' + (m && (m['CIDADE'] || ''))).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
@@ -295,7 +296,7 @@ function baseEproc(m) {
 }
 function linkEproc(proc, m) {
   if (digitos(proc).length !== 20) return '';
-  return EPROC_BASES[baseEproc(m)];
+  return EPROC_BASES[baseEproc(m)] + '#pericias=' + digitos(proc);
 }
 
 function linkEsaj(proc) {
@@ -1347,7 +1348,7 @@ function renderFicha() {
     (m['REQUERIDA'] ? '<p class="contra">x ' + esc(m['REQUERIDA']) + '</p>' : '') +
     '<div class="proc"><span>' + esc(formatarCNJ(proc)) + '</span><button type="button" class="btn pequeno" data-acao="copiar" data-txt="' + esc(formatarCNJ(proc)) + '">' + ic('copiar') + 'Copiar nº</button>' +
     (chave(m['SISTEMA']) === 'ESAJ' && linkEsaj(proc) ? '<a class="btn pequeno" target="_blank" rel="noopener" href="' + esc(linkEsaj(proc)) + '">' + ic('externo') + 'e-SAJ</a>' : '') +
-    (chave(m['SISTEMA']) === 'EPROC' && linkEproc(proc, m) ? '<a class="btn pequeno" target="_blank" rel="noopener" data-acao="abrir-eproc" data-txt="' + esc(formatarCNJ(proc)) + '" href="' + esc(linkEproc(proc, m)) + '" title="Abre o eproc e copia o número para colar na busca">' + ic('externo') + 'eproc</a>' : '') + '</div>' +
+    (chave(m['SISTEMA']) === 'EPROC' && linkEproc(proc, m) ? '<a class="btn pequeno" target="_blank" rel="noopener" data-acao="abrir-eproc" data-txt="' + esc(formatarCNJ(proc)) + '" href="' + esc(linkEproc(proc, m)) + '" title="Abre o eproc e copia o número para colar na busca">' + ic('externo') + 'eproc</a>' + (document.documentElement.hasAttribute('data-eproc-atalho') ? '' : '<button type="button" class="btn pequeno so-desk" data-acao="ajuda-eproc" title="Como abrir o processo direto no eproc">Abrir direto?</button>') : '') + '</div>' +
     '<div class="chips">' + [m['SISTEMA'], [m['CIDADE'], m['FORUM']].filter(Boolean).join(' · '), m['TIPO']].filter(Boolean).map(x => '<span class="chip">' + esc(x) + '</span>').join('') +
     (m['HONORARIOS'] ? '<span class="chip dinheiro">' + esc(m['HONORARIOS']) + (valor && /UFESP/i.test(m['HONORARIOS']) ? ' ≈ ' + fmtBRL(valor) : '') + '</span>' : '') + chipPago(m) + '</div></header>';
 
@@ -1720,6 +1721,22 @@ $('#modal-fechar').addEventListener('click', () => modal.close());
 modal.addEventListener('click', ev => { if (ev.target === modal) modal.close(); });
 modal.addEventListener('close', () => { if (modal.classList.contains('grande')) { modal.classList.remove('grande'); $('#modal-corpo').innerHTML = ''; } });
 $('#modal-form').addEventListener('submit', ev => ev.preventDefault());
+
+function abrirAjudaEproc() {
+  const inst = document.documentElement.hasAttribute('data-eproc-atalho');
+  $('#modal-titulo').textContent = 'Abrir o processo direto no eproc';
+  $('#modal-corpo').innerHTML = (inst ? '<p class="ok-msg">✓ O atalho já está instalado neste navegador. O botão eproc abre direto o processo.</p>' : '') +
+    '<p>O eproc não aceita link direto para um processo. Com um pequeno atalho instalado no Chrome do computador, o botão <b>eproc</b> da ficha abre o eproc já na página do processo (se você estiver logado; se não, abre depois do login).</p>' +
+    '<ol class="passos-ag">' +
+    '<li>Instale a extensão <b>Tampermonkey</b> no Chrome: <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">abrir na Chrome Web Store</a>.</li>' +
+    '<li>Em <b>chrome://extensions</b>, abra <b>Detalhes</b> do Tampermonkey e ligue <b>Permitir scripts de usuário</b> (e o <b>Modo do desenvolvedor</b>, se o Chrome pedir).</li>' +
+    '<li>Toque em <a href="eproc-atalho.user.js" target="_blank" rel="noopener"><b>Instalar o atalho do eproc</b></a> e confirme em <b>Instalar</b> na tela do Tampermonkey.</li>' +
+    '<li>Atualize esta página. Pronto: o botão eproc passa a abrir o processo direto.</li></ol>' +
+    '<p class="dica">Vale para cada computador e navegador onde o app é usado. No celular o Chrome não aceita extensões: lá o botão abre o eproc e copia o número para colar na busca.</p>';
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn" id="aj-eproc-ok">Fechar</button>';
+  $('#aj-eproc-ok').onclick = () => modal.close();
+  if (!modal.open) modal.showModal();
+}
 
 function abrirNovoProcesso() {
   $('#modal-titulo').textContent = 'Novo processo';
@@ -2873,10 +2890,15 @@ document.addEventListener('click', ev => {
       if (navigator.clipboard) navigator.clipboard.writeText(ds.txt).then(() => toast('Número copiado'), () => toast(ds.txt));
       else toast(ds.txt);
       break;
-    case 'abrir-eproc': // o link abre normalmente; aqui só copia o número
-      if (navigator.clipboard) navigator.clipboard.writeText(ds.txt).then(() => toast('Número copiado: no eproc, é só colar na busca do topo', { tempo: 6000 }), () => toast('Busque no eproc: ' + ds.txt, { tempo: 8000 }));
-      else toast('Busque no eproc: ' + ds.txt, { tempo: 8000 });
+    case 'abrir-eproc': { // o link abre normalmente; aqui copia o número e orienta
+      const atalho = document.documentElement.hasAttribute('data-eproc-atalho');
+      const ajuda = !atalho && !(window.matchMedia && matchMedia('(pointer: coarse)').matches) ? { acao: { rot: 'Abrir direto', fn: abrirAjudaEproc }, tempo: 9000 } : { tempo: 6000 };
+      const msg = atalho ? 'Abrindo o processo no eproc' : 'Número copiado: no eproc, é só colar na busca do topo';
+      if (navigator.clipboard) navigator.clipboard.writeText(ds.txt).then(() => toast(msg, ajuda), () => toast(atalho ? msg : 'Busque no eproc: ' + ds.txt, ajuda));
+      else toast(atalho ? msg : 'Busque no eproc: ' + ds.txt, ajuda);
       break;
+    }
+    case 'ajuda-eproc': abrirAjudaEproc(); break;
     case 'filtrar':
       state.filtro = Object.assign(filtroVazio(), { quem: ds.quem || '', etapa: ds.etapa || '', tipo: ds.tipo || '' });
       ir('processos'); break;
