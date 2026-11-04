@@ -286,6 +286,18 @@ function gcalLink(ev) {
     (ev.slot && ev.slot.local ? '&location=' + encodeURIComponent(ev.slot.local) : '');
 }
 
+// eproc do TJSP: não aceita link direto para o processo (exige login e assinatura no link).
+// O app abre a base certa e copia o número para colar na busca do topo.
+const EPROC_BASES = { '1G': 'https://eproc1g.tjsp.jus.br/eproc/', 'EF': 'https://eproc1g-ef.tjsp.jus.br/eproc/' };
+function baseEproc(m) {
+  const t = String((m && (m['FORUM'] || '')) + ' ' + (m && (m['CIDADE'] || ''))).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return /FAZENDA|FISCAL/.test(t) ? 'EF' : '1G';
+}
+function linkEproc(proc, m) {
+  if (digitos(proc).length !== 20) return '';
+  return EPROC_BASES[baseEproc(m)];
+}
+
 function linkEsaj(proc) {
   const d = digitos(proc);
   if (d.length !== 20) return '';
@@ -632,7 +644,7 @@ if (typeof document === 'undefined') {
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
-    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
+    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
   };
   return;
 }
@@ -753,7 +765,7 @@ function toast(msg, op) {
   t.hidden = false;
   if (op.acao) t.querySelector('button').onclick = () => { t.hidden = true; op.acao.fn(); };
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.hidden = true; }, op.acao ? 7000 : op.erro ? 6000 : 2800);
+  toast._t = setTimeout(() => { t.hidden = true; }, op.tempo || (op.acao ? 7000 : op.erro ? 6000 : 2800));
 }
 
 /* ---------- LOGIN ---------- */
@@ -1334,7 +1346,8 @@ function renderFicha() {
   let h = '<header class="ficha-topo"><div class="linha1"><h2 id="ficha-nome">' + esc(m['REQUERENTE'] || '(sem nome)') + '</h2><button type="button" class="btn icone" data-acao="fechar-ficha" aria-label="Fechar">' + ic('fechar') + '</button></div>' +
     (m['REQUERIDA'] ? '<p class="contra">x ' + esc(m['REQUERIDA']) + '</p>' : '') +
     '<div class="proc"><span>' + esc(formatarCNJ(proc)) + '</span><button type="button" class="btn pequeno" data-acao="copiar" data-txt="' + esc(formatarCNJ(proc)) + '">' + ic('copiar') + 'Copiar nº</button>' +
-    (chave(m['SISTEMA']) === 'ESAJ' && linkEsaj(proc) ? '<a class="btn pequeno" target="_blank" rel="noopener" href="' + esc(linkEsaj(proc)) + '">' + ic('externo') + 'e-SAJ</a>' : '') + '</div>' +
+    (chave(m['SISTEMA']) === 'ESAJ' && linkEsaj(proc) ? '<a class="btn pequeno" target="_blank" rel="noopener" href="' + esc(linkEsaj(proc)) + '">' + ic('externo') + 'e-SAJ</a>' : '') +
+    (chave(m['SISTEMA']) === 'EPROC' && linkEproc(proc, m) ? '<a class="btn pequeno" target="_blank" rel="noopener" data-acao="abrir-eproc" data-txt="' + esc(formatarCNJ(proc)) + '" href="' + esc(linkEproc(proc, m)) + '" title="Abre o eproc e copia o número para colar na busca">' + ic('externo') + 'eproc</a>' : '') + '</div>' +
     '<div class="chips">' + [m['SISTEMA'], [m['CIDADE'], m['FORUM']].filter(Boolean).join(' · '), m['TIPO']].filter(Boolean).map(x => '<span class="chip">' + esc(x) + '</span>').join('') +
     (m['HONORARIOS'] ? '<span class="chip dinheiro">' + esc(m['HONORARIOS']) + (valor && /UFESP/i.test(m['HONORARIOS']) ? ' ≈ ' + fmtBRL(valor) : '') + '</span>' : '') + chipPago(m) + '</div></header>';
 
@@ -2859,6 +2872,10 @@ document.addEventListener('click', ev => {
     case 'copiar':
       if (navigator.clipboard) navigator.clipboard.writeText(ds.txt).then(() => toast('Número copiado'), () => toast(ds.txt));
       else toast(ds.txt);
+      break;
+    case 'abrir-eproc': // o link abre normalmente; aqui só copia o número
+      if (navigator.clipboard) navigator.clipboard.writeText(ds.txt).then(() => toast('Número copiado: no eproc, é só colar na busca do topo', { tempo: 6000 }), () => toast('Busque no eproc: ' + ds.txt, { tempo: 8000 }));
+      else toast('Busque no eproc: ' + ds.txt, { tempo: 8000 });
       break;
     case 'filtrar':
       state.filtro = Object.assign(filtroVazio(), { quem: ds.quem || '', etapa: ds.etapa || '', tipo: ds.tipo || '' });
