@@ -657,3 +657,5 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
 /* ajuda do atalho do eproc */
 .ok-msg{background:color-mix(in srgb,var(--g-bom) 14%,transparent);border:1px solid color-mix(in srgb,var(--g-bom) 40%,transparent);border-radius:10px;padding:10px 12px;margin:0 0 12px}
 @media (pointer:coarse){.so-desk{display:none}}
+/* explicação curta embaixo de um campo do formulário */
+.dica-campo{display:block;margin-top:4px;font-size:.78rem;line-height:1.35;color:var(--texto2)}

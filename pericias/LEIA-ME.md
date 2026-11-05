@@ -58,6 +58,22 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
+## Status da nomeação (coluna STATUS)
+
+A coluna STATUS (F) da aba PERICIAS diz se eu já me manifestei sobre a nomeação:
+
+- **AGUARDANDO**: ainda não peticionei nada no processo (nem aceite nem renúncia).
+- **ACEITE**: já peticionei aceitando.
+- **RENUNCIA**: renunciei (o processo vai para Renúncias).
+
+No app:
+
+- Ficha mostra "Aceite não peticionado" ou "✓ Aceite peticionado". Com AGUARDANDO e o próximo passo já em outra etapa, aparece um aviso e o cartão do processo ganha a etiqueta "Aceite não peticionado".
+- **Aceite peticionado** fica disponível sempre que o status é AGUARDANDO. Se o próximo passo for ACEITE, o processo também avança para Reserva ou Agendamento; se já estiver em outra etapa, só o status muda para ACEITE.
+- **Agendamento peticionado** (e marcar a agenda já como OK) também passa o status para ACEITE, porque a petição de agendamento aceita a nomeação. Na confirmação há uma caixa para desmarcar, se for o caso.
+- Com AGUARDANDO, os modelos de aceite entram nas sugestões de documento, mesmo que o próximo passo seja outro.
+- Na aba Dados, o campo STATUS tem a explicação curta dos três valores.
+
 ## Agendamento
 
 - **Horários livres**: em Agenda > **+ Horários livres**, escolha a data, o primeiro e o último horário e o intervalo (toque num horário para tirar). Cada horário entra na aba AGENDAMENTOS só com hora, status **AGENDAR** e local, **sem periciado**. Linha assim significa horário livre. O script do Discord ignora essas linhas. Um horário livre pode ser apagado pelo × enquanto ninguém estiver nele.
