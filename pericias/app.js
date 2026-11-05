@@ -56,6 +56,20 @@ function linhaMapa(cab, v) {
   return m;
 }
 
+// coluna STATUS (F) da aba PERICIAS: situação da nomeação.
+// AGUARDANDO = ainda não peticionei nada (nem aceite nem renúncia); ACEITE = já peticionei aceitando; RENUNCIA = renunciei.
+function statusNomeacao(m) {
+  const s = chave(m && m['STATUS']);
+  if (s === 'AGUARDANDO') return 'pendente';
+  if (s === 'ACEITE') return 'aceito';
+  if (/RENUNCI/.test(s)) return 'renuncia';
+  return '';
+}
+function aceitePendente(m) { return statusNomeacao(m) === 'pendente'; }
+// petição que movimenta o processo (ex.: agendamento) também vale como aceite, se ainda não houver
+function aceiteJunto(m) { const s = statusNomeacao(m); return s !== 'aceito' && s !== 'renuncia'; }
+const ROT_STATUS = { pendente: 'Aceite não peticionado', aceito: 'Aceite peticionado', renuncia: 'Renúncia' };
+
 // mesma regra do script do Discord: quem faz o quê
 function classificar(m) {
   const passo = chave(m['PROXIMO PASSO']), obs = chave(m['OBSERVACAO']), pago = chave(m['PAGO']);
@@ -160,6 +174,7 @@ function acoesRapidas(m, ctx) {
   const c = classificar(m);
   const A = [];
   if (e === 'ACEITE') A.push({ id: 'aceite', rot: 'Aceite peticionado', dados: { 'STATUS': 'ACEITE', 'PROXIMO PASSO': PAGO_LIBERA.indexOf(pago) >= 0 ? 'AGENDAMENTO' : 'RESERVA' } });
+  else if (aceitePendente(m)) A.push({ id: 'aceite', rot: 'Aceite peticionado', dados: { 'STATUS': 'ACEITE' } });
   if (e === 'RESERVA' || (e === 'AGENDAMENTO' && PAGO_LIBERA.indexOf(pago) < 0)) A.push({ id: 'reserva', rot: 'Honorários reservados', dados: { 'PAGO': 'RESERVADO', 'PROXIMO PASSO': 'AGENDAMENTO' } });
   if (e === 'AGENDAMENTO' && slot) {
     A.push({ id: 'confirmar-ag', rot: 'Agendamento peticionado', especial: 'confirmar-ag', destaque: true });
@@ -424,10 +439,15 @@ function filtroOk(filtro, m) {
   }
 }
 function regraModelo(md) { const c = md && md.cfg; return c && ((c.etapas && c.etapas.length) || c.obs) ? c : null; }
+// etapas que valem para sugerir documentos: a do PRÓXIMO PASSO e, se o aceite ainda não foi peticionado, ACEITE
+function etapasDoc(m) {
+  const e = etapaDe(m);
+  return aceitePendente(m) && e !== 'ACEITE' ? ['ACEITE', e] : [e];
+}
 function modeloServe(md, m) {
   const r = regraModelo(md);
   if (!r) return false;
-  return (!r.etapas.length || r.etapas.indexOf(etapaDe(m)) >= 0) && (!r.obs || chave(m['OBSERVACAO']).indexOf(chave(r.obs)) >= 0) && filtroOk(r.filtro, m);
+  return (!r.etapas.length || etapasDoc(m).some(e => r.etapas.indexOf(e) >= 0)) && (!r.obs || chave(m['OBSERVACAO']).indexOf(chave(r.obs)) >= 0) && filtroOk(r.filtro, m);
 }
 function modelosVisiveis(modelos) { return (modelos || []).filter(md => !(md.cfg && md.cfg.oculto)); }
 function resumoRegra(md) {
@@ -449,12 +469,13 @@ function sugerirModelos(modelos, m) {
 function sugerirPorNome(modelos, m) {
   const e = etapaDe(m), obs = chave(m['OBSERVACAO']), tipo = chave(m['TIPO']);
   const nuc = /NUCLEO/.test(chave(m['CIDADE'])) || /NUCLEO/.test(chave(m['FORUM']));
-  const chaves = {
+  const mapa = {
     ACEITE: ['ACEITE'], RESERVA: ['ACEITE COM AGENDAMENTO', 'AGENDAMENTO'], AGENDAMENTO: ['AGENDAMENTO'],
     PERICIA: ['DECLARACAO COMPARECIMENTO', 'AUTORIZACAO FOTOGRAFIA'], LAUDO: ['LAUDO'], ESCLARECIMENTOS: ['ESCLARECIMENTO'],
     DECISAO: /COMPARECEU/.test(obs) ? ['NAO COMPARECIMENTO'] : [], PETICAO: ['PETICAO'],
     PAGAMENTO: ['MLE', 'HONORARIOS', 'FORMULARIO'], RENUNCIAR: ['RENUNCIA']
-  }[e] || [];
+  };
+  const chaves = (aceitePendente(m) && e !== 'ACEITE' ? ['ACEITE'] : []).concat(mapa[e] || []);
   return modelos.map(md => {
     const t = chave(md.nome).replace(/[^A-Z0-9 ]/g, ' ');
     let s = 0;
@@ -626,7 +647,7 @@ function processosPeloNome(nome, itens) {
   if (/NAO COMPARECIMENTO/.test(t)) f = it => /COMPARECEU/.test(chave(it.m['OBSERVACAO'])) && etapaDe(it.m) === 'DECISAO';
   else if (/RENUNCIA/.test(t)) f = it => etapaDe(it.m) === 'RENUNCIAR';
   else if (/MLE|HONORARIOS|FORMULARIO/.test(t)) f = it => it.c.acao === 'Peticionar o pagamento (MLE)';
-  else if (/ACEITE/.test(t)) f = it => etapaDe(it.m) === 'ACEITE';
+  else if (/ACEITE/.test(t)) f = it => etapaDe(it.m) === 'ACEITE' || aceitePendente(it.m);
   else if (/AGENDAMENTO/.test(t)) f = it => futura(it);
   else if (/COMPARECIMENTO|AUTORIZACAO|FOTOGRAFIA/.test(t)) f = it => futura(it, 7);
   else if (/LAUDO/.test(t)) f = it => etapaDe(it.m) === 'LAUDO';
@@ -645,7 +666,7 @@ if (typeof document === 'undefined') {
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
-    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
+    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, statusNomeacao, aceitePendente, aceiteJunto, etapasDoc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
   };
   return;
 }
@@ -957,6 +978,7 @@ function cardProcesso(it) {
   chips.push(chipPago(m));
   if (m['HONORARIOS']) chips.push('<span class="chip">' + esc(m['HONORARIOS']) + '</span>');
   if (it.aba === 'PERICIAS' && semReserva(m)) chips.push('<span class="chip critico">⚠ Sem reserva</span>');
+  if (it.aba === 'PERICIAS' && aceitePendente(m) && etapaDe(m) !== 'ACEITE') chips.push('<span class="chip alerta">Aceite não peticionado</span>');
   return '<button type="button" class="pcard ' + cls + '" data-acao="ficha" data-aba="' + it.aba + '" data-linha="' + it.linha + '">' +
     '<h3><span>' + esc(m['REQUERENTE'] || formatarCNJ(m['PROCESSO']) || '(sem nome)') + '</span>' + (m['TIPO'] ? '<small class="chip">' + esc(abreviar(m['TIPO'], 22)) + '</small>' : '') + '</h3>' +
     '<div class="proc">' + esc(formatarCNJ(m['PROCESSO'])) + (m['CIDADE'] ? ' · ' + esc(m['CIDADE']) : '') + '</div>' +
@@ -1350,7 +1372,8 @@ function renderFicha() {
     (chave(m['SISTEMA']) === 'ESAJ' && linkEsaj(proc) ? '<a class="btn pequeno" target="_blank" rel="noopener" href="' + esc(linkEsaj(proc)) + '">' + ic('externo') + 'e-SAJ</a>' : '') +
     (chave(m['SISTEMA']) === 'EPROC' && linkEproc(proc, m) ? '<a class="btn pequeno" target="_blank" rel="noopener" data-acao="abrir-eproc" data-txt="' + esc(formatarCNJ(proc)) + '" href="' + esc(linkEproc(proc, m)) + '" title="Abre o eproc e copia o número para colar na busca">' + ic('externo') + 'eproc</a>' + (document.documentElement.hasAttribute('data-eproc-atalho') ? '' : '<button type="button" class="btn pequeno so-desk" data-acao="ajuda-eproc" title="Como abrir o processo direto no eproc">Abrir direto?</button>') : '') + '</div>' +
     '<div class="chips">' + [m['SISTEMA'], [m['CIDADE'], m['FORUM']].filter(Boolean).join(' · '), m['TIPO']].filter(Boolean).map(x => '<span class="chip">' + esc(x) + '</span>').join('') +
-    (m['HONORARIOS'] ? '<span class="chip dinheiro">' + esc(m['HONORARIOS']) + (valor && /UFESP/i.test(m['HONORARIOS']) ? ' ≈ ' + fmtBRL(valor) : '') + '</span>' : '') + chipPago(m) + '</div></header>';
+    (m['HONORARIOS'] ? '<span class="chip dinheiro">' + esc(m['HONORARIOS']) + (valor && /UFESP/i.test(m['HONORARIOS']) ? ' ≈ ' + fmtBRL(valor) : '') + '</span>' : '') + chipPago(m) +
+    (f.aba === 'PERICIAS' && statusNomeacao(m) ? '<span class="chip ' + (statusNomeacao(m) === 'aceito' ? 'ok' : 'alerta') + '" title="Coluna STATUS da planilha">' + (statusNomeacao(m) === 'aceito' ? '✓ ' : '') + ROT_STATUS[statusNomeacao(m)] + '</span>' : '') + '</div></header>';
 
   h += '<div class="ficha-corpo">';
   if (f.aba === 'PERICIAS') {
@@ -1363,6 +1386,7 @@ function renderFicha() {
       h += '<div class="conf-ficha ' + x.nivel + '"><span>🔎 ' + esc(x.v ? 'Última conferência nos autos: ' + txtConferencia(x.v) + ' (' + prazoConferencia(x, CONFERIR_DIAS, CONFERIR_LIMITE) + ')' : 'Ainda não conferido nos autos pelo app') + '</span>' +
         '<button type="button" class="btn pequeno" data-acao="ficha-verificado" data-proc="' + esc(proc) + '" title="Conferi nos autos e não mudou nada">✓ Sem novidade</button></div>';
     }
+    if (aceitePendente(m) && etapaDe(m) !== 'ACEITE') h += '<div class="alerta-box" style="cursor:default"><span>📝</span><span>Status <b>AGUARDANDO</b>: ainda não há petição de aceite nem de renúncia neste processo. Quando peticionar o aceite, toque em "Aceite peticionado".</span></div>';
     if (semReserva(m)) h += '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>Honorários ainda não reservados: não agendar nem realizar a perícia antes do depósito.</span></div>';
     if (etapaDe(m) === 'AGENDAMENTO') {
       const sl = slotDe(it);
@@ -1611,14 +1635,16 @@ function pedirConfirmacaoAgenda(it) {
   state.ficha.confirma = { titulo: 'Agendamento peticionado', linhas: [
     'Na aba AGENDAMENTOS, o horário de <b>' + esc(txtSlot(sl)) + '</b> passa de ' + esc(sl.status || 'sem status') + ' para <b>OK</b>.',
     'O processo passa para a etapa <b>PERÍCIA</b>, com a data ' + esc(sl.data) + '.'
-  ].concat(temAgenda ? ['<label class="check"><input type="checkbox" id="cf-discord" checked> Avisar no #agenda do Discord</label>'] : []),
-    fn: () => confirmarAgendamento(it, sl, !!($('#cf-discord') && $('#cf-discord').checked)) };
+  ].concat(!aceiteJunto(it.m) ? [] : ['<label class="check"><input type="checkbox" id="cf-aceite" checked> Esta petição também aceita a nomeação: status passa de ' + esc(it.m['STATUS'] || 'vazio') + ' para <b>ACEITE</b></label>'])
+    .concat(temAgenda ? ['<label class="check"><input type="checkbox" id="cf-discord" checked> Avisar no #agenda do Discord</label>'] : []),
+    fn: () => confirmarAgendamento(it, sl, !!($('#cf-discord') && $('#cf-discord').checked), !!($('#cf-aceite') && $('#cf-aceite').checked)) };
   renderFicha();
 }
-async function confirmarAgendamento(it, sl, avisar) {
-  const dp = {}, hP = cabDe('PERICIAS', 'PERICIA'), hPasso = cabDe('PERICIAS', 'PROXIMO PASSO');
+async function confirmarAgendamento(it, sl, avisar, aceite) {
+  const dp = {}, hP = cabDe('PERICIAS', 'PERICIA'), hPasso = cabDe('PERICIAS', 'PROXIMO PASSO'), hSt = cabDe('PERICIAS', 'STATUS');
   if (hP) dp[hP] = sl.data;
   if (hPasso) dp[hPasso] = 'PERICIA';
+  if (aceite && hSt) dp[hSt] = 'ACEITE';
   try {
     const j = await api('agendaConfirmar', { linhaSlot: sl.linha, nomeEsperado: sl.nome, aba: 'PERICIAS', linha: it.linha, processoEsperado: it.m['PROCESSO'], dadosProcesso: dp });
     if (!j.ok) throw new Error(erroApi(j, 'Erro ao confirmar o agendamento'));
@@ -1684,6 +1710,7 @@ function camposForm(aba, it, padrao) {
       (n === 'PERICIA' ? ' placeholder="dd/mm/aaaa ou INDIRETA"' : '') +
       (n === 'PROCESSO' ? ' inputmode="numeric" placeholder="0000000-00.0000.8.26.0000" data-cnj="1"' : '') + ' autocomplete="off">';
     if (ops) ctl += '<datalist id="dl-' + idx + '">' + ops.map(o => '<option value="' + esc(o) + '">').join('') + '</datalist>';
+    if (aba === 'PERICIAS' && n === 'STATUS') ctl += '<small class="dica-campo">AGUARDANDO: nada peticionado ainda (nem aceite nem renúncia) · ACEITE: já peticionei aceitando · RENUNCIA: renunciei</small>';
     return '<div class="campo' + (LARGOS.indexOf(n) >= 0 ? ' largo' : '') + '"><label for="' + id + '">' + esc(hdr) + '</label>' + ctl + '</div>';
   }).join('');
 }
@@ -2034,9 +2061,10 @@ function abrirSlot(a, diaPadrao, op) {
       let j;
       if (vinc) {
         const dp = {};
-        const hP = cabDe('PERICIAS', 'PERICIA'), hPasso = cabDe('PERICIAS', 'PROXIMO PASSO');
+        const hP = cabDe('PERICIAS', 'PERICIA'), hPasso = cabDe('PERICIAS', 'PROXIMO PASSO'), hSt = cabDe('PERICIAS', 'STATUS');
         if (hP) dp[hP] = dados.data;
         if (hPasso && ok) dp[hPasso] = 'PERICIA';
+        if (hSt && ok && aceiteJunto(vinc.m)) dp[hSt] = 'ACEITE'; // já peticionado: o agendamento também aceita a nomeação
         const req = { slot: dados, linha: vinc.linha, processoEsperado: vinc.m['PROCESSO'], dadosProcesso: dp };
         if (livre) { req.linhaLivre = livre.linha; req.horaLivre = livre.hora; }
         j = await api('agendar', req);
@@ -2065,7 +2093,7 @@ function mostrarReservado(vinc, dados, recarga, avisar) {
   const m = Object.assign({}, vinc.m, { 'PERICIA': dados.data });
   $('#modal-titulo').textContent = 'Horário reservado';
   $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq img">📅</span><div><b>' + esc(fmtExtenso(parseData(dados.data)) + ' às ' + dados.hora) + '</b><small>' + esc(dados.nome + ' · ' + (dados.local || '') + ' · status AGENDAR na aba AGENDAMENTOS') + '</small></div></div>' +
-    '<ol class="passos-ag"><li>Gere a petição de agendamento abaixo e confira os trechos em amarelo.</li><li>Protocole no ' + esc(chave(vinc.m['SISTEMA']) === 'EPROC' ? 'eproc' : 'e-SAJ') + '.</li><li>Toque em <b>Já protocolei</b>: o horário passa para OK e o processo para PERÍCIA. Dá para fazer isso depois, pela ficha ou pelas Tarefas.</li></ol>' +
+    '<ol class="passos-ag"><li>Gere a petição de agendamento abaixo e confira os trechos em amarelo.</li><li>Protocole no ' + esc(chave(vinc.m['SISTEMA']) === 'EPROC' ? 'eproc' : 'e-SAJ') + '.</li><li>Toque em <b>Já protocolei</b>: o horário passa para OK e o processo para PERÍCIA' + (aceiteJunto(vinc.m) ? ', com status ACEITE (a petição de agendamento também aceita a nomeação)' : '') + '. Dá para fazer isso depois, pela ficha ou pelas Tarefas.</li></ol>' +
     '<div id="ag-docs"></div>' +
     (temAgenda ? '<label class="check" style="margin-top:12px"><input type="checkbox" id="ag-discord2"' + (avisar ? ' checked' : '') + '> Avisar no #agenda do Discord ao confirmar</label>' : '');
   $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="ag-confirmar">Já protocolei: confirmar agendamento</button><span class="esp"></span><button type="button" class="btn" id="ag-depois">Fazer depois</button>';
@@ -2078,7 +2106,7 @@ function mostrarReservado(vinc, dados, recarga, avisar) {
     const it = itens('PERICIAS').find(i => digitos(i.m['PROCESSO']) === digitos(vinc.m['PROCESSO'])) || vinc;
     const sl = slotDe(it);
     if (!sl) { toast('Não achei o horário reservado na agenda. Atualize a tela.', { erro: true }); btn.disabled = false; btn.textContent = 'Já protocolei: confirmar agendamento'; return; }
-    if (await confirmarAgendamento(it, sl, av)) modal.close();
+    if (await confirmarAgendamento(it, sl, av, aceiteJunto(it.m))) modal.close();
     else { btn.disabled = false; btn.textContent = 'Já protocolei: confirmar agendamento'; }
   };
 }
