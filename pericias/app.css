@@ -369,6 +369,9 @@ button.gseg-linha.ativa{background:var(--gold-claro)}
 .passo.feito i{background:var(--assist)}
 .passo.atual i{background:var(--gold)}
 .passo.atual{color:var(--titulo);font-weight:900}
+.passo.parado i{background:repeating-linear-gradient(135deg,var(--gold) 0 5px,transparent 5px 9px);box-shadow:inset 0 0 0 1px var(--gold)}
+.passo.parado{color:var(--titulo);font-weight:900}
+.trilha-nota{margin:-10px 0 14px;font-size:.8rem;color:var(--texto2)}
 .passo span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prox{border:1px solid var(--linha);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center;margin-bottom:12px}
 .prox .meio{flex:1;min-width:0}

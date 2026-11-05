@@ -155,13 +155,41 @@ function etapaDe(m) {
 }
 function rotEtapa(k) { const e = ETAPAS.find(x => x.k === k); return e ? e.rot : (k === 'SEM' ? 'Sem etapa' : 'Outros'); }
 
-const TRILHA = ['Aceite', 'Reserva', 'Agendamento', 'Perícia', 'Laudo', 'Decisão', 'Pagamento', 'Concluído'];
-function posTrilha(m) {
-  const e = etapaDe(m);
-  if (chave(m['PAGO']) === 'PAGO' && (e === 'PAGAMENTO' || e === 'SEM')) return 7;
-  const p = { ACEITE: 0, RESERVA: 1, AGENDAMENTO: 2, PERICIA: 3, LAUDO: 4, ESCLARECIMENTOS: 5, PETICAO: 5, DECISAO: 5, PAGAMENTO: 6 }[e];
-  return p == null ? -1 : p;
+// trilha da ficha: cada etapa é marcada pelo que a planilha mostra (não só pelo PRÓXIMO PASSO).
+// "Decisão" não é etapa: o processo pode ficar parado aguardando decisão judicial em qualquer ponto
+// (nomeação, honorários, não comparecimento, laudo, MLE...). Nesse caso a etapa atual fica "parada".
+const TRILHA = ['Aceite', 'Reserva', 'Agendamento', 'Perícia', 'Laudo', 'Pagamento', 'Concluído'];
+function trilhaProcesso(m) {
+  const e = etapaDe(m), st = statusNomeacao(m), pago = chave(m['PAGO']), laudo = chave(m['LAUDO']), per = chave(m['PERICIA']), obs = chave(m['OBSERVACAO']);
+  const concluido = pago === 'PAGO' && (e === 'PAGAMENTO' || e === 'SEM');
+  const temPericia = !!parseData(m['PERICIA']) || /INDIRETA/.test(per);
+  const laudoIniciado = /PRODU|PRONTO|ENTREGUE/.test(laudo) || ['LAUDO', 'ESCLARECIMENTOS', 'PAGAMENTO'].indexOf(e) >= 0;
+  const feito = [
+    st === 'aceito' || (st !== 'pendente' && e !== 'ACEITE' && e !== 'SEM'),
+    PAGO_LIBERA.indexOf(pago) >= 0,
+    temPericia,
+    laudoIniciado,
+    /ENTREGUE/.test(laudo) && e !== 'LAUDO' && e !== 'ESCLARECIMENTOS',
+    pago === 'PAGO',
+    concluido
+  ];
+  let atual;
+  if (concluido) atual = -1;
+  else {
+    atual = { ACEITE: 0, RESERVA: 1, AGENDAMENTO: 2, PERICIA: 3, LAUDO: 4, ESCLARECIMENTOS: 4, PAGAMENTO: 5 }[e];
+    if (atual == null) { // aguardando decisão, petição avulsa ou sem passo: deduz pela planilha
+      atual = feito.indexOf(false);
+      if (/ESCLARECIMENTO/.test(obs) && feito[4]) atual = 4; // esclarecimentos fazem parte do laudo
+      if (atual < 0) atual = 6;
+    }
+  }
+  const travado = !concluido && e === 'DECISAO';
+  return {
+    etapas: TRILHA.map((rot, i) => ({ rot: rot, estado: i === atual ? (travado ? 'parado' : 'atual') : feito[i] ? 'feito' : '' })),
+    pos: concluido ? 6 : atual, atual: atual, travado: travado
+  };
 }
+function posTrilha(m) { return trilhaProcesso(m).pos; }
 
 function prazoDe(m) { return parseData(m['PRAZOS'] || m['PRAZO']); }
 function nivelPrazo(n) { return n < 0 ? 'vencido' : n <= 2 ? 'critico' : n <= 5 ? 'alerta' : n <= 10 ? 'atencao' : 'ok'; }
@@ -187,9 +215,17 @@ function acoesRapidas(m, ctx) {
   if (e === 'LAUDO' && !/PRONTO|PETICION|PROTOCOL/.test(obs)) A.push({ id: 'pronto', rot: 'Laudo pronto (falta protocolar)', dados: { 'OBSERVACAO': 'LAUDO PRONTO / PETICIONAR' } });
   if (e === 'LAUDO') A.push({ id: 'protocolado', rot: 'Laudo protocolado', dados: { 'PROXIMO PASSO': 'DECISÃO', 'LAUDO': 'ENTREGUE', 'OBSERVACAO': '', 'PRAZOS': '' }, destaque: true });
   if (e === 'ESCLARECIMENTOS' || (e === 'DECISAO' && c.quem === 'perito')) A.push({ id: 'esclarecimentos', rot: 'Esclarecimentos enviados', dados: { 'PROXIMO PASSO': 'DECISÃO', 'OBSERVACAO': 'ENVIEI OS ESCLARECIMENTOS', 'PRAZOS': '' }, destaque: true });
-  if (e === 'DECISAO') A.push({ id: 'liberado', rot: 'Pagamento liberado: fazer MLE', dados: { 'PROXIMO PASSO': 'PAGAMENTO', 'OBSERVACAO': 'FAZER MLE' } });
+  // aguardando decisão: as saídas dependem de onde o processo parou (nomeação, honorários, perícia, laudo, pagamento)
+  const tr = e === 'DECISAO' ? trilhaProcesso(m) : null;
+  const antesDoLaudo = tr && tr.atual <= 3 && !/ENTREGUE/.test(chave(m['LAUDO'])) && ['MLE', 'OFICIO', 'PARCIAL', 'PAGO'].indexOf(pago) < 0;
+  if (tr && tr.atual === 1 && PAGO_LIBERA.indexOf(pago) < 0) {
+    A.push({ id: 'reserva', rot: 'Honorários reservados', dados: { 'PAGO': 'RESERVADO', 'PROXIMO PASSO': 'AGENDAMENTO', 'OBSERVACAO': '' } });
+    A.push({ id: 'fixados', rot: 'Honorários fixados: aguardar depósito', dados: { 'PROXIMO PASSO': 'RESERVA', 'OBSERVACAO': '' } });
+  }
+  if (tr && tr.atual === 3) A.push({ id: 'remarcar', rot: 'Remarcar a perícia', dados: { 'PROXIMO PASSO': 'AGENDAMENTO', 'OBSERVACAO': '' } });
+  if (e === 'DECISAO' && !antesDoLaudo) A.push({ id: 'liberado', rot: 'Pagamento liberado: fazer MLE', dados: { 'PROXIMO PASSO': 'PAGAMENTO', 'OBSERVACAO': 'FAZER MLE' } });
   if (e === 'PAGAMENTO' && /\b(FAZER|PETICIONAR|SOLICITAR|PEDIR)\b/.test(obs)) A.push({ id: 'mle', rot: 'MLE peticionado', dados: { 'PAGO': 'MLE', 'OBSERVACAO': 'MLE PETICIONADO' }, destaque: true });
-  if ((e === 'PAGAMENTO' || e === 'DECISAO') && pago !== 'PAGO') A.push({ id: 'recebido', rot: 'Honorários recebidos', dados: { 'PAGO': 'PAGO', 'PROXIMO PASSO': 'PAGAMENTO' } });
+  if ((e === 'PAGAMENTO' || (e === 'DECISAO' && !antesDoLaudo)) && pago !== 'PAGO') A.push({ id: 'recebido', rot: 'Honorários recebidos', dados: { 'PAGO': 'PAGO', 'PROXIMO PASSO': 'PAGAMENTO' } });
   if (e === 'PETICAO') A.push({ id: 'peticao', rot: 'Petição protocolada', dados: { 'PROXIMO PASSO': 'DECISÃO' }, destaque: true });
   if (e === 'RENUNCIAR') A.push({ id: 'renuncia', rot: 'Renúncia peticionada', mover: 'RENUNCIAS', destaque: true });
   if (pago === 'PAGO' && e !== 'RENUNCIAR') A.push({ id: 'concluir', rot: 'Arquivar em Concluídos', mover: 'CONCLUSOS', destaque: true });
@@ -665,7 +701,7 @@ if (typeof document === 'undefined') {
     estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
     ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
-    numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
+    numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, trilhaProcesso, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
     montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, statusNomeacao, aceitePendente, aceiteJunto, etapasDoc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
   };
   return;
@@ -1377,8 +1413,9 @@ function renderFicha() {
 
   h += '<div class="ficha-corpo">';
   if (f.aba === 'PERICIAS') {
-    const pos = posTrilha(m);
-    h += '<div class="trilha" aria-label="Etapa do processo">' + TRILHA.map((t, i) => '<div class="passo' + (i < pos ? ' feito' : i === pos ? ' atual' : '') + '"><i></i><span>' + t + '</span></div>').join('') + '</div>';
+    const tr = trilhaProcesso(m);
+    h += '<div class="trilha" aria-label="Etapas do processo">' + tr.etapas.map(x => '<div class="passo' + (x.estado ? ' ' + x.estado : '') + '" title="' + esc(x.rot + ': ' + ({ feito: 'feito', atual: 'etapa atual', parado: 'parado aguardando decisão judicial' }[x.estado] || 'pendente')) + '"><i></i><span>' + (x.estado === 'parado' ? '⏸ ' : '') + x.rot + '</span></div>').join('') + '</div>';
+    if (tr.travado) h += '<p class="trilha-nota">⏸ Parado em <b>' + TRILHA[tr.atual] + '</b>: aguardando decisão judicial.</p>';
     h += '<div class="prox"><span class="ponto ' + (c.quem || 'ok') + '" style="width:12px;height:12px"></span><div class="meio"><small>Próxima ação' + (c.quem ? ' · ' + QUEM_ROT[c.quem] : '') + '</small><b>' + esc(c.acao || 'Nenhuma pendência') + '</b>' +
       (m['OBSERVACAO'] ? '<div style="font-size:.85rem;color:var(--texto2);margin-top:2px">' + esc(m['OBSERVACAO']) + '</div>' : '') + '</div>' + chipPrazo(m) + '</div>';
     if (c.quem === 'acompanhar') {
