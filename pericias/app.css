@@ -662,3 +662,17 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
 @media (pointer:coarse){.so-desk{display:none}}
 /* explicação curta embaixo de um campo do formulário */
 .dica-campo{display:block;margin-top:4px;font-size:.78rem;line-height:1.35;color:var(--texto2)}
+
+/* guia de peticionamento do Núcleo no eproc */
+.guia-eproc{border:1px solid var(--linha);border-radius:12px;padding:10px 14px;margin:14px 0}
+.guia-eproc>summary{cursor:pointer;font-weight:900;color:var(--titulo)}
+.guia-eproc .guia-regras{font-size:.8rem;color:var(--texto2);margin:8px 0 10px;line-height:1.45}
+.guia-item{border-top:1px solid var(--linha);padding:10px 0}
+.guia-item>b{display:block;margin-bottom:4px;color:var(--titulo)}
+.guia-item dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px;margin:0;font-size:.84rem}
+.guia-item dt{color:var(--suave);font-size:.74rem;text-transform:uppercase;font-weight:800;letter-spacing:.03em;padding-top:2px}
+.guia-item dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+.guia-item p{margin:6px 0 0;font-size:.8rem;color:var(--texto2)}
+.guia-todas>summary{cursor:pointer;font-size:.84rem;color:var(--texto2);margin-top:6px}
+.aviso-45{font-size:.82rem;color:var(--texto2);margin:8px 0 0}
+.aviso-45.erro{color:var(--critico,#d9534f);font-weight:700}

@@ -59,6 +59,27 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
+## Núcleo 4.0 no eproc (base Fazenda Pública)
+
+Desde novembro de 2026 os processos do Núcleo de Justiça 4.0 (Acidentes do Trabalho do Interior e Litoral) tramitam no eproc, na base **Fazenda Pública** (`eproc1g-ef.tjsp.jus.br/eproc`), que é separada da base Cível e exige perfil e login próprios. Referência: Manual de Orientações Iniciais aos Peritos do Núcleo, v1.0, 5/11/2026.
+
+- **Abrir no tribunal**: processos do Núcleo, contra o INSS (acidentários e previdenciários), contra Fazenda, Município ou Prefeitura abrem a base Fazenda Pública. Os demais abrem a base Cível. O atalho do eproc funciona nas duas.
+- **Migração**: processo do Núcleo ainda marcado como ESAJ mostra o aviso "O Núcleo 4.0 está passando para o eproc" com o botão **Migrou para o eproc**, que muda a coluna SISTEMA para EPROC (o número do processo continua o mesmo). Novo processo já vem com SISTEMA = EPROC.
+- **Como peticionar no eproc (Núcleo 4.0)**: na aba Ações da ficha, um quadro mostra o evento, o tipo de cada documento e o prazo a fechar para a etapa atual, com as outras situações logo abaixo:
+  - Aceite + agendamento: evento "Comunicação do Início e Local dos Trabalhos Perito"; documento 1 "Perito aceitação do encargo"; documento 2 "Petição Designação data perícia" (Comunicação de Designação de Perícia, modelo do Anexo II).
+  - Aceite aguardando depósito: evento "Petição - aceitação do encargo de perito".
+  - Laudo: evento "Laudo Pericial - Perito"; documento 1 "Laudo Pericial - Perito"; documento 2 "Pedido de Levantamento de Honorários Perito" (Formulário de MLE).
+  - Esclarecimentos, ausência do periciando, MLE depois do laudo, dilação de prazo, pedido de documentos, declínio e manifestações diversas.
+- **45 dias**: ao agendar processo do Núcleo no eproc, horários com menos de 45 dias de antecedência ficam apagados, a data sugerida já respeita o mínimo e aparece um aviso em vermelho se a data escolhida for antes.
+- **Laudo**: o botão vira "Laudo e Formulário de MLE protocolados" (observação LAUDO E FORMULÁRIO MLE PROTOCOLADOS). Depois, aguardando decisão, o botão é "MLE expedido pelo juízo" (PAGO = MLE, etapa PAGAMENTO).
+- **Modelos** (pasta Arquivos base):
+  - `MODELO ACEITE ENCARGO N40 EPROC`: o aceite sozinho (documento "Perito aceitação do encargo").
+  - `COMUNICACAO DESIGNACAO PERICIA N40 EPROC`: Comunicação de Designação de Perícia no formato do Anexo II, com `{{PROCESSO}}`, `{{REQUERENTE}}`, `{{DATA_PERICIA_EXTENSO}}`, `{{HORA_PERICIA}}`, `{{LOCAL_PERICIA}}` e `{{HOJE}}`. Especialidade e CEP ficam em `[[ ]]` para preencher uma vez no modelo.
+  - No Núcleo no eproc, esses dois são sugeridos primeiro e o `MODELO ACEITE COM AGENDAMENTO N40` (aceite e agendamento no mesmo arquivo, prática que o Núcleo pede para evitar) sai das sugestões. Modelos com EPROC no nome só aparecem para processos do Núcleo no eproc. No laudo, o Formulário de MLE N40 também é sugerido.
+- **Campo novo `{{DATA_PERICIA_EXTENSO}}`** (ex.: 3 de dezembro de 2026): exige uma linha no `AppPericias.gs`, dentro de `appCamposDoc_`, logo depois da linha do `HOJE` (com vírgula no fim da linha do HOJE):
+  `DATA_PERICIA_EXTENSO: dPericia ? dPericia.getDate() + ' de ' + APP_MESES[dPericia.getMonth()] + ' de ' + dPericia.getFullYear() : ''`
+  e depois Implantar > Gerenciar implantações > lápis > Nova versão.
+
 ## Status da nomeação (coluna STATUS)
 
 A coluna STATUS (F) da aba PERICIAS diz se eu já me manifestei sobre a nomeação:
