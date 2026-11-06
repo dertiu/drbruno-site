@@ -213,7 +213,10 @@ function acoesRapidas(m, ctx) {
     A.push({ id: 'faltou', rot: 'Não compareceu', dados: { 'PROXIMO PASSO': 'DECISÃO', 'OBSERVACAO': 'NÃO COMPARECEU' } });
   }
   if (e === 'LAUDO' && !/PRONTO|PETICION|PROTOCOL/.test(obs)) A.push({ id: 'pronto', rot: 'Laudo pronto (falta protocolar)', dados: { 'OBSERVACAO': 'LAUDO PRONTO / PETICIONAR' } });
-  if (e === 'LAUDO') A.push({ id: 'protocolado', rot: 'Laudo protocolado', dados: { 'PROXIMO PASSO': 'DECISÃO', 'LAUDO': 'ENTREGUE', 'OBSERVACAO': '', 'PRAZOS': '' }, destaque: true });
+  if (e === 'LAUDO') A.push(nucleoEproc(m)
+    ? { id: 'protocolado', rot: 'Laudo e Formulário de MLE protocolados', dados: { 'PROXIMO PASSO': 'DECISÃO', 'LAUDO': 'ENTREGUE', 'OBSERVACAO': 'LAUDO E FORMULÁRIO MLE PROTOCOLADOS', 'PRAZOS': '' }, destaque: true,
+        nota: 'No eproc do Núcleo o Formulário de MLE vai junto com o laudo (evento Laudo Pericial - Perito, dois arquivos). O MLE é expedido pelo juízo depois da manifestação das partes.' }
+    : { id: 'protocolado', rot: 'Laudo protocolado', dados: { 'PROXIMO PASSO': 'DECISÃO', 'LAUDO': 'ENTREGUE', 'OBSERVACAO': '', 'PRAZOS': '' }, destaque: true });
   if (e === 'ESCLARECIMENTOS' || (e === 'DECISAO' && c.quem === 'perito')) A.push({ id: 'esclarecimentos', rot: 'Esclarecimentos enviados', dados: { 'PROXIMO PASSO': 'DECISÃO', 'OBSERVACAO': 'ENVIEI OS ESCLARECIMENTOS', 'PRAZOS': '' }, destaque: true });
   // aguardando decisão: as saídas dependem de onde o processo parou (nomeação, honorários, perícia, laudo, pagamento)
   const tr = e === 'DECISAO' ? trilhaProcesso(m) : null;
@@ -223,7 +226,9 @@ function acoesRapidas(m, ctx) {
     A.push({ id: 'fixados', rot: 'Honorários fixados: aguardar depósito', dados: { 'PROXIMO PASSO': 'RESERVA', 'OBSERVACAO': '' } });
   }
   if (tr && tr.atual === 3) A.push({ id: 'remarcar', rot: 'Remarcar a perícia', dados: { 'PROXIMO PASSO': 'AGENDAMENTO', 'OBSERVACAO': '' } });
-  if (e === 'DECISAO' && !antesDoLaudo) A.push({ id: 'liberado', rot: 'Pagamento liberado: fazer MLE', dados: { 'PROXIMO PASSO': 'PAGAMENTO', 'OBSERVACAO': 'FAZER MLE' } });
+  if (e === 'DECISAO' && !antesDoLaudo) A.push(nucleoEproc(m) // no Núcleo (eproc) o formulário de MLE vai com o laudo
+    ? { id: 'liberado', rot: 'MLE expedido pelo juízo', dados: { 'PAGO': 'MLE', 'PROXIMO PASSO': 'PAGAMENTO', 'OBSERVACAO': 'MLE EXPEDIDO' } }
+    : { id: 'liberado', rot: 'Pagamento liberado: fazer MLE', dados: { 'PROXIMO PASSO': 'PAGAMENTO', 'OBSERVACAO': 'FAZER MLE' } });
   if (e === 'PAGAMENTO' && /\b(FAZER|PETICIONAR|SOLICITAR|PEDIR)\b/.test(obs)) A.push({ id: 'mle', rot: 'MLE peticionado', dados: { 'PAGO': 'MLE', 'OBSERVACAO': 'MLE PETICIONADO' }, destaque: true });
   if ((e === 'PAGAMENTO' || (e === 'DECISAO' && !antesDoLaudo)) && pago !== 'PAGO') A.push({ id: 'recebido', rot: 'Honorários recebidos', dados: { 'PAGO': 'PAGO', 'PROXIMO PASSO': 'PAGAMENTO' } });
   if (e === 'PETICAO') A.push({ id: 'peticao', rot: 'Petição protocolada', dados: { 'PROXIMO PASSO': 'DECISÃO' }, destaque: true });
@@ -341,9 +346,52 @@ function gcalLink(ev) {
 // O app abre a base certa com #pericias=<número> e copia o número. Com o atalho (eproc-atalho.user.js,
 // instalado no Tampermonkey) o eproc preenche a busca rápida sozinho e abre o processo.
 const EPROC_BASES = { '1G': 'https://eproc1g.tjsp.jus.br/eproc/', 'EF': 'https://eproc1g-ef.tjsp.jus.br/eproc/' };
+// base Fazenda Pública (eproc1g-ef): Fazenda Pública, Jefaz, Acidentes do Trabalho (Núcleo 4.0), Execução contra a Fazenda e Previdenciário.
+// As bases Cível e Fazenda Pública são independentes, com login próprio em cada uma.
 function baseEproc(m) {
-  const t = String((m && (m['FORUM'] || '')) + ' ' + (m && (m['CIDADE'] || ''))).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  return /FAZENDA|FISCAL/.test(t) ? 'EF' : '1G';
+  const lugar = chave(m && m['FORUM']) + ' ' + chave(m && m['CIDADE']);
+  const contra = chave(m && m['REQUERIDA']);
+  if (/FAZENDA|FISCAL|NUCLEO|ACIDENTE|PREVIDENCI|JEFAZ/.test(lugar)) return 'EF';
+  if (/INSTITUTO NACIONAL DO SEGURO SOCIAL|\bINSS\b|FAZENDA|MUNICIPIO|PREFEITURA/.test(contra)) return 'EF';
+  return '1G';
+}
+// Núcleo de Justiça 4.0 (Acidentes do Trabalho do Interior e Litoral)
+function ehNucleo(m) { return /NUCLEO|ACIDENTES? DO TRABALHO/.test(chave(m && m['CIDADE']) + ' ' + chave(m && m['FORUM'])); }
+function nucleoEproc(m) { return ehNucleo(m) && chave(m && m['SISTEMA']) === 'EPROC'; }
+// decisão inicial do Núcleo no eproc: perícia com antecedência mínima de 45 dias
+const ANTECEDENCIA_NUCLEO = 45;
+function dataMinimaNucleo(hoje) { const d = new Date(hoje || zeroHoje()); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ANTECEDENCIA_NUCLEO); return d; }
+
+// Manual de Orientações Iniciais aos Peritos do Núcleo (eproc, base Fazenda Pública, v1.0, nov/2026): evento e tipo de cada documento
+const GUIA_EPROC_NUCLEO = [
+  { k: 'aceite-agendamento', quando: 'Aceite + agendamento', evento: 'Comunicação do Início e Local dos Trabalhos Perito', docs: ['Perito aceitação do encargo', 'Petição Designação data perícia (Comunicação de Designação de Perícia, modelo do Anexo II)'], prazo: 'intimação da nomeação (decisão inicial)', nota: 'Data com pelo menos 45 dias de antecedência. Aceite e comunicação em dois arquivos separados, no mesmo peticionamento.' },
+  { k: 'aceite-deposito', quando: 'Aceite, aguardando o depósito', evento: 'Petição - aceitação do encargo de perito', docs: ['Perito aceitação do encargo'], prazo: 'intimação da nomeação' },
+  { k: 'laudo', quando: 'Laudo + Formulário de MLE', evento: 'Laudo Pericial - Perito', docs: ['Laudo Pericial - Perito', 'Pedido de Levantamento de Honorários Perito (Formulário de MLE)'], prazo: 'intimação para apresentação do laudo', nota: 'Laudo em 30 dias. Laudo e formulário em dois arquivos separados, no mesmo peticionamento.' },
+  { k: 'esclarecimentos', quando: 'Esclarecimentos', evento: 'Manifestação de Esclarecimento pelo Perito - Perito', docs: ['Manifestação de Esclarecimento pelo Perito - Perito'] },
+  { k: 'nao-compareceu', quando: 'Ausência do periciando', evento: 'PETIÇÃO - NÃO COMPARECIMENTO PERICIADO', docs: ['Documento dispensável; se juntar: Petição Não comparecimento do periciado'] },
+  { k: 'mle', quando: 'Formulário de MLE depois do laudo', evento: 'Pedido de Levantamento de Honorários Perito', docs: ['Pedido de Levantamento de Honorários Perito'] },
+  { k: 'dilacao', quando: 'Dilação de prazo', evento: 'Pedido de Dilação de Prazo Perito', docs: ['Pedido de Dilação de Prazo Perito'] },
+  { k: 'documentos', quando: 'Exames ou documentos', evento: 'Pedido de Documentos - Perito', docs: ['Pedido de Documentos - Perito'] },
+  { k: 'declinio', quando: 'Declínio do encargo', evento: 'Pedido de substituição por outro profissional Perito', docs: ['Pedido de substituição por outro profissional Perito'] },
+  { k: 'manifestacao', quando: 'Manifestações diversas', evento: 'Manifestação - Perito', docs: ['Manifestação - Perito'] }
+];
+// situações do guia que valem para a etapa em que o processo está
+function guiaEprocPara(m) {
+  const e = etapaDe(m), obs = chave(m['OBSERVACAO']);
+  if (aceitePendente(m) && e !== 'RENUNCIAR') return ['aceite-agendamento', 'aceite-deposito', 'declinio'];
+  const porEtapa = {
+    ACEITE: ['aceite-agendamento', 'aceite-deposito', 'declinio'], RESERVA: ['aceite-agendamento'], AGENDAMENTO: ['aceite-agendamento'],
+    PERICIA: ['nao-compareceu', 'documentos', 'dilacao'], LAUDO: ['laudo', 'dilacao', 'documentos'], ESCLARECIMENTOS: ['esclarecimentos', 'dilacao'],
+    PAGAMENTO: ['mle'], RENUNCIAR: ['declinio'], PETICAO: ['manifestacao']
+  };
+  if (e === 'DECISAO') {
+    const at = trilhaProcesso(m).atual;
+    if (/COMPARECEU/.test(obs) || at === 3) return ['nao-compareceu', 'manifestacao'];
+    if (/ESCLARECIMENTO/.test(obs) || at === 4) return ['esclarecimentos', 'manifestacao'];
+    if (at === 5) return ['mle', 'manifestacao'];
+    return ['manifestacao'];
+  }
+  return porEtapa[e] || ['manifestacao'];
 }
 function linkEproc(proc, m) {
   if (digitos(proc).length !== 20) return '';
@@ -452,7 +500,7 @@ const CAMPOS_DOC = [
   ['PERICIADO', 'Quem será periciado (na interdição, a parte requerida)'], ['VARA', 'Vara (coluna FORUM)'], ['CIDADE', 'Comarca'],
   ['TIPO', 'Tipo da perícia'], ['HONORARIOS', 'Honorários como estão na planilha'], ['DATA_PERICIA', 'Data da perícia (agenda ou planilha)'],
   ['DIA_SEMANA', 'Dia da semana da perícia'], ['HORA_PERICIA', 'Horário marcado na aba AGENDAMENTOS'], ['LOCAL_PERICIA', 'Local (consultório vira o endereço completo da Compart Clinic)'],
-  ['HOJE', 'Data de hoje por extenso']
+  ['HOJE', 'Data de hoje por extenso'], ['DATA_PERICIA_EXTENSO', 'Data da perícia por extenso (ex.: 3 de dezembro de 2026)']
 ];
 function fmtTamanho(b) {
   if (!b) return '';
@@ -498,9 +546,17 @@ function resumoRegra(md) {
 // modelos sugeridos para o processo: primeiro os que têm regra configurada, depois os reconhecidos pelo nome
 function sugerirModelos(modelos, m) {
   const vis = modelosVisiveis(modelos);
+  // no eproc do Núcleo, aceite e agendamento vão em arquivos separados: o modelo que junta os dois sai das sugestões
+  const vis2 = nucleoEproc(m) ? vis.filter(md => !/ACEITE COM AGENDAMENTO/.test(chave(md.nome))) : vis;
+  if (vis2 !== vis) return sugerirModelosVis(vis2, m);
+  return sugerirModelosVis(vis, m);
+}
+function sugerirModelosVis(vis, m) {
   const porRegra = vis.filter(md => modeloServe(md, m));
   const semRegra = vis.filter(md => !regraModelo(md) && (!md.cfg || !md.cfg.filtro || filtroOk(md.cfg.filtro, m)));
-  return porRegra.concat(sugerirPorNome(semRegra, m).filter(md => porRegra.indexOf(md) < 0)).slice(0, 4);
+  const nomeEproc = nucleoEproc(m) ? sugerirPorNome(vis.filter(md => /\bEPROC\b/.test(chave(md.nome))), m) : [];
+  const lista = nomeEproc.concat(porRegra.filter(md => nomeEproc.indexOf(md) < 0));
+  return lista.concat(sugerirPorNome(semRegra, m).filter(md => lista.indexOf(md) < 0)).slice(0, 4);
 }
 function sugerirPorNome(modelos, m) {
   const e = etapaDe(m), obs = chave(m['OBSERVACAO']), tipo = chave(m['TIPO']);
@@ -511,13 +567,17 @@ function sugerirPorNome(modelos, m) {
     DECISAO: /COMPARECEU/.test(obs) ? ['NAO COMPARECIMENTO'] : [], PETICAO: ['PETICAO'],
     PAGAMENTO: ['MLE', 'HONORARIOS', 'FORMULARIO'], RENUNCIAR: ['RENUNCIA']
   };
-  const chaves = (aceitePendente(m) && e !== 'ACEITE' ? ['ACEITE'] : []).concat(mapa[e] || []);
+  const nucEproc = nucleoEproc(m);
+  if (nucEproc) { mapa.ACEITE = ['ACEITE ENCARGO', 'COMUNICACAO DESIGNACAO', 'ACEITE']; mapa.RESERVA = mapa.AGENDAMENTO = ['COMUNICACAO DESIGNACAO', 'AGENDAMENTO']; mapa.LAUDO = ['LAUDO', 'FORMULARIO MLE']; }
+  const chaves = (aceitePendente(m) && e !== 'ACEITE' ? (nucEproc ? ['ACEITE ENCARGO', 'COMUNICACAO DESIGNACAO'] : ['ACEITE']) : []).concat(mapa[e] || []);
   return modelos.map(md => {
     const t = chave(md.nome).replace(/[^A-Z0-9 ]/g, ' ');
     let s = 0;
     chaves.forEach((k, i) => { if (t.indexOf(k) >= 0) s = Math.max(s, 4 - Math.min(i, 2)); });
     if (!s) return { md: md, s: 0 };
     if (/\bN40\b/.test(t)) { if (!nuc) return { md: md, s: 0 }; s += 2; } else if (nuc) s -= 1;
+    if (/\bEPROC\b/.test(t)) { if (!nucEproc) return { md: md, s: 0 }; s += 3; }
+    if (nucEproc && /ACEITE COM AGENDAMENTO/.test(t)) return { md: md, s: 0 };
     if (/INTERDICAO/.test(t)) s += /INTERDI|CURATELA/.test(tipo) ? 2 : -9;
     if (/HOMECARE/.test(t)) s += /HOMECARE/.test(tipo) ? 2 : -9;
     return { md: md, s: s };
@@ -699,7 +759,7 @@ if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
     principalAcao, slotDoProcesso, horariosIntervalo, livresFuturos, grupoPrazo, montarTarefas, situacaoConferencia, prazoConferencia, txtConferencia, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
     estagioRecebimento, valorLinha, pagoLinha, somarPor, laudosPendentes, gerarCSV,
-    ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
+    ehNucleo, nucleoEproc, dataMinimaNucleo, guiaEprocPara, GUIA_EPROC_NUCLEO, ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, trilhaProcesso, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
     montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, statusNomeacao, aceitePendente, aceiteJunto, etapasDoc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
@@ -1428,9 +1488,11 @@ function renderFicha() {
     if (etapaDe(m) === 'AGENDAMENTO') {
       const sl = slotDe(it);
       if (sl) h += '<div class="ag-ficha reservado"><div class="meio"><b>📅 Horário reservado: ' + esc(fmtExtenso(parseData(sl.data))) + ' às ' + esc(sl.hora) + '</b><small>' + esc([sl.local, 'status ' + (sl.status || 'sem status') + ' na aba AGENDAMENTOS'].filter(Boolean).join(' · ')) + '. Gere a petição de agendamento, protocole e depois toque em "Agendamento peticionado".</small></div>' +
-        '<button type="button" class="btn pequeno" data-acao="doc-gerar">' + ic('documentos') + 'Gerar petição</button></div>';
+        '<button type="button" class="btn pequeno" data-acao="doc-gerar">' + ic('documentos') + 'Gerar petição</button></div>' +
+        (nucleoEproc(m) && parseData(sl.data) < dataMinimaNucleo() ? '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>Este horário tem menos de 45 dias de antecedência. A decisão inicial do Núcleo exige no mínimo 45 dias (a partir de ' + esc(fmtData(dataMinimaNucleo())) + ').</span></div>' : '');
       else {
-        const lv = livresFuturos(state.livres).slice(0, 4);
+        const min45 = nucleoEproc(m) ? dataMinimaNucleo() : null;
+        const lv = livresFuturos(state.livres).filter(x => !min45 || parseData(x.data) >= min45).slice(0, 4);
         h += '<div class="ag-ficha"><div class="meio"><b>📅 Ainda sem horário na agenda</b><small>' + (lv.length ? 'Próximos horários livres (toque para reservar):' : 'Nenhum horário livre cadastrado. Cadastre em Agenda > Horários livres ou use "Agendar perícia".') + '</small>' +
           (lv.length ? '<div class="chips-linha" style="margin-top:6px">' + lv.map(x => '<button type="button" class="filtro-chip" data-acao="ficha-agendar" data-livre="' + x.linha + '">' + esc(txtSlot(x)) + '</button>').join('') + '</div>' : '') + '</div></div>';
       }
@@ -1449,6 +1511,7 @@ function renderFicha() {
       h += '<p class="vazio">Processo em ' + TITULO_ABA[f.aba] + '.</p><div class="acoes"><button type="button" class="btn primario" data-acao="mover" data-para="PERICIAS">Voltar para Perícias</button></div>';
     }
     if (f.confirma && f.confirma.local !== 'encerrar') h += htmlConfirma(f.confirma);
+    if (f.aba === 'PERICIAS') h += htmlGuiaEproc(m) + htmlTransicaoEproc(m);
     h += '<section class="docs" id="docs-bloco"></section>';
     if (f.aba === 'PERICIAS') {
       const aberto = f.confirma && f.confirma.local === 'encerrar';
@@ -1644,7 +1707,7 @@ async function carregarHistorico(proc) {
   } catch (e) { if (state.ficha) { state.ficha.hist = []; renderFicha(); } toast(e.message, { erro: true }); }
 }
 
-function pedirConfirmacao(it, titulo, dadosNorm, motivo) {
+function pedirConfirmacao(it, titulo, dadosNorm, motivo, notas) {
   const linhas = [];
   Object.keys(dadosNorm).forEach(k => {
     const hdr = cabDe(it.aba, k);
@@ -1654,6 +1717,7 @@ function pedirConfirmacao(it, titulo, dadosNorm, motivo) {
     linhas.push('<b>' + esc(hdr) + '</b>: ' + esc(atual || 'vazio') + ' → ' + esc(dadosNorm[k] || 'vazio'));
   });
   if (!linhas.length) { toast('Já está assim.'); return; }
+  (notas || []).forEach(n => linhas.push(esc(n)));
   state.ficha.confirma = { titulo: titulo, linhas: linhas, fn: () => aplicar(it.aba, it, dadosNorm, motivo) };
   renderFicha();
 }
@@ -1704,7 +1768,7 @@ function acaoRapida(id) {
     renderFicha();
     return;
   }
-  pedirConfirmacao(it, a.rot, a.dados, a.rot);
+  pedirConfirmacao(it, a.rot, a.dados, a.rot, a.nota ? [a.nota] : []);
 }
 
 /* ---------- formulário de dados ---------- */
@@ -1786,6 +1850,26 @@ modal.addEventListener('click', ev => { if (ev.target === modal) modal.close(); 
 modal.addEventListener('close', () => { if (modal.classList.contains('grande')) { modal.classList.remove('grande'); $('#modal-corpo').innerHTML = ''; } });
 $('#modal-form').addEventListener('submit', ev => ev.preventDefault());
 
+// guia de peticionamento do Núcleo no eproc, com as situações da etapa atual abertas
+function htmlGuiaEproc(m) {
+  if (!nucleoEproc(m)) return '';
+  const ks = guiaEprocPara(m);
+  const item = g => '<div class="guia-item"><b>' + esc(g.quando) + '</b><dl><dt>Evento</dt><dd>' + esc(g.evento) + '</dd>' +
+    g.docs.map((d, i) => '<dt>' + (g.docs.length > 1 ? 'Documento ' + (i + 1) : 'Documento') + '</dt><dd>' + esc(d) + '</dd>').join('') +
+    (g.prazo ? '<dt>Prazo a fechar</dt><dd>' + esc(g.prazo) + '</dd>' : '') + '</dl>' +
+    (g.nota ? '<p>' + esc(g.nota) + '</p>' : '') +
+    (g.k === 'aceite-agendamento' && statusNomeacao(m) === 'aceito' ? '<p>O aceite já foi peticionado antes: o manual não trata desse caso. Confirme no Balcão Virtual do Núcleo se basta a Comunicação de Designação.</p>' : '') + '</div>';
+  return '<details class="guia-eproc" open><summary>Como peticionar no eproc (Núcleo 4.0)</summary>' +
+    '<p class="guia-regras">Base <b>Fazenda Pública</b> (eproc1g-ef), com login próprio. Em toda petição: <b>1</b> o evento certo; <b>2</b> marque o prazo da intimação que está respondendo; <b>3</b> um arquivo por documento, cada um com o seu tipo.</p>' +
+    ks.map(k => item(GUIA_EPROC_NUCLEO.find(g => g.k === k))).join('') +
+    '<details class="guia-todas"><summary>Outras situações</summary>' + GUIA_EPROC_NUCLEO.filter(g => ks.indexOf(g.k) < 0).map(item).join('') + '</details></details>';
+}
+function htmlTransicaoEproc(m) {
+  if (!ehNucleo(m) || chave(m['SISTEMA']) !== 'ESAJ') return '';
+  return '<div class="alerta-box" style="cursor:default"><span>🔄</span><span>O Núcleo 4.0 está passando para o <b>eproc</b> (base Fazenda Pública). Quando este processo aparecer lá, toque em <b>Migrou para o eproc</b>: o botão de abrir no tribunal e o guia de peticionamento mudam junto.' +
+    '<br><button type="button" class="btn pequeno" data-acao="migrar-eproc" style="margin-top:8px">Migrou para o eproc</button></span></div>';
+}
+
 function abrirAjudaEproc() {
   const inst = document.documentElement.hasAttribute('data-eproc-atalho');
   $('#modal-titulo').textContent = 'Abrir o processo direto no eproc';
@@ -1804,7 +1888,7 @@ function abrirAjudaEproc() {
 
 function abrirNovoProcesso() {
   $('#modal-titulo').textContent = 'Novo processo';
-  $('#modal-corpo').innerHTML = '<div class="form-grid" id="novo-form">' + camposForm('PERICIAS', null, { 'STATUS': 'AGUARDANDO', 'PROXIMO PASSO': 'ACEITE', 'SISTEMA': 'ESAJ' }) + '</div>' +
+  $('#modal-corpo').innerHTML = '<div class="form-grid" id="novo-form">' + camposForm('PERICIAS', null, { 'STATUS': 'AGUARDANDO', 'PROXIMO PASSO': 'ACEITE', 'SISTEMA': 'EPROC' }) + '</div>' +
     '<label class="check" style="margin-top:14px"><input type="checkbox" id="novo-pasta" checked> Criar a pasta do periciado no Drive (PERICIAS / CIDADE / Nome)</label>';
   $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="novo-salvar">Cadastrar</button><span class="esp"></span><small style="color:var(--suave);align-self:center">O processo entra na aba PERICIAS</small>';
   ligarForm($('#novo-form'));
@@ -1993,11 +2077,14 @@ function abrirSlot(a, diaPadrao, op) {
   let selLivre = op.livre || null;
   let dia = novo ? (selLivre ? selLivre.data : (diaPadrao || '')) : a.data;
   const tipoVinc = vinc ? tipoAgendaDe(vinc.m) : '';
+  const min45 = vinc && nucleoEproc(vinc.m) ? dataMinimaNucleo() : null; // Núcleo (eproc): mínimo de 45 dias
+  const ok45 = br => !min45 || (parseData(br) && parseData(br) >= min45);
   if (novo && !dia) {
     // primeiro horário livre; senão o próximo dia que já tem perícias do mesmo tipo (ex.: mutirão do INSS); senão o próximo dia com agenda
     const futuros = lista.filter(x => parseData(x.data) && diasAte(parseData(x.data)) >= 0).sort((x, y) => parseData(x.data) - parseData(y.data));
     const prox = (tipoVinc && futuros.find(x => chave(x.tipo) === chave(tipoVinc))) || futuros[0];
-    dia = livres.length ? livres[0].data : prox ? prox.data : fmtData(zeroHoje());
+    const lv45 = livres.filter(x => ok45(x.data));
+    dia = lv45.length ? lv45[0].data : prox && ok45(prox.data) ? prox.data : min45 ? fmtData(min45) : livres.length ? livres[0].data : prox ? prox.data : fmtData(zeroHoje());
   }
   const doDia = lista.filter(x => x.data === dia).sort((x, y) => x.hora.localeCompare(y.hora));
   const ult = doDia[doDia.length - 1];
@@ -2019,7 +2106,7 @@ function abrirSlot(a, diaPadrao, op) {
     const g = {};
     ls.forEach(x => { (g[x.data] = g[x.data] || []).push(x); });
     return '<h3 class="sub" style="margin-top:0">Horários livres</h3><div class="livres-escolha">' + Object.keys(g).map(d => '<div class="livres-dia"><span>' + esc(DIAS_SEM[parseData(d).getDay()] + ' ' + fmtCurto(parseData(d))) + '</span>' +
-      g[d].map(x => '<button type="button" class="hora-chip' + (selLivre && selLivre.linha === x.linha ? ' sel' : '') + '" data-livre-sel="' + x.linha + '" title="' + esc([x.tipo, x.local].filter(Boolean).join(' · ')) + '">' + esc(x.hora) + '</button>').join('') + '</div>').join('') + '</div>';
+      g[d].map(x => '<button type="button" class="hora-chip' + (selLivre && selLivre.linha === x.linha ? ' sel' : ok45(x.data) ? '' : ' fora') + '" data-livre-sel="' + x.linha + '" title="' + esc([x.tipo, x.local, ok45(x.data) ? '' : 'menos de 45 dias'].filter(Boolean).join(' · ')) + '">' + esc(x.hora) + '</button>').join('') + '</div>').join('') + '</div>';
   };
 
   $('#modal-titulo').textContent = vinc ? 'Agendar perícia' : novo ? 'Novo horário' : 'Horário de ' + a.nome;
@@ -2035,7 +2122,8 @@ function abrirSlot(a, diaPadrao, op) {
     '<div class="campo"><label for="ag-status">Status</label><select id="ag-status">' + Array.from(new Set(['AGENDAR', 'OK', String(base.status || '').toUpperCase()].filter(Boolean))).map(o => '<option' + (chave(o) === chave(base.status) ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select></div>' +
     '<div class="campo largo"><label for="ag-local">Local</label><input id="ag-local" value="' + esc(base.local) + '" placeholder="CONSULTORIO ou endereço completo" list="dl-local"><datalist id="dl-local"><option value="CONSULTORIO"></datalist></div>' +
     (novo && temAgenda ? '<label class="check"><input type="checkbox" id="ag-discord" checked> Avisar no #agenda do Discord (quando o agendamento estiver OK)</label>' : '') +
-    '</div><p id="ag-ocupado" style="font-size:.82rem;color:var(--suave);margin:10px 0 0"></p>';
+    '</div><p id="ag-ocupado" style="font-size:.82rem;color:var(--suave);margin:10px 0 0"></p>' +
+    (min45 ? '<p id="ag-45" class="aviso-45"></p>' : '');
   $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="ag-salvar">' + (vinc ? 'Reservar horário' : 'Salvar') + '</button>' +
     (ligado && !vinc ? '<button type="button" class="btn" id="ag-abrir">Abrir processo</button>' : '');
   const atualizarBotao = () => { if (vinc) $('#ag-salvar').textContent = chave($('#ag-status').value) === 'OK' ? 'Agendar (já peticionado)' : 'Reservar horário'; };
@@ -2045,6 +2133,12 @@ function abrirSlot(a, diaPadrao, op) {
     const dd = lista.filter(x => x.data === br).sort((x, y) => x.hora.localeCompare(y.hora));
     const lv = livres.filter(x => x.data === br);
     $('#ag-ocupado').textContent = (dd.length ? 'Já marcados neste dia: ' + dd.map(x => x.hora).join(', ') : 'Nenhuma perícia marcada neste dia.') + (lv.length ? ' · Livres: ' + lv.map(x => x.hora).join(', ') : '');
+    if (min45) {
+      const p = $('#ag-45'), cedo = !ok45(br);
+      p.classList.toggle('erro', cedo);
+      p.innerHTML = cedo ? '⚠️ Menos de 45 dias. A decisão inicial do Núcleo exige antecedência mínima de 45 dias: escolha a partir de <b>' + esc(fmtData(min45)) + '</b>.'
+        : 'Núcleo 4.0 (eproc): antecedência mínima de 45 dias, a partir de ' + esc(fmtData(min45)) + '.';
+    }
   };
   mostrarOcupados(dia);
   let dataAntes = novo ? $('#ag-data').value : '';
@@ -2964,6 +3058,11 @@ document.addEventListener('click', ev => {
       break;
     }
     case 'ajuda-eproc': abrirAjudaEproc(); break;
+    case 'migrar-eproc': {
+      const it = acharItem(state.ficha.aba, state.ficha.linha);
+      pedirConfirmacao(it, 'Processo migrou para o eproc', { 'SISTEMA': 'EPROC' }, 'Migrou para o eproc (base Fazenda Pública)', ['O número do processo continua o mesmo. O botão eproc abre a base Fazenda Pública (eproc1g-ef).']);
+      break;
+    }
     case 'filtrar':
       state.filtro = Object.assign(filtroVazio(), { quem: ds.quem || '', etapa: ds.etapa || '', tipo: ds.tipo || '' });
       ir('processos'); break;
