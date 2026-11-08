@@ -49,7 +49,7 @@
             : 'Antibiótico (opcional se leve), analgesia e colecistectomia videolaparoscópica precoce (idealmente em até 72 h dos sintomas).';
         const al = [{ lvl: grau === 'III' ? 'crit' : grau === 'II' ? 'warn' : 'info', text: 'Conduta sugerida: ' + cond }];
         if (dx === 'Critérios insuficientes') al.unshift({ lvl: 'info', text: 'Diagnóstico exige pelo menos um sinal local (A) e um sinal sistêmico (B). Imagem confirma.' });
-        return { main: { label: 'Gravidade', value: dx === 'Critérios insuficientes' ? '—' : 'Grau ' + grau, small: false }, sub: dx, alerts: al,
+        return { main: { label: 'Gravidade', value: dx === 'Critérios insuficientes' ? 'Sem critério' : 'Grau ' + grau, small: false }, sub: dx, alerts: al,
           text: `Colecistite aguda (Tóquio TG18): ${dx.toLowerCase()}, grau ${grau}. ${cond}` };
       }
       const A = n(['a1', 'a2']) > 0, B = n(['b1', 'b2']) > 0, Ci = n(['c1', 'c2']) > 0;
@@ -59,7 +59,7 @@
       const cond = grau === 'III' ? 'Suporte de órgãos, antibiótico imediato e drenagem biliar URGENTE (CPRE; se inviável, drenagem percutânea transhepática).'
         : grau === 'II' ? 'Antibiótico e drenagem biliar PRECOCE (CPRE nas primeiras 24 a 48 h).'
           : 'Antibiótico; drenagem biliar se não houver resposta em 24 h (CPRE eletiva se cálculo).';
-      return { main: { label: 'Gravidade', value: dx === 'Critérios insuficientes' ? '—' : 'Grau ' + grau }, sub: dx,
+      return { main: { label: 'Gravidade', value: dx === 'Critérios insuficientes' ? 'Sem critério' : 'Grau ' + grau }, sub: dx,
         alerts: [{ lvl: grau === 'III' ? 'crit' : grau === 'II' ? 'warn' : 'info', text: 'Conduta sugerida: ' + cond }, { lvl: 'info', text: 'Antibiótico cobrindo enterobactérias e anaeróbios conforme o protocolo do hospital, após hemoculturas.' }],
         text: `Colangite aguda (Tóquio TG18): ${dx.toLowerCase()}, grau ${grau}. ${cond}` };
     }

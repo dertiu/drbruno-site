@@ -382,7 +382,7 @@
       const kg = v.kg; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso do paciente.' }] };
       const rows = []; const txt = [];
       SRI.forEach(s => {
-        if (s.sec) rows.push({ cells: ['— ' + s.sec, '', '', ''] });
+        if (s.sec) rows.push({ sec: s.sec });
         let lo = s.lo * kg, hi = s.hi * kg;
         if (s.min) { lo = Math.max(lo, s.min); hi = Math.max(hi, s.min); }
         if (s.max) { lo = Math.min(lo, s.max); hi = Math.min(hi, s.max); }

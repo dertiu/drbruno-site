@@ -380,7 +380,7 @@
         rows.push(['Gluconato de cálcio 10% (10 mL = 1 g = 4,65 mEq)', v.sint ? '1 a 2 g (10 a 20 mL) em 100 mL de SG 5% em 10 a 20 min' : '1 a 2 g em 50 a 100 mL em 30 min, depois manutenção'], ['Manutenção', '0,5 a 1,5 mg/kg/h de cálcio elementar (gluconato 10% 10 a 15 mL/h em 100 mL de SG 5%)']);
         const al = [{ lvl: 'info', text: 'Prefira cálcio iônico quando disponível, pois a correção pela albumina pode errar no doente crítico.' }, { lvl: 'warn', text: 'Infundir em bolus lento, com monitorização, e nunca no mesmo acesso do bicarbonato ou fosfato. Em uso de digoxina, evitar bolus.' }];
         if (isFinite(cc) && cc >= 8.5) al.unshift({ lvl: 'ok', text: 'Cálcio corrigido normal: reposição geralmente desnecessária (se assintomático).' });
-        return { main: { label: 'Cálcio corrigido', value: isFinite(cc) ? fmt(cc, 1) : '—', unit: 'mg/dL' }, rows, alerts: al, text: `Cálcio ${isFinite(cc) ? 'corrigido ' + fmt(cc, 1) + ' mg/dL; ' : ''}gluconato de cálcio 10% 1 a 2 g IV em 10 a 30 min.` };
+        return { main: { label: 'Cálcio corrigido', value: isFinite(cc) ? fmt(cc, 1) : 'n/d', unit: 'mg/dL' }, rows, alerts: al, text: `Cálcio ${isFinite(cc) ? 'corrigido ' + fmt(cc, 1) + ' mg/dL; ' : ''}gluconato de cálcio 10% 1 a 2 g IV em 10 a 30 min.` };
       }
       if (m === 'po') {
         const p = v.pv; if (!(p > 0)) return { alerts: [{ lvl: 'info', text: 'Informe o fósforo sérico.' }] };

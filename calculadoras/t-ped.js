@@ -13,21 +13,21 @@
       const kg = v.kg; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso (ou estime pela idade na ferramenta “Parâmetros pediátricos”).' }] };
       const mn = (a, b) => Math.min(a, b), mx = (a, b) => Math.max(a, b), a = x => u.auto(x);
       const R = [
-        { cells: ['— Parada cardiorrespiratória', '', ''] },
+        { sec: 'Parada cardiorrespiratória' },
         ['Adrenalina IV/IO (0,01 mg/kg)', `${a(mn(0.01 * kg, 1))} mg`, `${a(mn(0.1 * kg, 10))} mL de 0,1 mg/mL; a cada 3 a 5 min`],
         ['Amiodarona (5 mg/kg)', `${a(mn(5 * kg, 300))} mg`, `${a(mn(5 * kg, 300) / 50)} mL de 50 mg/mL; FV/TV sem pulso`],
         ['Lidocaína (1 mg/kg)', `${a(mn(1 * kg, 100))} mg`, `${a(mn(1 * kg, 100) / 20)} mL de 2%; alternativa à amiodarona`],
         ['Desfibrilação (FV/TV sem pulso)', `${a(2 * kg)} J`, `1º choque 2 J/kg; 2º 4 J/kg; seguintes ≥ 4 J/kg (máx. 10 J/kg ou dose adulta)`],
-        { cells: ['— Arritmias com pulso', '', ''] },
+        { sec: 'Arritmias com pulso' },
         ['Adenosina (0,1 mg/kg, depois 0,2 mg/kg)', `${a(mn(0.1 * kg, 6))} mg → ${a(mn(0.2 * kg, 12))} mg`, `${a(mn(0.1 * kg, 6) / 3)} mL → ${a(mn(0.2 * kg, 12) / 3)} mL de 3 mg/mL; bolus rápido + flush`],
         ['Cardioversão sincronizada', `${a(0.5 * kg)} a ${a(kg)} J`, `1ª carga 0,5 a 1 J/kg; seguintes 2 J/kg`],
         ['Atropina (0,02 mg/kg)', `${a(mn(mx(0.02 * kg, 0.1), 0.5))} mg`, `${a(mn(mx(0.02 * kg, 0.1), 0.5) / 0.25)} mL de 0,25 mg/mL; mín. 0,1 mg e máx. 0,5 mg`],
-        { cells: ['— Volume e metabólico', '', ''] },
+        { sec: 'Volume e metabólico' },
         ['Bolus de cristaloide (20 mL/kg)', `${a(20 * kg)} mL`, 'SF 0,9% ou Ringer em 5 a 20 min; reavaliar a cada bolus'],
         ['Glicose (0,5 a 1 g/kg)', `${a(0.5 * kg)} a ${a(kg)} g`, `${a(5 * kg)} a ${a(10 * kg)} mL de glicose 10%`],
         ['Bicarbonato de sódio (1 mEq/kg)', `${a(kg)} mEq`, `${a(kg)} mL de 8,4% (diluir 1:1 em lactentes)`],
         ['Gluconato de cálcio 10% (50 a 100 mg/kg)', `${a(mn(50 * kg, 2000))} a ${a(mn(100 * kg, 2000))} mg`, `${a(mn(0.5 * kg, 20))} a ${a(mn(kg, 20))} mL em 10 min`],
-        { cells: ['— Convulsão e antídotos', '', ''] },
+        { sec: 'Convulsão e antídotos' },
         ['Midazolam (0,1 a 0,2 mg/kg)', `${a(mn(0.1 * kg, 10))} a ${a(mn(0.2 * kg, 10))} mg`, `${a(mn(0.1 * kg, 10) / 5)} a ${a(mn(0.2 * kg, 10) / 5)} mL de 5 mg/mL; IM/IN 0,2 mg/kg`],
         ['Diazepam (0,2 a 0,5 mg/kg)', `${a(mn(0.2 * kg, 10))} a ${a(mn(0.5 * kg, 10))} mg`, `${a(mn(0.2 * kg, 10) / 5)} a ${a(mn(0.5 * kg, 10) / 5)} mL de 5 mg/mL`],
         ['Levetiracetam (40 a 60 mg/kg)', `${a(mn(40 * kg, 4500))} a ${a(mn(60 * kg, 4500))} mg`, `${a(mn(40 * kg, 4500) / 100)} a ${a(mn(60 * kg, 4500) / 100)} mL de 100 mg/mL`],
@@ -138,9 +138,9 @@
       const kg = v.kg; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Digite o peso da criança.' }] };
       const age = v.age, rows = [], txt = [], al = [];
       ONE.forEach(o => {
-        if (o.sec) { rows.push({ cells: ['— ' + o.sec, '', ''] }); return; }
+        if (o.sec) { rows.push({ sec: o.sec }); return; }
         const dose = o.f(kg), blocked = isFinite(age) && o.min && age < o.min;
-        rows.push([o.n + (blocked ? ' (idade abaixo da mínima)' : ''), blocked ? '—' : dose, o.i]);
+        rows.push([o.n + (blocked ? ' (idade abaixo da mínima)' : ''), blocked ? 'não usar' : dose, o.i]);
         if (!blocked) txt.push(`${o.n}: ${dose}`);
         else al.push({ lvl: 'warn', text: `${o.n}: não recomendado para esta idade.` });
       });

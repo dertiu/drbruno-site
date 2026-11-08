@@ -4,14 +4,14 @@
   const D = window.DRB = {
     tools: [],
     groups: [
-      { id: 'med', c: '#e1ad66', title: 'Medicações e infusões' },
-      { id: 'cir', c: '#e07b5a', title: 'Cirurgia e trauma' },
-      { id: 'ped', c: '#62b8cf', title: 'Pediatria e emergência' },
-      { id: 'esc', c: '#9cc06a', title: 'Escores clínicos' },
-      { id: 'lab', c: '#b78fe0', title: 'Renal, metabólico e gasometria' },
-      { id: 'vent', c: '#7ea7ec', title: 'Ventilação, oxigênio e fluidos' },
-      { id: 'util', c: '#c8c4bd', title: 'Utilidades do plantão' },
-      { id: 'peri', c: '#9a9690', title: 'Perícia' }
+      { id: 'med', c: '#e9b766', title: 'Medicações e infusões' },
+      { id: 'cir', c: '#ee9474', title: 'Cirurgia e trauma' },
+      { id: 'ped', c: '#71cbe3', title: 'Pediatria e emergência' },
+      { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos' },
+      { id: 'lab', c: '#bda6ec', title: 'Renal, metabólico e gasometria' },
+      { id: 'vent', c: '#93b6f2', title: 'Ventilação, oxigênio e fluidos' },
+      { id: 'util', c: '#b9c2cb', title: 'Utilidades do plantão' },
+      { id: 'peri', c: '#a0a9b2', title: 'Perícia' }
     ]
   };
   D.add = (...t) => D.tools.push(...t);
@@ -23,9 +23,9 @@
     const n = parseFloat(String(s == null ? '' : s).trim().replace(',', '.'));
     return isFinite(n) ? n : NaN;
   };
-  u.fmt = (n, d = 1) => isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: 0 }) : '—';
+  u.fmt = (n, d = 1) => isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: 0 }) : 'n/d';
   // casas decimais conforme a grandeza (volumes em mL)
-  u.auto = n => !isFinite(n) ? '—' : u.fmt(n, Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2);
+  u.auto = n => !isFinite(n) ? 'n/d' : u.fmt(n, Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2);
   u.norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   u.LS = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
   u.SAVE = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
@@ -154,7 +154,7 @@
     const bits = [p.kg !== '' && p.kg + ' kg', ageLabel(), p.sex, p.cm !== '' && p.cm + ' cm'].filter(Boolean);
     el.hidden = !bits.length;
     el.textContent = '';
-    if (bits.length) { el.append(icon('user', false, 16), bits.join(' · '), icon('x', false, 14)); }
+    if (bits.length) { el.append(icon('user', false, 16), ...bits.map(b => h('span', { class: 'tok' }, b))); el.title = 'Paciente atual. Toque para editar.'; }
   }
 
   /* ---------- hub ---------- */
@@ -170,45 +170,57 @@
   function hubView(gid) {
     const root = h('main', { class: 'wrap' });
     const G = gid && D.groups.find(g => g.id === gid);
-    root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão e perícia'), h('p', { class: 'lead' }, G ? 'Escolha a ferramenta.' : 'Escolha um grupo na barra lateral, busque no topo ou use os atalhos abaixo.'));
-    const box = h('div');
-    root.append(box);
-
-    const toolCard = t => {
-      const a = t.href
-        ? h('a', { class: 'lnk', href: t.href, target: '_blank', rel: 'noopener' })
-        : h('a', { class: 'lnk', href: '#/' + t.id });
-      a.append(h('span', { class: 'ck' }, grpName(t.g)), h('span', { class: 'ct' }, t.title), h('span', { class: 'cd' }, t.desc));
-      const st = h('button', { class: 'star' + (isFav(t.id) ? ' on' : ''), type: 'button', title: 'Favoritar', 'aria-label': 'Favoritar ' + t.title, onclick: e => { e.preventDefault(); e.stopPropagation(); toggleFav(t.id); draw(); } }, icon('star', isFav(t.id)));
-      return h('div', { class: 'card', style: '--gc:' + ((D.groups.find(g => g.id === t.g) || {}).c || 'var(--accent)') }, a, st);
+    const byId = id => D.tools.find(t => t.id === id);
+    const row = t => {
+      const g = D.groups.find(x => x.id === t.g) || {};
+      const a = h('a', { class: 'trow-a', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, rel: t.href ? 'noopener' : null },
+        h('span', { class: 'tt' }, t.title), h('span', { class: 'td' }, t.desc));
+      const st = h('button', { class: 'star' + (isFav(t.id) ? ' on' : ''), type: 'button', title: isFav(t.id) ? 'Remover dos favoritos' : 'Adicionar aos favoritos', 'aria-label': 'Favoritar ' + t.title, 'aria-pressed': isFav(t.id) ? 'true' : 'false',
+        onclick: e => { e.preventDefault(); toggleFav(t.id); draw(); } }, icon('star', isFav(t.id)));
+      return h('li', { class: 'trow', style: '--gc:' + (g.c || 'var(--cyan)') }, a, st);
     };
-    const pill = (t, cls, ic) => h('a', { class: 'pill ' + (cls || ''), href: t.href || '#/' + t.id, target: t.href ? '_blank' : null }, ic && icon(ic, false, 14), t.title);
-
+    const box = h('div');
     function draw() {
       box.innerHTML = '';
-      const q = '';
-      const match = t => !q || u.norm(t.title + ' ' + t.desc + ' ' + (t.kw || '')).includes(q);
-      const byId = id => D.tools.find(t => t.id === id);
-      if (!G) {
-        const favs = S.favs.map(byId).filter(Boolean);
-        if (favs.length) box.append(h('h2', { class: 'kick' }, 'Favoritos'), h('div', { class: 'pills' }, favs.map(t => pill(t, 'fav'))));
-        const rec = S.recents.map(byId).filter(Boolean);
-        if (rec.length) box.append(h('h2', { class: 'kick' }, 'Recentes'), h('div', { class: 'pills' }, rec.map(t => pill(t, '', 'hist'))));
+      if (G) {
+        root.querySelector('.title').textContent = G.title;
+      } else {
+        box.append(patientPanel());
+        const favs = S.favs.map(byId).filter(Boolean), rec = S.recents.map(byId).filter(t => t && !S.favs.includes(t.id)).slice(0, 5);
+        if (favs.length || rec.length) {
+          const q = h('section', { class: 'quick' });
+          if (favs.length) q.append(h('h2', { class: 'qh' }, 'Favoritos'), h('div', { class: 'chips' }, favs.map(t => h('a', { class: 'qchip fav', href: t.href || '#/' + t.id }, icon('star', true, 14), t.title))));
+          if (rec.length) q.append(h('h2', { class: 'qh' }, 'Usadas recentemente'), h('div', { class: 'chips' }, rec.map(t => h('a', { class: 'qchip', href: t.href || '#/' + t.id }, t.title))));
+          box.append(q);
+        }
       }
-      let any = false;
       D.groups.forEach(g => {
         if (G && g.id !== G.id) return;
-        const ts = D.tools.filter(t => t.g === g.id && match(t));
-        if (!ts.length) return; any = true;
-        box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--accent)'), id: 'grp-' + g.id },
-          h('div', { class: 'grp-h' }, h('h2', null, g.title), h('span', null, ts.length + (ts.length === 1 ? ' ferramenta' : ' ferramentas'))),
-          h('div', { class: 'cards' }, ts.map(toolCard))));
+        const ts = D.tools.filter(t => t.g === g.id); if (!ts.length) return;
+        box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id },
+          !G && h('h2', { class: 'grp-t' }, h('a', { href: '#/g/' + g.id }, h('i', { class: 'dot' }), g.title, h('span', { class: 'n' }, ts.length + ''))),
+          h('ul', { class: 'tlist' }, ts.map(row))));
       });
-      if (!any) box.append(h('p', { class: 'empty-s' }, 'Nenhuma ferramenta neste grupo.'));
       box.append(disclaimer('Ferramentas de apoio à decisão. Não substituem o julgamento clínico. Confira doses, diluições e indicações com o protocolo da sua instituição e a bula antes de prescrever ou administrar.'));
     }
+    root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão'),
+      h('p', { class: 'lead' }, G ? 'Toque em uma ferramenta para abrir. A estrela fixa a ferramenta nos favoritos.' : 'Informe o paciente uma vez: peso, idade e sexo preenchem todas as calculadoras.'), box);
     draw();
     return root;
+  }
+  function patientPanel() {
+    const p = S.patient;
+    const f = (id, label, unit, w) => h('label', { class: 'pf ' + (w || '') }, h('span', null, label),
+      h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', autocomplete: 'off', value: p[id] || '', 'aria-label': label, oninput: e => { S.patient[id] = e.target.value; S.vals = {}; savePatient(); } }), unit && h('span', { class: 'u' }, unit)));
+    const ageU = h('select', { 'aria-label': 'Unidade da idade', onchange: e => { S.patient.ageU = e.target.value; S.vals = {}; savePatient(); } }, [['a', 'anos'], ['m', 'meses'], ['d', 'dias']].map(([v, l]) => h('option', { value: v }, l)));
+    ageU.value = p.ageU || 'a';
+    const age = h('label', { class: 'pf' }, h('span', null, 'Idade'), h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', autocomplete: 'off', value: p.age || '', 'aria-label': 'Idade', oninput: e => { S.patient.age = e.target.value; S.vals = {}; savePatient(); } }), ageU));
+    const sex = h('div', { class: 'pf' }, h('span', null, 'Sexo'), h('div', { class: 'pseg', role: 'group', 'aria-label': 'Sexo' }, [['M', 'Masc.'], ['F', 'Fem.']].map(([v, l]) =>
+      h('button', { type: 'button', class: p.sex === v ? 'on' : '', 'aria-pressed': p.sex === v ? 'true' : 'false', onclick: e => { S.patient.sex = S.patient.sex === v ? '' : v; S.vals = {}; savePatient(); e.currentTarget.parentNode.querySelectorAll('button').forEach(b => { const on = b === e.currentTarget && S.patient.sex === v; b.className = on ? 'on' : ''; b.setAttribute('aria-pressed', on); }); } }, l))));
+    const clear = h('button', { type: 'button', class: 'pclear', onclick: () => { S.patient = { kg: '', age: '', ageU: 'a', sex: '', cm: '' }; S.vals = {}; savePatient(); route(); } }, 'Novo paciente');
+    return h('section', { class: 'pat', 'aria-label': 'Paciente atual' },
+      h('div', { class: 'pat-h' }, h('h2', null, 'Paciente atual'), clear),
+      h('div', { class: 'pat-g' }, f('kg', 'Peso', 'kg'), age, sex, f('cm', 'Altura', 'cm')));
   }
   const disclaimer = txt => h('p', { class: 'disc' }, icon('alert'), txt);
 
@@ -219,7 +231,7 @@
     const root = h('main', { class: 'wrap' });
     const starB = h('button', { class: 'icon-btn star-b' + (isFav(t.id) ? ' on' : ''), type: 'button', title: 'Favoritar', 'aria-label': 'Favoritar', onclick: () => { toggleFav(t.id); starB.className = 'icon-btn star-b' + (isFav(t.id) ? ' on' : ''); starB.innerHTML = ''; starB.append(icon('star', isFav(t.id))); } }, icon('star', isFav(t.id)));
     root.append(
-      h('div', { class: 'toprow' }, h('a', { class: 'back', href: '#/' }, icon('back'), 'Ferramentas'), starB),
+      h('div', { class: 'toprow' }, h('a', { class: 'back', href: '#/g/' + t.g }, icon('back'), grpName(t.g)), starB),
       h('h1', { class: 'title' }, t.title),
       h('p', { class: 'tdesc' }, t.desc));
     if (t.render) {
@@ -357,7 +369,7 @@
       el.append(h('div', { class: 'empty' }, 'Preencha os campos para ver o resultado.')); return;
     }
     if (r.main) {
-      el.append(h('div', { class: 'kick', style: 'margin:0' }, r.main.label || 'Resultado'),
+      el.append(h('div', { class: 'rlabel' }, r.main.label || 'Resultado'),
         h('div', { class: 'big' }, h('span', { class: 'bigv' + (r.main.small ? ' sm' : '') }, r.main.value), r.main.unit && h('span', { class: 'bigu' }, r.main.unit)));
     }
     if (r.sub) el.append(h('div', { class: 'sub' }, r.sub));
@@ -372,10 +384,11 @@
     (r.alerts || []).forEach(a => el.append(h('div', { class: 'alert ' + (a.lvl || '') }, icon('alert'), h('span', null, a.text))));
     if (r.table) {
       const tb = r.table;
-      if (tb.title) el.append(h('div', { class: 'kick', style: 'margin:0' }, tb.title));
-      el.append(h('table', { class: 'tbl' },
+      if (tb.title) el.append(h('h3', { class: 'ttl' }, tb.title));
+      el.append(h('table', { class: 'tbl' + (tb.head.length >= 3 ? ' wide' : '') },
         h('thead', null, h('tr', null, tb.head.map(c => h('th', null, c)))),
         h('tbody', null, tb.rows.map(row => {
+          if (row.sec) return h('tr', { class: 'tsec' }, h('th', { colspan: tb.head.length, scope: 'colgroup' }, row.sec));
           const cells = row.cells || row;
           return h('tr', { class: row.set ? 'click' : '', onclick: row.set ? () => onSet(row.set) : null }, cells.map((c, i) => h('td', { class: i === 0 ? 'k' : '' }, c)));
         }))));
@@ -412,18 +425,20 @@
     const nav = h('nav', { 'aria-label': 'Ferramentas' });
     nav.append(h('a', { class: 'sl home', href: '#/', 'data-k': 'home' }, icon('home', false, 18), 'Início'));
     const favs = S.favs.map(id => D.tools.find(t => t.id === id)).filter(Boolean);
-    if (favs.length) nav.append(sideGroup_({ id: 'fav', title: 'Favoritos', c: 'var(--accent)' }, favs, true));
+    if (favs.length) nav.append(sideGroup_({ id: 'fav', title: 'Favoritos', c: 'var(--read)' }, favs, true));
     D.groups.forEach(g => { const ts = D.tools.filter(t => t.g === g.id); if (ts.length) nav.append(sideGroup_(g, ts)); });
     el.append(nav);
   }
   function sideGroup_(g, ts, fav) {
-    const open = OPEN[g.id] !== false && (OPEN[g.id] || fav || g.id === 'med');
+    const open = fav ? OPEN.fav !== false : OPEN.cur === g.id;
     const box = h('div', { class: 'sg' + (open ? ' open' : ''), 'data-g': g.id, style: '--gc:' + g.c });
     const head = h('button', { class: 'sgh', type: 'button', 'aria-expanded': open ? 'true' : 'false', onclick: () => {
-      const o = !box.classList.contains('open'); box.classList.toggle('open', o); head.setAttribute('aria-expanded', o); OPEN[g.id] = o; u.SAVE('drb_open', OPEN);
+      const o = !box.classList.contains('open');
+      if (!fav) { box.parentNode.querySelectorAll('.sg.open:not([data-g="fav"])').forEach(x => { if (x !== box) { x.classList.remove('open'); x.querySelector('.sgh').setAttribute('aria-expanded', 'false'); } }); OPEN.cur = o ? g.id : null; }
+      else OPEN.fav = o;
+      box.classList.toggle('open', o); head.setAttribute('aria-expanded', o); u.SAVE('drb_open', OPEN);
     } }, h('i', { class: 'dot' }), h('span', { class: 'gn' }, g.title), h('span', { class: 'gc' }, String(ts.length)), icon('chev', false, 16));
     const list = h('div', { class: 'sgl' }, ts.map(t => h('a', { class: 'sl', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, 'data-k': t.id + (fav ? '-f' : '') }, t.title)));
-    if (!fav) list.prepend(h('a', { class: 'sl all', href: '#/g/' + g.id, 'data-k': 'g/' + g.id }, 'Ver todos do grupo'));
     box.append(head, list);
     return box;
   }
@@ -434,8 +449,9 @@
     const key = tid ? tid : gid ? 'g/' + gid : 'home';
     el.querySelectorAll('.sl').forEach(a => { const k = a.getAttribute('data-k'); if (k === key || k === key + '-f') { a.classList.add('act'); a.setAttribute('aria-current', 'page'); } });
     const t = tid && D.tools.find(x => x.id === tid), g = t ? t.g : gid;
-    const grp = g && el.querySelector('.sg[data-g="' + g + '"]'); if (grp) { grp.classList.add('open'); grp.querySelector('.sgh').setAttribute('aria-expanded', 'true'); }
-    const act = el.querySelector('.sl.act'); if (act && act.scrollIntoView && el.offsetParent) act.scrollIntoView({ block: 'nearest' });
+    if (g && OPEN.cur !== g) { OPEN.cur = g; u.SAVE('drb_open', OPEN); sideBuild(); el.querySelectorAll('.sl').forEach(a => { const k = a.getAttribute('data-k'); if (k === key || k === key + '-f') { a.classList.add('act'); a.setAttribute('aria-current', 'page'); } }); }
+    const act = el.querySelector('.sl.act');
+    if (act) { const top = act.offsetParent === el ? act.offsetTop : act.offsetTop - el.offsetTop, vis = el.clientHeight; if (top < el.scrollTop || top > el.scrollTop + vis - 60) el.scrollTop = Math.max(0, top - vis / 3); }
   }
   const closeSide = () => { document.body.classList.remove('side-open'); };
   function searchInit() {
@@ -496,7 +512,7 @@
     document.body.dataset.theme = S.theme;
     const b = document.getElementById('theme'); b.innerHTML = '';
     b.append(icon(S.theme === 'dark' ? 'sun' : 'moon'));
-    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = S.theme === 'dark' ? '#1a1918' : '#f3f2f2';
+    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = S.theme === 'dark' ? '#121920' : '#f2f5f8';
   }
   D.boot = function () {
     setTheme(); chip(); searchInit();
@@ -506,7 +522,8 @@
     const ov = document.getElementById('ov'); if (ov) ov.onclick = closeSide;
     document.getElementById('theme').onclick = () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; u.SAVE('drb_theme', S.theme); setTheme(); };
     document.getElementById('pt').onclick = () => {
-      S.patient = { kg: '', age: '', ageU: 'a', sex: '', cm: '' }; S.vals = {}; savePatient(); route();
+      if (location.hash && location.hash !== '#/') location.hash = '#/';
+      setTimeout(() => { const i = document.querySelector('.pat input'); if (i) i.focus(); }, 60);
     };
     window.addEventListener('hashchange', route);
     route();
