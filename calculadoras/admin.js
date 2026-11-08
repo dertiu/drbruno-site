@@ -27,13 +27,18 @@
     const inp = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Senha', placeholder: 'Senha' });
     const err = h('p', { class: 'adm-err', role: 'alert' });
     const btn = h('button', { type: 'button', class: 'copy rx-copy' }, 'Entrar');
+    const FK = 'drb_adm_fail';
     const go = async () => {
       if (!inp.value) { inp.focus(); return; }
+      let f = {}; try { f = JSON.parse(localStorage.getItem(FK) || '{}'); } catch (e) { }
+      if (f.until && Date.now() < f.until) { err.textContent = `Muitas tentativas erradas. Aguarde ${Math.ceil((f.until - Date.now()) / 1000)} s.`; return; }
       btn.disabled = true; btn.textContent = 'Conferindo…'; err.textContent = '';
       try {
         const raw = await derive(inp.value);
-        if (await verOf(raw) === VER) { try { sessionStorage.setItem(SKEY, hex(raw)); } catch (e) { } location.reload(); return; }
-        err.textContent = 'Senha incorreta.'; inp.select();
+        if (await verOf(raw) === VER) { try { localStorage.removeItem(FK); sessionStorage.setItem(SKEY, hex(raw)); sessionStorage.setItem('drb_adm_t', String(Date.now())); } catch (e) { } location.reload(); return; }
+        f.n = (f.n || 0) + 1; if (f.n >= 5) f.until = Date.now() + 60000 * Math.pow(2, f.n - 5);
+        try { localStorage.setItem(FK, JSON.stringify(f)); } catch (e) { }
+        err.textContent = f.until && f.n >= 5 ? 'Senha incorreta. Painel bloqueado por alguns minutos.' : 'Senha incorreta.'; inp.select();
       } catch (e) { err.textContent = 'Erro ao conferir a senha: ' + e.message; }
       btn.disabled = false; btn.textContent = 'Entrar';
     };
@@ -44,6 +49,12 @@
     setTimeout(() => inp.focus(), 50);
     return;
   }
+  const IDLE = 30 * 60 * 1000, TK = 'drb_adm_t';
+  const lock = () => { try { sessionStorage.removeItem(SKEY); sessionStorage.removeItem(TK); } catch (e) { } location.reload(); };
+  { const t = +(sessionStorage.getItem(TK) || 0); if (t && Date.now() - t > IDLE) { lock(); return; } }
+  let lastAct = Date.now();
+  ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(ev => addEventListener(ev, () => { lastAct = Date.now(); try { sessionStorage.setItem(TK, String(lastAct)); } catch (e) { } }, { passive: true }));
+  setInterval(() => { if (Date.now() - lastAct > IDLE) lock(); }, 30000);
   const out = document.querySelector('.adm-back');
   if (out) out.after(h('button', { type: 'button', class: 'rx-btn adm-out', onclick: () => { try { sessionStorage.removeItem(SKEY); } catch (e) { } location.reload(); } }, 'Sair'));
   const D = window.DRB, u = D.u, icon = u.icon;
@@ -55,8 +66,23 @@
   let data = u.LS(DRAFT, null) || clone(base);
   data.cats = data.cats || []; data.receitas = data.receitas || []; data.inf = data.inf || {}; data.aviso = data.aviso || '';
   base.estatisticas = base.estatisticas || '';
-  const cfg = Object.assign({ token: '', repo: 'dertiu/drbruno-site', branch: 'main', path: 'calculadoras/dados.js' }, u.LS(CFG, {}));
-  const saveCfg = () => u.SAVE(CFG, cfg);
+  // A chave do GitHub fica só neste aparelho, cifrada (AES-GCM) com a chave derivada da senha; em texto, só na memória.
+  const cfg = Object.assign({ repo: 'dertiu/drbruno-site', branch: 'main', path: 'calculadoras/dados.js', tokenEnc: null }, u.LS(CFG, {}));
+  const saveCfg = () => { const c = Object.assign({}, cfg); delete c.token; u.SAVE(CFG, c); };
+  const aesP = subtle.importKey('raw', rawKey, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  async function setToken(t) {
+    cfg.token = t || '';
+    if (t) { const iv = crypto.getRandomValues(new Uint8Array(12)); cfg.tokenEnc = { iv: hex(iv), ct: hex(await subtle.encrypt({ name: 'AES-GCM', iv }, await aesP, new TextEncoder().encode(t))) }; }
+    else cfg.tokenEnc = null;
+    saveCfg();
+  }
+  const ready = (async () => {
+    if (cfg.token) { await setToken(cfg.token); return; } // versão antiga guardava sem cifrar: cifra agora
+    if (cfg.tokenEnc) {
+      try { cfg.token = new TextDecoder().decode(await subtle.decrypt({ name: 'AES-GCM', iv: unhex(cfg.tokenEnc.iv) }, await aesP, unhex(cfg.tokenEnc.ct))); }
+      catch (e) { cfg.tokenEnc = null; cfg.token = ''; saveCfg(); }
+    }
+  })();
   const st = { tab: 'rx', sel: data.receitas[0] ? data.receitas[0].id : null, q: '', pkg: '14', page: '3' };
   const isDirty = () => JSON.stringify(data) !== JSON.stringify(base);
   let tmr = null;
@@ -99,17 +125,18 @@
     const msg = h('div');
     const go = async () => {
       const t = inp.value.trim(); if (!t) { inp.focus(); return; }
-      cfg.token = t; saveCfg(); msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Conferindo a chave…'));
+      cfg.token = t; msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Conferindo a chave…'));
       try {
         const r = await gh('GET', `https://api.github.com/repos/${cfg.repo}`);
         if (!(r.permissions && r.permissions.push)) throw new Error('a chave não tem permissão de escrita (Contents: Read and write) em ' + cfg.repo);
+        await setToken(t);
         conn.innerHTML = ''; track('editor/conectou');
         if (after) after();
-      } catch (e) { cfg.token = ''; saveCfg(); msg.innerHTML = ''; msg.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não conectou: ' + e.message))); }
+      } catch (e) { cfg.token = ''; msg.innerHTML = ''; msg.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não conectou: ' + e.message))); }
     };
     conn.append(h('section', { class: 'panel adm-connect' },
       h('h2', null, 'Ativar o botão Salvar (uma única vez)'),
-      h('p', { class: 'hint' }, 'O site fica hospedado no GitHub. Para gravar lá, o painel precisa de uma chave da sua conta, que fica guardada só neste aparelho. Depois disso, cada Salvar publica para todos os colegas na hora.'),
+      h('p', { class: 'hint' }, 'O site fica hospedado no GitHub. Para gravar lá, o painel precisa de uma chave da sua conta. Ela fica só neste aparelho, cifrada com a sua senha, e nunca vai para o site. Depois disso, cada Salvar publica para todos os colegas. Em outro aparelho seu, repita esta ativação uma vez.'),
       h('ol', { class: 'adm-steps' },
         h('li', null, h('a', { class: 'copy', href: TOKEN_URL, target: '_blank', rel: 'noopener' }, 'Abrir o GitHub para gerar a chave'), h('span', null, 'Nome, validade e permissão já vêm preenchidos.')),
         h('li', null, h('span', null, 'Em ', h('b', null, 'Repository access'), ', escolha ', h('b', null, 'Only select repositories'), ' e marque ', h('b', null, cfg.repo.split('/')[1]), '.')),
@@ -248,13 +275,13 @@
     const f = (k, label, type, ph) => h('label', { class: 'fld' }, h('span', { class: 'lbl' }, label), h('input', { type: type || 'text', value: cfg[k] || '', placeholder: ph || '', autocomplete: 'off', oninput: e => { cfg[k] = e.target.value.trim(); saveCfg(); } }));
     body.append(h('div', { class: 'panel' },
       h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Conexão com o site'),
-      h('p', { class: 'hint' }, cfg.token ? 'Ativado: o botão Salvar publica para todos os colegas.' : 'Ainda não ativado. Ao tocar em Salvar pela primeira vez, o painel mostra o passo a passo.'),
+      h('p', { class: 'hint' }, cfg.token ? 'Ativado neste aparelho: o botão Salvar publica para todos os colegas. A chave está guardada cifrada com a sua senha.' : 'Ainda não ativado neste aparelho. Ao tocar em Salvar pela primeira vez, o painel mostra o passo a passo.'),
       h('div', { class: 'adm-acts' },
         h('button', { type: 'button', class: 'rx-btn', onclick: () => connectCard(() => render()) }, cfg.token ? 'Trocar a chave' : 'Conectar agora'),
         h('button', { type: 'button', class: 'rx-btn', onclick: test }, 'Testar conexão'),
-        cfg.token && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (confirm('Desconectar este aparelho? Será preciso colar a chave de novo para salvar.')) { cfg.token = ''; saveCfg(); render(); } } }, 'Desconectar este aparelho')), msg,
+        cfg.token && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: async () => { if (confirm('Remover a chave deste aparelho? Para salvar daqui de novo, será preciso ativar outra vez.')) { await setToken(''); render(); } } }, 'Remover a chave deste aparelho')), msg,
       h('details', { class: 'adm-help' }, h('summary', null, 'Avançado'),
-        h('div', { class: 'fgrid' }, f('token', 'Chave do GitHub', 'password', 'github_pat_…'), f('repo', 'Repositório'), f('branch', 'Branch'), f('path', 'Arquivo de dados')))));
+        h('div', { class: 'fgrid' }, f('repo', 'Repositório'), f('branch', 'Branch'), f('path', 'Arquivo de dados')))));
     async function test() {
       msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Testando…'));
       try { const r = await gh('GET', `https://api.github.com/repos/${cfg.repo}`); msg.innerHTML = '';
@@ -344,6 +371,7 @@
 
   /* ---------- GitHub ---------- */
   async function gh(method, url, payload) {
+    await ready;
     if (!cfg.token) throw new Error('o botão Salvar ainda não foi ativado');
     const r = await fetch(url, { method, cache: 'no-store', headers: { Authorization: 'Bearer ' + cfg.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, body: payload ? JSON.stringify(payload) : undefined });
     const j = await r.json().catch(() => ({}));
@@ -351,6 +379,7 @@
     return j;
   }
   async function ghPub(url) { // leitura: usa a chave se houver, senão acesso público
+    await ready;
     if (cfg.token) return gh('GET', url);
     const r = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) throw new Error(r.status === 403 ? 'limite de consultas do GitHub atingido; conecte o aparelho (Configurações) ou tente em 1 hora' : 'erro ' + r.status);
@@ -384,6 +413,7 @@
   async function publish() {
     const bad = data.receitas.filter(r => !r.t.trim() || !r.it.some(it => it.n.trim()));
     if (bad.length && !confirm(`${bad.length} receita(s) sem título ou sem item: ${bad.map(r => r.t || r.id).join(', ')}. Salvar mesmo assim?`)) return;
+    await ready;
     if (!cfg.token) { connectCard(publish); return; }
     const btn = top.querySelector('.adm-save'); if (btn) { btn.disabled = true; btn.lastChild.textContent = 'Salvando…'; }
     try {
@@ -397,11 +427,11 @@
       bar();
     } catch (e) {
       flash = h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não salvou: ' + e.message + '. Nada foi perdido: as alterações continuam no painel; tente Salvar de novo.'));
-      if (/inválida|expirada/.test(e.message)) { cfg.token = ''; saveCfg(); }
+      if (/inválida|expirada/.test(e.message)) { await setToken(''); }
       bar();
     }
   }
 
   track('editor/entrou');
-  render();
+  ready.then(render, render);
 })();

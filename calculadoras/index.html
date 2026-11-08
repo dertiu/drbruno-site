@@ -7,6 +7,8 @@
   <meta name="description" content="Calculadoras e escalas para o plantão: doses por peso e idade, drogas vasoativas, escores clínicos, gasometria, função renal e mais.">
   <meta name="theme-color" content="#121920">
   <meta name="robots" content="noindex">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com; img-src 'self' data: https://*.goatcounter.com; style-src 'self' 'unsafe-inline'; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.webmanifest">
@@ -46,6 +48,6 @@
   <script src="t-util.js"></script>
   <script src="t-rx.js"></script>
   <script src="t-cad.js"></script>
-  <script>DRB.boot();</script>
+  <script src="boot.js"></script>
 </body>
 </html>
