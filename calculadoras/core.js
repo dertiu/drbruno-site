@@ -370,7 +370,7 @@
 
   function renderResult(el, r, t, onSet) {
     el.innerHTML = '';
-    if (!r || (!r.main && !(r.alerts && r.alerts.length) && !r.table && !(r.rows && r.rows.length))) {
+    if (!r || (!r.main && !(r.alerts && r.alerts.length) && !r.table && !(r.rows && r.rows.length) && !(r.steps && r.steps.length))) {
       el.append(h('div', { class: 'empty' }, 'Preencha os campos para ver o resultado.')); return;
     }
     if (r.main) {
@@ -385,6 +385,7 @@
       el.append(h('div', { class: 'gauge' }, h('div', { class: 'glab' }, h('span', null, g.label), h('span', { class: 'gv ' + (g.lvl || '') }, g.text || '')), bar,
         g.ticks && h('div', { class: 'gtk' }, g.ticks.map(t => h('span', null, t)))));
     });
+    if (r.steps && r.steps.length) el.append(h('ol', { class: 'rsteps' }, r.steps.map(x => h('li', { class: x.lvl || '' }, h('b', null, x.t), h('span', null, x.d)))));
     if (r.rows && r.rows.length) el.append(h('dl', { class: 'rows' }, r.rows.map(([k, v]) => h('div', { class: 'r' }, h('dt', null, k), h('dd', null, v)))));
     (r.alerts || []).forEach(a => el.append(h('div', { class: 'alert ' + (a.lvl || '') }, icon('alert'), h('span', null, a.text))));
     if (r.table) {

@@ -1,11 +1,57 @@
 /* Painel do editor: edita receitas, diluições e aviso; publica dados.js no GitHub com a chave do editor.
-   Os colegas usam o site sem login. Só quem tem a chave (token) consegue publicar. */
+   Os colegas usam o site sem login. A senha abaixo só fecha a tela do painel; quem publica de fato é a chave (token) do GitHub. */
 (function () {
   'use strict';
-  const D = window.DRB, u = D.u, h = u.h, icon = u.icon;
+  const PASS = '91c9b010a5d3609113c96b4351f1ec58306b6cb824c4ce81dc23467f20a37ed0'; // SHA-256 da senha do painel
+  const SKEY = 'drb_adm_ok';
+  function sha256js(str) {
+    const b = new TextEncoder().encode(str), K = [], H = [];
+    const isP = n => { for (let i = 2; i * i <= n; i++) if (n % i === 0) return false; return true; };
+    const frac = x => ((x - Math.floor(x)) * 4294967296) >>> 0;
+    for (let n = 2, c = 0; c < 64; n++) if (isP(n)) { if (c < 8) H[c] = frac(Math.pow(n, 1 / 2)); K[c++] = frac(Math.cbrt(n)); }
+    const len = ((b.length + 9 + 63) >> 6) << 6, m = new Uint8Array(len); m.set(b); m[b.length] = 0x80;
+    const dv = new DataView(m.buffer); dv.setUint32(len - 4, b.length * 8);
+    const W = new Uint32Array(64), rr = (x, n) => (x >>> n) | (x << (32 - n));
+    for (let i = 0; i < len; i += 64) {
+      for (let t = 0; t < 16; t++) W[t] = dv.getUint32(i + t * 4);
+      for (let t = 16; t < 64; t++) { const a = W[t - 15], c = W[t - 2]; W[t] = (W[t - 16] + (rr(a, 7) ^ rr(a, 18) ^ (a >>> 3)) + W[t - 7] + (rr(c, 17) ^ rr(c, 19) ^ (c >>> 10))) >>> 0; }
+      let [a, bb, c, d, e, f, g, h] = H;
+      for (let t = 0; t < 64; t++) {
+        const t1 = (h + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + W[t]) >>> 0, t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = bb; bb = a; a = (t1 + t2) >>> 0;
+      }
+      [a, bb, c, d, e, f, g, h].forEach((x, j) => { H[j] = (H[j] + x) >>> 0; });
+    }
+    return H.map(x => x.toString(16).padStart(8, '0')).join('');
+  }
+  async function sha256(str) {
+    try { if (window.crypto && crypto.subtle) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(d)).map(x => x.toString(16).padStart(2, '0')).join(''); } } catch (e) { }
+    return sha256js(str);
+  }
+  window.DRB_SHA = sha256js;
+  const ok = () => { try { return sessionStorage.getItem(SKEY) === PASS; } catch (e) { return false; } };
+  const h = window.DRB.u.h;
+  try { document.body.dataset.theme = JSON.parse(localStorage.getItem('drb_theme') || '"dark"'); } catch (e) { }
+  if (!ok()) {
+    const root = document.getElementById('adm');
+    const inp = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Senha', placeholder: 'Senha' });
+    const err = h('p', { class: 'adm-err', role: 'alert' });
+    const go = async () => {
+      const hh = await sha256(inp.value);
+      if (hh === PASS) { try { sessionStorage.setItem(SKEY, PASS); } catch (e) { } location.reload(); }
+      else { err.textContent = 'Senha incorreta.'; inp.select(); }
+    };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    root.append(h('section', { class: 'adm-gate panel' }, h('h1', { class: 'title' }, 'Área do editor'), h('p', { class: 'lead' }, 'Digite a senha para abrir o painel.'),
+      h('label', { class: 'pf' }, h('span', null, 'Senha'), h('span', { class: 'pfin' }, inp)), h('button', { type: 'button', class: 'copy rx-copy', onclick: go }, 'Entrar'), err));
+    setTimeout(() => inp.focus(), 50);
+    return;
+  }
+  const out = document.querySelector('.adm-back');
+  if (out) out.after(h('button', { type: 'button', class: 'rx-btn adm-out', onclick: () => { try { sessionStorage.removeItem(SKEY); } catch (e) { } location.reload(); } }, 'Sair'));
+  const D = window.DRB, u = D.u, icon = u.icon;
   const VIA = D.rx.VIA;
   const DRAFT = 'drb_admin_draft', CFG = 'drb_admin_cfg';
-  try { document.body.dataset.theme = JSON.parse(localStorage.getItem('drb_theme') || '"dark"'); } catch (e) { }
 
   const clone = o => JSON.parse(JSON.stringify(o));
   const base = clone(window.DRB_DATA || { cats: [], receitas: [], inf: {}, aviso: '' });

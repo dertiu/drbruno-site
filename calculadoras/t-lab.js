@@ -334,13 +334,18 @@
 
   /* ---------- Reposição de eletrólitos ---------- */
   const repos = {
-    id: 'repos', g: 'lab', title: 'Reposição de eletrólitos', desc: 'Potássio com velocidade máxima por acesso, magnésio, cálcio, fosfato e déficit de bicarbonato',
-    kw: 'reposicao eletrolitos hipocalemia potassio kcl magnesio calcio gluconato fosfato bicarbonato velocidade acesso periferico central hipocalcemia hipomagnesemia hipofosfatemia',
-    disc: 'Reposição de potássio e demais eletrólitos exige monitorização (ECG, K⁺ seriado e função renal). Doses de referência; siga o protocolo do hospital.',
+    id: 'repos', g: 'lab', title: 'Reposição e correção de eletrólitos', desc: 'Potássio pela regra prática (faixa 3,3 a 5,5): KCl na hipocalemia; cálcio, solução polarizante, salbutamol, furosemida e resina na hipercalemia. Magnésio, cálcio, fosfato e bicarbonato',
+    kw: 'reposicao correcao eletrolitos hipocalemia hipercalemia hiperpotassemia hipopotassemia potassio kcl solucao polarizante gluconato calcio furosemida salbutamol sorcal resina dialise magnesio fosfato bicarbonato hipocalcemia hipomagnesemia hipofosfatemia',
+    disc: 'Regra prática de apoio. Correção de potássio exige monitorização (ECG, K⁺ seriado, glicemia e função renal). Confira com o protocolo do hospital.',
     fields: v => {
       const m = v.mode || 'k';
-      const out = [F.SEL('mode', 'Eletrólito', [['k', 'Potássio (hipocalemia)'], ['mg', 'Magnésio'], ['ca', 'Cálcio (gluconato)'], ['po', 'Fosfato'], ['hco', 'Bicarbonato (déficit)']], { def: 'k', rebuild: true }), F.KG()];
-      if (m === 'k') out.push(F.N('kv', 'Potássio sérico', { unit: 'mEq/L' }), F.N('alvo', 'Alvo', { unit: 'mEq/L', def: 4 }), F.SEG('ac', 'Acesso venoso', [['p', 'Periférico'], ['c', 'Central']], { def: 'p' }), F.CHK('ecg', 'Alterações no ECG ou arritmia (monitorizado)', null));
+      const out = [F.SEL('mode', 'Eletrólito', [['k', 'Potássio (hipo e hipercalemia)'], ['mg', 'Magnésio'], ['ca', 'Cálcio (gluconato)'], ['po', 'Fosfato'], ['hco', 'Bicarbonato (déficit)']], { def: 'k', rebuild: true })];
+      if (m === 'k') out.push(F.N('kv', 'Potássio sérico', { unit: 'mEq/L', full: true }), F.KG({ hint: 'Opcional: usado no bicarbonato' }),
+        F.CHK('ecg', 'Alteração no ECG (T apiculada, QRS largo, arritmia) ou fraqueza muscular', null),
+        F.CHK('drc', 'Doença renal, oligúria ou uso de IECA, BRA ou espironolactona', null),
+        F.SEC('Se hipocalemia'), F.SEG('ac', 'Acesso venoso', [['p', 'Periférico'], ['c', 'Central']], { def: 'p' }), F.CHK('vo', 'Aceita via oral', null, { def: true }),
+        F.SEC('Se hipercalemia'), F.N('gl', 'Glicemia', { unit: 'mg/dL', hint: 'Para a solução polarizante' }), F.CHK('acid', 'Acidose metabólica (HCO₃⁻ < 15 ou pH < 7,2)', null));
+      else out.push(F.KG());
       if (m === 'mg') out.push(F.N('mv', 'Magnésio sérico', { unit: 'mg/dL' }), F.CHK('grave', 'Arritmia (torsades) ou convulsão', null));
       if (m === 'ca') out.push(F.N('cav', 'Cálcio total', { unit: 'mg/dL' }), F.N('alb', 'Albumina', { unit: 'g/dL', def: 4 }), F.CHK('sint', 'Sintomático (tetania, convulsão, QT longo)', null));
       if (m === 'po') out.push(F.N('pv', 'Fósforo sérico', { unit: 'mg/dL' }));
@@ -348,22 +353,9 @@
       return out;
     },
     calc: v => {
-      const kg = v.kg, m = v.mode || 'k'; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso.' }] };
-      if (m === 'k') {
-        const k = v.kv, alvo = v.alvo || 4; if (!(k > 0)) return { alerts: [{ lvl: 'info', text: 'Informe o potássio sérico.' }] };
-        if (k >= alvo) return { alerts: [{ lvl: 'info', text: 'O potássio já está no alvo ou acima.' }] };
-        const perif = v.ac === 'p', mx = perif ? 10 : 20, conc = perif ? 40 : 80; // mEq/h e mEq/L
-        const def = Math.min(Math.max((alvo - k) * 100 * kg / 70, 0), 400); // 10 mEq para cada 0,1 mEq/L
-        const horas = def / mx, kcl191 = def / 2.56, dil = def / conc * 1000;
-        const rows = [['Déficit aproximado', `${fmt(def, 0)} mEq (10 mEq para cada 0,1 mEq/L, corrigido pelo peso)`], ['Velocidade máxima', `${mx} mEq/h (${perif ? 'acesso periférico' : 'acesso central, monitorizado'})`],
-          ['Concentração máxima', `${conc} mEq/L (${perif ? '≤ 40' : '≤ 80'})`], ['Tempo mínimo', `${fmt(horas, 1)} h`], ['KCl 19,1% (2,56 mEq/mL)', `${fmt(kcl191, 1)} mL`], ['KCl 10% (1,34 mEq/mL)', `${fmt(def / 1.34, 1)} mL`],
-          ['Diluente mínimo para o total (na concentração máxima)', `${fmt(dil, 0)} mL de SF 0,9% ou SG 5%`], ['Prescrição prática de 10 mEq', `KCl 19,1% ${fmt(10 / 2.56, 1)} mL + 100 mL de SF em 1 h`]];
-        const al = [{ lvl: 'warn', text: `Nunca infundir KCl em bolus ou puro. Máximo ${mx} mEq/h neste acesso${perif ? ' (dor e flebite)' : ''}. Repor em etapas e dosar K⁺ a cada 4 a 6 h; reavaliar o déficit.` }];
-        if (v.ecg && perif) al.push({ lvl: 'crit', text: 'Hipocalemia com arritmia: preferir acesso central e velocidade de até 20 mEq/h com monitorização contínua.' });
-        if (k < 3) al.push({ lvl: 'info', text: 'K⁺ < 3 mEq/L: repor também o magnésio; corrija o Mg²⁺ se baixo para a reposição de K⁺ ser eficaz.' });
-        al.push({ lvl: 'info', text: 'Cuidado com insuficiência renal e uso de poupadores de potássio: reduzir a dose em 50% e checar diurese.' });
-        return { main: { label: 'Tempo mínimo de reposição', value: fmt(horas, 1), unit: 'h' }, rows, alerts: al, text: `Hipocalemia (K ${fmt(k, 1)} para ${fmt(alvo, 1)}): déficit ~${fmt(def, 0)} mEq; KCl 19,1% ${fmt(kcl191, 1)} mL em ${fmt(dil, 0)} mL, máximo ${mx} mEq/h (${perif ? 'acesso periférico' : 'acesso central'}).` };
-      }
+      const kg = v.kg, m = v.mode || 'k';
+      if (m === 'k') return potassio(v);
+      if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso.' }] };
       if (m === 'mg') {
         const mv = v.mv;
         const rows = [['Sulfato de magnésio 10% (1 g/10 mL = 8,1 mEq)', '1 a 2 g (10 a 20 mL) em 100 mL de SF em 15 a 60 min'], ['Repor depois', '4 a 6 g (40 a 60 mL de MgSO₄ 10%) em 500 mL em 12 a 24 h']];
@@ -396,6 +388,57 @@
         alerts: [{ lvl: 'warn', text: 'Reservar para acidose grave (pH < 7,1 a 7,2) ou hipercalemia. Em CAD, só se pH < 6,9. Monitorizar K⁺ e Ca²⁺ ionizado.' }], text: `Déficit de HCO3: 0,5 × ${fmt(kg, 1)} × (${ha} − ${fmt(h, 0)}) = ${fmt(def, 0)} mEq.` };
     }
   };
+
+  /* ---------- potássio: regra prática, faixa 3,3 a 5,5 ---------- */
+  function potassio(v) {
+    const k = v.kv, kg = v.kg;
+    if (!(k > 0)) return { alerts: [{ lvl: 'info', text: 'Informe o potássio sérico.' }] };
+    const steps = [], al = [];
+    if (k >= 3.3 && k <= 5.5) {
+      return { main: { label: 'Potássio', value: fmt(k, 1), unit: 'mEq/L' }, sub: 'Dentro da faixa prática (3,3 a 5,5): sem correção',
+        alerts: [{ lvl: 'ok', text: 'Manter a dieta e as medicações habituais. Repetir conforme o quadro clínico.' }, { lvl: 'info', text: 'Situações com conduta própria: cetoacidose (use o protocolo da CAD), arritmia, uso de digoxina.' }],
+        text: `Potássio ${fmt(k, 1)} mEq/L, dentro da faixa prática (3,3 a 5,5). Sem correção.` };
+    }
+    if (k < 3.3) {
+      const sev = v.ecg || k < 2.5 ? 'grave' : k < 3 ? 'moderada' : 'leve', perif = v.ac !== 'c';
+      const PER = 'SF 0,9% 500 mL + KCl 19,1% 8 mL (20 mEq) EV em 2 h (250 mL/h = 10 mEq/h)';
+      const CEN = 'SF 0,9% 100 mL + KCl 19,1% 8 mL (20 mEq) EV em 1 h, em bomba de infusão, com monitor cardíaco (20 mEq/h)';
+      const VO = 'Cloreto de potássio xarope 6% (0,8 mEq/mL): 15 mL VO de 8/8h após as refeições (≈ 36 mEq/dia), ou KCl 600 mg (8 mEq): 2 cp VO de 8/8h';
+      if (sev === 'leve') {
+        steps.push(v.vo ? { t: 'Reposição oral', d: VO + ', por 3 a 5 dias.' } : { t: 'Reposição venosa', d: PER + '. Uma etapa e dosar o K⁺ em 6 h.' });
+        steps.push({ t: 'Controle', d: 'Dosar K⁺ em 24 a 48 h. Tratar a causa (diurético, vômitos, diarreia).' });
+      } else if (sev === 'moderada') {
+        steps.push({ t: 'Reposição venosa', d: (perif ? PER : CEN) + `. Fazer 2 a 3 etapas (40 a 60 mEq) e dosar o K⁺ após cada 40 mEq.` });
+        if (v.vo) steps.push({ t: 'Associar via oral', d: VO + '.' });
+        steps.push({ t: 'Controle', d: 'ECG. Dosar K⁺ a cada 4 a 6 h até sair da faixa de risco.' });
+      } else {
+        steps.push({ t: 'Monitorizar', d: 'Monitor cardíaco contínuo e ECG. Acesso central de preferência.' });
+        steps.push({ t: 'Reposição venosa', d: (perif ? PER + '. Se acesso só periférico, pode usar 2 acessos simultâneos com essa solução' : CEN + '. Repetir a cada hora conforme o K⁺') + '. Dosar o K⁺ a cada 1 a 2 h.' });
+        steps.push({ t: 'Magnésio', d: 'Sulfato de magnésio 10% 20 mL (2 g) em 100 mL de SF 0,9% EV em 1 h (hipomagnesemia impede a correção do potássio).' });
+      }
+      al.push({ lvl: 'warn', text: 'Nunca fazer KCl em bolus nem puro. Periférico: até 40 mEq/L e 10 mEq/h. Central: até 20 mEq/h com monitor.' });
+      if (v.drc) al.push({ lvl: 'warn', text: 'Doença renal ou oligúria: reduzir a dose pela metade e dosar o K⁺ com mais frequência.' });
+      if (sev !== 'grave' && k < 3) al.push({ lvl: 'info', text: 'Dosar e repor o magnésio se baixo.' });
+      return { main: { label: 'Hipocalemia', value: sev, small: true }, sub: `K⁺ ${fmt(k, 1)} mEq/L: corrigir até voltar à faixa 3,3 a 5,5`, steps, alerts: al,
+        text: `Hipocalemia ${sev} (K ${fmt(k, 1)}). ` + steps.map(x => x.t + ': ' + x.d).join(' ') };
+    }
+    // hipercalemia
+    const sev = v.ecg || k >= 6.5 ? 'grave' : k >= 6 ? 'moderada' : 'leve', gl = v.gl;
+    steps.push({ t: 'Confirmar e monitorizar', d: 'Afastar pseudo-hipercalemia (hemólise, garrote prolongado). ECG' + (sev !== 'leve' ? ' e monitor cardíaco contínuo.' : '.') });
+    if (sev === 'grave') steps.push({ t: 'Proteger o coração', lvl: 'crit', d: 'Gluconato de cálcio 10% 10 mL (1 g) EV em 2 a 5 min. Repetir em 5 min se o ECG continuar alterado (até 3 doses). Efeito em minutos, dura 30 a 60 min. Em uso de digoxina, infundir em 20 a 30 min.' });
+    if (sev !== 'leve') {
+      steps.push({ t: 'Solução polarizante', d: isFinite(gl) && gl >= 250 ? 'Insulina regular 10 UI EV (glicemia ≥ 250: sem glicose). Glicemia capilar de 1/1h por 4 a 6 h.' : 'Insulina regular 10 UI + glicose 50% 100 mL EV em 30 a 60 min (ou SG 10% 500 mL + insulina regular 10 UI em 1 h). Glicemia capilar de 1/1h por 4 a 6 h.' });
+      steps.push({ t: 'Salbutamol', d: 'Salbutamol aerossol 200 mcg: 6 jatos (1.200 mcg) com espaçador; pode repetir em 20 min. Complementa a insulina, não substitui. Cuidado em coronariopatas.' });
+      if (v.acid) steps.push({ t: 'Bicarbonato (acidose)', d: kg > 0 ? `Bicarbonato de sódio 8,4% ${fmt(Math.round(kg), 0)} mL (1 mEq/kg) EV em 30 min.` : 'Bicarbonato de sódio 8,4% 1 mL/kg (1 mEq/kg) EV em 30 min.' });
+    }
+    steps.push({ t: 'Retirar potássio do corpo', d: 'Furosemida 40 a 80 mg EV (cerca de 1 mg/kg) se houver diurese e sem hipovolemia (doses maiores na doença renal). Poliestirenossulfonato de cálcio (Sorcal) 30 g VO diluído em 100 mL de água de 8/8h.' });
+    if (sev === 'grave' || v.drc) steps.push({ t: 'Avaliar hemodiálise', lvl: 'warn', d: 'Se K⁺ ≥ 6,5 refratário, insuficiência renal oligúrica, acidose grave ou hipervolemia.' });
+    steps.push({ t: 'Suspender e investigar', d: 'IECA, BRA, espironolactona, AINE, suplemento de potássio, heparina, trimetoprima e betabloqueador. Dieta pobre em potássio.' });
+    steps.push({ t: 'Controle', d: sev === 'leve' ? 'Dosar K⁺ em 6 a 12 h.' : 'Dosar K⁺ em 1 a 2 h após as medidas; o efeito da insulina e do salbutamol dura 4 a 6 h.' });
+    if (sev === 'grave') al.push({ lvl: 'crit', text: 'Hipercalemia grave: emergência. Cálcio primeiro, depois insulina com glicose e salbutamol, em seguida remover o potássio.' });
+    return { main: { label: 'Hipercalemia', value: sev, small: true }, sub: `K⁺ ${fmt(k, 1)} mEq/L: corrigir até voltar à faixa 3,3 a 5,5`, steps, alerts: al,
+      text: `Hipercalemia ${sev} (K ${fmt(k, 1)}). ` + steps.map(x => x.t + ': ' + x.d).join(' ') };
+  }
 
   D.add(repos, clcr, imc, gaso, nacorr, lab, qtc, conv, vent, oxig, o2, gotas, dil, datas, abemid, nead);
 })();

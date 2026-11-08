@@ -215,6 +215,14 @@ select option,select optgroup{background:var(--surface);color:var(--text)}
 .mini span{color:var(--muted)}
 @media(min-width:1000px){.mini{display:none}}
 
+/* ---------- passos numerados do resultado ---------- */
+.rsteps{margin:0;padding:0;list-style:none;counter-reset:st;display:flex;flex-direction:column;gap:2px}
+.rsteps li{counter-increment:st;position:relative;padding:12px 0 12px 44px;border-top:1px solid var(--div);display:flex;flex-direction:column;gap:3px;font-size:16px;line-height:1.45}
+.rsteps li::before{content:counter(st);position:absolute;left:0;top:11px;width:30px;height:30px;border-radius:50%;background:var(--surface2);border:1.5px solid var(--line2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+.rsteps li.crit::before{background:var(--crit);border-color:var(--crit);color:var(--bg)}
+.rsteps li.warn::before{border-color:var(--warn);color:var(--warn)}
+.rsteps li b{font-size:16.5px}
+.rsteps li.crit b{color:var(--crit)}
 /* ---------- barras de faixa (DVA, sinais vitais) ---------- */
 .gauge{margin:2px 0}
 .glab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:15px;color:var(--muted);margin-bottom:8px}
@@ -359,6 +367,12 @@ body[data-theme="light"] .rx-paper{box-shadow:0 0 0 1px var(--div),0 10px 24px r
 
 /* ---------- painel do editor ---------- */
 .adm-link{margin:18px 0 0;font-size:14px}
+.adm-gate{max-width:440px;margin:40px auto;gap:16px}
+.adm-gate .title{margin:0}
+.adm-gate .lead{margin:0}
+.adm-gate .copy{min-height:52px}
+.adm-err{margin:0;color:var(--crit);font-weight:600;min-height:1.4em}
+.adm-out{min-height:40px;margin-left:10px}
 .adm-link a{color:var(--faint)}
 .adm-back{margin-left:auto;color:var(--accentText);font-weight:600}
 .adm{max-width:1300px;margin:0 auto}
