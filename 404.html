@@ -6,14 +6,14 @@
   <meta name="robots" content="noindex">
   <title>Página não encontrada | Dr. Bruno Thomás Michels</title>
   <script>
-    // Endereços digitados com letras trocadas (ex.: /PERICIAS, /Pericias) vão para a pasta certa.
+    // Endereços digitados com letras trocadas (ex.: /PERICIAS, /Calculadora) vão para a pasta certa.
     (function () {
-      var pastas = { pericias: 'pericias', abemid: 'ABEMID', nead: 'nead' };
+      var pastas = { pericias: 'pericias', abemid: 'ABEMID', nead: 'nead', calculadoras: 'calculadoras', calculadora: 'calculadoras' };
       var partes = location.pathname.split('/');
       var certa = pastas[(partes[1] || '').toLowerCase()];
       if (!certa || partes[1] === certa) return;
       var resto = partes.slice(2).join('/');
-      if (certa === 'pericias') resto = resto.toLowerCase();
+      if (certa === 'pericias' || certa === 'calculadoras') resto = resto.toLowerCase();
       location.replace('/' + certa + '/' + resto + location.search + location.hash);
     })();
   </script>

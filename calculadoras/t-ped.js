@@ -26,10 +26,10 @@
         ['Bolus de cristaloide (20 mL/kg)', `${a(20 * kg)} mL`, 'SF 0,9% ou Ringer em 5 a 20 min; reavaliar a cada bolus'],
         ['Glicose (0,5 a 1 g/kg)', `${a(0.5 * kg)} a ${a(kg)} g`, `${a(5 * kg)} a ${a(10 * kg)} mL de glicose 10%`],
         ['Bicarbonato de sódio (1 mEq/kg)', `${a(kg)} mEq`, `${a(kg)} mL de 8,4% (diluir 1:1 em lactentes)`],
-        ['Gluconato de cálcio 10% (50 a 100 mg/kg)', `${a(mn(50 * kg, 2000))} a ${a(mn(100 * kg, 2000))} mg`, `${a(mn(0.5 * kg, 20))} a ${a(mn(kg, 20))} mL em 10 min`],
+        ['Gluconato de cálcio 10% (50 a 100 mg/kg)', `${u.rangeAuto(mn(50 * kg, 2000), mn(100 * kg, 2000))} mg`, `${u.rangeAuto(mn(0.5 * kg, 20), mn(kg, 20))} mL em 10 min (máx. 2 g)`],
         { sec: 'Convulsão e antídotos' },
         ['Midazolam (0,1 a 0,2 mg/kg)', `${a(mn(0.1 * kg, 10))} a ${a(mn(0.2 * kg, 10))} mg`, `${a(mn(0.1 * kg, 10) / 5)} a ${a(mn(0.2 * kg, 10) / 5)} mL de 5 mg/mL; IM/IN 0,2 mg/kg`],
-        ['Diazepam (0,2 a 0,5 mg/kg)', `${a(mn(0.2 * kg, 10))} a ${a(mn(0.5 * kg, 10))} mg`, `${a(mn(0.2 * kg, 10) / 5)} a ${a(mn(0.5 * kg, 10) / 5)} mL de 5 mg/mL`],
+        ['Diazepam (0,2 a 0,5 mg/kg)', `${u.rangeAuto(mn(0.2 * kg, 10), mn(0.5 * kg, 10))} mg`, `${u.rangeAuto(mn(0.2 * kg, 10) / 5, mn(0.5 * kg, 10) / 5)} mL de 5 mg/mL; máx. 10 mg`],
         ['Levetiracetam (40 a 60 mg/kg)', `${a(mn(40 * kg, 4500))} a ${a(mn(60 * kg, 4500))} mg`, `${a(mn(40 * kg, 4500) / 100)} a ${a(mn(60 * kg, 4500) / 100)} mL de 100 mg/mL`],
         ['Naloxona (0,1 mg/kg)', `${a(mn(0.1 * kg, 2))} mg`, `${a(mn(0.1 * kg, 2) / 0.4)} mL de 0,4 mg/mL (depressão respiratória: iniciar com 0,01 mg/kg)`]
       ];
@@ -55,7 +55,9 @@
       rows.push(['Hipotensão (PAS menor que)', `${fmt(hipo, 0)} mmHg`]);
       const est = y < 1 ? 0.5 * m + 4 : y <= 5 ? 2 * y + 8 : y <= 12 ? 3 * y + 7 : null;
       if (est != null) rows.push(['Peso estimado (APLS)', `${fmt(est, 1)} kg`]);
-      if (y >= 1) { rows.push(['Tubo orotraqueal com cuff', `${fmt(y / 4 + 3.5, 1)} mm`], ['Tubo sem cuff', `${fmt(y / 4 + 4, 1)} mm`], ['Fixação oral (3 × diâmetro do tubo)', `${fmt(3 * (y / 4 + 3.5), 1)} cm na rima labial`]); }
+      const r5 = x => Math.round(x * 2) / 2;
+      if (y >= 14) { rows.push(['Tubo orotraqueal (adolescente e adulto)', '6,5 a 7,0 mm (mulher) ou 7,0 a 8,0 mm (homem), com cuff'], ['Fixação oral', '21 a 23 cm na rima labial']); }
+      else if (y >= 1) { const cf = r5(y / 4 + 3.5); rows.push(['Tubo orotraqueal com cuff', `${fmt(cf, 1)} mm`], ['Tubo sem cuff', `${fmt(r5(y / 4 + 4), 1)} mm`], ['Fixação oral (3 × diâmetro do tubo)', `${fmt(3 * cf, 1)} cm na rima labial`]); }
       else rows.push(['Tubo orotraqueal', m < 1 ? '3,0 a 3,5 mm (RN a termo)' : '3,5 mm (com cuff 3,0 a 3,5)'], ['Fixação oral', m < 1 ? '9 a 10,5 cm na rima labial (≈ peso + 6)' : '10,5 cm na rima labial']);
       const kg = isFinite(v.kg) ? v.kg : est;
       if (kg > 0) { const l = LMA.find(x => kg < x[0]); rows.push([`Máscara laríngea (${fmt(kg, 0)} kg)`, `tamanho ${l ? l[1] : '6'}`]); }
@@ -80,8 +82,8 @@
       const kg = v.kg, m = v.mode || 'man'; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso.' }] };
       if (m === 'man') {
         const dia = kg <= 10 ? 100 * kg : kg <= 20 ? 1000 + 50 * (kg - 10) : 1500 + 20 * (kg - 20), h = kg <= 10 ? 4 * kg : kg <= 20 ? 40 + 2 * (kg - 10) : 60 + (kg - 20);
-        return { main: { label: 'Manutenção (Holliday-Segar)', value: fmt(dia, 0), unit: 'mL/dia' }, rows: [['Vazão pela regra 4-2-1', `${fmt(h, 1)} mL/h`], ['Regra 4-2-1', '4 mL/kg/h (10 kg) + 2 mL/kg/h (10 a 20 kg) + 1 mL/kg/h (> 20 kg)'], ['Eletrólitos (por 100 mL)', 'Na⁺ 3 mEq e K⁺ 2 mEq']],
-          alerts: [{ lvl: 'info', text: 'Em crianças hospitalizadas, preferir soluções isotônicas (SF 0,9% com glicose e potássio) para reduzir o risco de hiponatremia. Adultos: ~25 a 30 mL/kg/dia.' }], text: `Manutenção ${fmt(dia, 0)} mL/dia (${fmt(h, 1)} mL/h) para ${fmt(kg, 1)} kg.` };
+        return { main: { label: 'Manutenção (Holliday-Segar)', value: fmt(dia, 0), unit: 'mL/dia' }, rows: [['Vazão pela regra 4-2-1', `${fmt(h, 1)} mL/h`], ['Regra 4-2-1', '4 mL/kg/h (10 kg) + 2 mL/kg/h (10 a 20 kg) + 1 mL/kg/h (> 20 kg)'], ['Necessidade basal clássica (por 100 mL)', 'Na⁺ 3 mEq e K⁺ 2 mEq']],
+          alerts: [{ lvl: 'info', text: 'Na prática, em crianças hospitalizadas use solução isotônica (SG 5% 500 mL + NaCl 20% 22 mL + KCl), que reduz o risco de hiponatremia. Adultos: 25 a 30 mL/kg/dia. A prescrição pronta, com bolsas e aditivos, está na ferramenta Soro de manutenção (dieta zero).' }], text: `Manutenção ${fmt(dia, 0)} mL/dia (${fmt(h, 1)} mL/h) para ${fmt(kg, 1)} kg.` };
       }
       if (m === 'des') {
         const p = Number(v.pct), def = kg * p * 10, dia = kg <= 10 ? 100 * kg : kg <= 20 ? 1000 + 50 * (kg - 10) : 1500 + 20 * (kg - 20);
@@ -115,17 +117,17 @@
     { n: 'Ibuprofeno gotas 100 mg/mL', f: kg => `${fmt(Math.min(kg, 40), 0)} gotas`, i: '6/8 h; 1 gota/kg; máx. 40 gotas; acima de 6 meses', min: 0.5 },
     { sec: 'Antibióticos' },
     { n: 'Amoxicilina 250 mg/5 mL', f: kg => `${a(Math.min(kg / 3, 10))} mL`, i: '8/8 h; máx. 10 mL/dose (50 mg/kg/dia)' },
-    { n: 'Amoxicilina + clavulanato (250 + 62,5 mg/5 mL)', f: kg => `${a(kg / 3)} mL`, i: '8/8 h' },
-    { n: 'Azitromicina 200 mg/5 mL', f: kg => `${a(kg / 4)} mL`, i: '1x/dia (10 mg/kg), 3 a 5 dias' },
-    { n: 'Cefalexina 250 mg/5 mL', f: kg => `${a(kg / 4)} mL`, i: '6/6 h (50 mg/kg/dia)' },
+    { n: 'Amoxicilina + clavulanato (250 + 62,5 mg/5 mL)', f: kg => `${a(Math.min(kg / 3, 10))} mL`, i: '8/8 h (50 mg/kg/dia); máx. 10 mL/dose' },
+    { n: 'Azitromicina 200 mg/5 mL', f: kg => `${a(Math.min(kg / 4, 12.5))} mL`, i: '1x/dia (10 mg/kg) por 3 dias; máx. 12,5 mL (500 mg)' },
+    { n: 'Cefalexina 250 mg/5 mL', f: kg => `${a(Math.min(kg / 4, 10))} mL`, i: '6/6 h (50 mg/kg/dia); máx. 10 mL/dose' },
     { n: 'Ceftriaxona IV', f: kg => `${a(Math.min(50 * kg, 1000))} mg`, i: '50 mg/kg; máx. 1 g' },
     { sec: 'Corticoides e antialérgicos' },
     { n: 'Prednisolona 3 mg/mL', f: kg => `${a(Math.min(kg / 6, 10))} mL`, i: '12/12 h (1 mg/kg/dia); máx. 20 mL/dia' },
     { n: 'Dexametasona injetável (4 mg/mL)', f: kg => `${a(Math.min(0.3 * kg, 4) / 4)} mL (${a(Math.min(0.3 * kg, 4))} mg)`, i: '0,3 mg/kg; máx. 4 mg' },
-    { n: 'Hidrocortisona IV', f: kg => `${a(5 * kg)} mg (asma) ou ${a(10 * kg)} mg (alergia grave)`, i: '5 mg/kg na asma; 10 mg/kg na reação alérgica' },
+    { n: 'Hidrocortisona IV', f: kg => `${a(Math.min(5 * kg, 200))} mg (asma) ou ${a(Math.min(10 * kg, 200))} mg (alergia grave)`, i: '5 mg/kg na asma; 10 mg/kg na reação alérgica; máx. 200 mg' },
     { n: 'Dexclorfeniramina 2 mg/5 mL', f: (kg, y) => !isFinite(y) ? '1,25 mL (2 a 6 anos); 2,5 mL (6 a 12); 5 mL (≥ 12)' : y < 6 ? '1,25 mL' : y < 12 ? '2,5 mL' : '5 mL', i: '8/8 h, pela faixa etária da bula; acima de 2 anos', min: 2 },
     { sec: 'Antieméticos' },
-    { n: 'Ondansetrona injetável (2 mg/mL)', f: kg => `${a(0.075 * kg)} mL (${a(0.15 * kg)} mg)`, i: '0,15 mg/kg IV lento; máx. 4 mg' },
+    { n: 'Ondansetrona injetável (2 mg/mL)', f: kg => `${a(Math.min(0.075 * kg, 2))} mL (${a(Math.min(0.15 * kg, 4))} mg)`, i: '0,15 mg/kg IV lento; máx. 4 mg' },
     { n: 'Bromoprida gotas 4 mg/mL', f: kg => `${fmt(Math.min(kg, 30), 0)} gotas`, i: '8/8 h; máx. 30 gotas' }
   ];
   const a = x => u.auto(x);
@@ -159,7 +161,7 @@
       F.SEL('gl', 'Glicose da solução de manutenção', [['5', 'Glicose 5%'], ['10', 'Glicose 10%']], { def: '5' })],
     calc: v => {
       const kg = v.kg; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso.' }] };
-      const man = kg <= 10 ? 100 * kg : kg <= 20 ? 1000 + 50 * (kg - 10) : 1500 + 20 * (kg - 20), mh = man / 24;
+      const man = Math.min(kg <= 10 ? 100 * kg : kg <= 20 ? 1000 + 50 * (kg - 10) : 1500 + 20 * (kg - 20), 2400), mh = man / 24;
       const dpct = Number(v.def), defv = kg * dpct * 10, exp = Number(v.exp), expv = exp * 20 * kg;
       const gl = Number(v.gl), tig = gl * 10 * mh / 60 / kg; // mg/kg/min
       const na = 3 * man / 100, k = 2 * man / 100;

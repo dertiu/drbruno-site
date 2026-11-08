@@ -167,9 +167,9 @@ window.DRB_DATA = {
    "it": [
     {
      "v": "IM",
-     "n": "CEFTRIAXONA 500MG",
+     "n": "CEFTRIAXONA 1G",
      "q": "01 FA",
-     "p": "APLICAR 01 FA IM DOSE ÚNICA (ADMINISTRAR NA UNIDADE)"
+     "p": "APLICAR 01 FA (1 G) IM EM DOSE ÚNICA (ADMINISTRAR NA UNIDADE)"
     },
     {
      "v": "ORAL",
@@ -193,7 +193,7 @@ window.DRB_DATA = {
    "ori": [
     "TRATAR PARCERIAS SEXUAIS. RETORNO DIÁRIO ATÉ A MELHORA. PROCURAR OFTALMOLOGISTA COM URGÊNCIA."
    ],
-   "nota": "Encaminhar ao oftalmologista: risco de perfuração da córnea. Acometimento de córnea exige internação e ceftriaxona EV. Em criança, considerar abuso sexual."
+   "nota": "Ceftriaxona 1 g IM é o esquema do PCDT-IST para conjuntivite gonocócica no adulto; azitromicina cobre clamídia. Encaminhar ao oftalmologista: risco de perfuração da córnea. Acometimento de córnea exige internação e ceftriaxona EV. Em criança, considerar abuso sexual."
   },
   {
    "id": "hordeolo",
@@ -224,7 +224,8 @@ window.DRB_DATA = {
    ],
    "ori": [
     "COMPRESSAS MORNAS SOBRE A PÁLPEBRA POR 10 MINUTOS, 4X AO DIA. NÃO ESPREMER. PROCURAR OFTALMOLOGISTA SE NÃO MELHORAR EM 1 A 2 SEMANAS."
-   ]
+   ],
+   "nota": "A base do tratamento são compressas mornas por 10 a 15 minutos, 3 a 4x ao dia. Colírio com corticoide (Maxitrol) só com segurança diagnóstica. Sem melhora em 2 semanas ou calázio: oftalmologista."
   },
   {
    "id": "hiposfagma",
@@ -534,8 +535,8 @@ window.DRB_DATA = {
     {
      "v": "ORAL",
      "n": "AMOXICILINA + CLAVULANATO 875 + 125MG",
-     "q": "20 CP",
-     "p": "01 CP VO DE 12/12H POR 10 DIAS"
+     "q": "14 CP",
+     "p": "01 CP VO DE 12/12H POR 07 DIAS"
     },
     {
      "v": "NAS",
@@ -573,7 +574,7 @@ window.DRB_DATA = {
    "ori": [
     "LAVAGEM NASAL COM SORO FREQUENTE. RETORNAR SE FEBRE PERSISTENTE POR MAIS DE 72H, FALTA DE AR, PROSTRAÇÃO, VÔMITOS QUE IMPEDEM A ALIMENTAÇÃO OU PIORA DO ESTADO GERAL."
    ],
-   "nota": "Antibiótico se sintomas > 10 dias, piora após melhora inicial ou febre alta com secreção purulenta por 3 a 4 dias."
+   "nota": "Antibiótico se sintomas > 10 dias, piora após melhora inicial ou febre alta com secreção purulenta por 3 a 4 dias. No adulto, 5 a 7 dias de antibiótico são suficientes."
   },
   {
    "id": "rinite",
@@ -1723,7 +1724,7 @@ window.DRB_DATA = {
    "ori": [
     "MANTER O CURATIVO LIMPO E SECO NAS PRIMEIRAS 24H; DEPOIS LAVAR COM ÁGUA E SABÃO. A UBS: VERIFICAR CALENDÁRIO VACINAL (ANTITETÂNICA). RETIRADA DE PONTOS EM 7 A 10 DIAS (ROSTO: 5 DIAS; ARTICULAÇÕES E PÉS: 10 A 14 DIAS). RETORNAR SE VERMELHIDÃO, PUS OU FEBRE."
    ],
-   "nota": "Antibiótico só se ferida contaminada, mordedura, extremidades com esmagamento ou imunossupressão."
+   "nota": "Antibiótico só se ferida contaminada, mordedura, extremidades com esmagamento ou imunossupressão. Verificar a vacinação antitetânica e indicar vacina ou soro/imunoglobulina conforme o tipo de ferimento."
   },
   {
    "id": "mordedura",
@@ -1747,7 +1748,7 @@ window.DRB_DATA = {
    "ori": [
     "LAVAR O FERIMENTO COM ÁGUA E SABÃO. SEGUIR O ESQUEMA DE PROFILAXIA DA RAIVA E DO TÉTANO CONFORME A UBS. OBSERVAR O ANIMAL (CÃO OU GATO) POR 10 DIAS. RETORNAR SE VERMELHIDÃO, PUS OU FEBRE."
    ],
-   "nota": "Notificar e preencher a ficha de atendimento antirrábico."
+   "nota": "Notificar e preencher a ficha de atendimento antirrábico. Verificar a vacinação antitetânica e indicar vacina ou soro/imunoglobulina conforme o tipo de ferimento."
   },
   {
    "id": "varicela",
@@ -1919,8 +1920,8 @@ window.DRB_DATA = {
     {
      "v": "ORAL",
      "n": "COLCHICINA 0,5MG",
-     "q": "60 CP",
-     "p": "01 CP VO DE 12/12H POR 3 MESES"
+     "q": "20 CP",
+     "p": "TOMAR 02 CP NO INÍCIO DA CRISE E 01 CP APÓS 1 HORA; DEPOIS 01 CP DE 12/12H ATÉ 2 A 3 DIAS APÓS O FIM DA DOR"
     },
     {
      "v": "ORAL",
@@ -1939,7 +1940,7 @@ window.DRB_DATA = {
    "ori": [
     "REPOUSO E GELO NA ARTICULAÇÃO. EVITAR ÁLCOOL (PRINCIPALMENTE CERVEJA), CARNE VERMELHA, VÍSCERAS, FRUTOS DO MAR E REFRIGERANTE. NÃO INICIAR NEM SUSPENDER ALOPURINOL DURANTE A CRISE. PROCURAR A UBS."
    ],
-   "nota": "Colchicina: reduzir a dose na DRC e com interações (claritromicina, ciclosporina)."
+   "nota": "Colchicina em dose baixa (1 mg + 0,5 mg após 1 h) nas primeiras 36 h da crise. Profilaxia de 3 a 6 meses (0,5 mg 1 a 2x ao dia) só ao iniciar alopurinol. Reduzir a dose na DRC e com interações (claritromicina, ciclosporina). Não iniciar nem suspender alopurinol durante a crise."
   },
   {
    "id": "entorse",
@@ -2006,7 +2007,7 @@ window.DRB_DATA = {
    "ori": [
     "NÃO USAR AAS NEM ANTI-INFLAMATÓRIOS (IBUPROFENO, DICLOFENACO, NIMESULIDA). RETORNAR IMEDIATAMENTE SE DOR NA BARRIGA FORTE, VÔMITOS PERSISTENTES, SANGRAMENTO, TONTURA AO LEVANTAR, SONOLÊNCIA OU IRRITABILIDADE, OU DIMINUIÇÃO DA URINA, PRINCIPALMENTE QUANDO A FEBRE BAIXAR. REAVALIAÇÃO NO 5º DIA OU NO DIA DE QUEDA DA FEBRE."
    ],
-   "nota": "Volume pelo peso do paciente (adulto 60 mL/kg/dia)."
+   "nota": "Volume pelo peso do paciente (adulto 60 mL/kg/dia). Não usar AINE (ibuprofeno, diclofenaco, nimesulida, cetoprofeno) nem AAS. Orientar sinais de alarme e retorno no dia da melhora da febre."
   },
   {
    "id": "labirintite",
@@ -2318,7 +2319,7 @@ window.DRB_DATA = {
      "v": "ORAL",
      "n": "AZITROMICINA 200MG/5ML",
      "q": "01 FR",
-     "p": "{ml:0.25:12.5} ML VO 1X AO DIA POR 05 DIAS"
+     "p": "{ml:0.25:12.5} ML VO 1X AO DIA POR 03 DIAS"
     },
     {
      "v": "ORAL",
@@ -2330,7 +2331,7 @@ window.DRB_DATA = {
    "ori": [
     "RETORNAR SE FEBRE PERSISTENTE POR MAIS DE 72H, FALTA DE AR, PROSTRAÇÃO, VÔMITOS QUE IMPEDEM A ALIMENTAÇÃO OU PIORA DO ESTADO GERAL."
    ],
-   "nota": "10 mg/kg/dia (máx. 500 mg). Esquema alternativo: 10 mg/kg no 1º dia e 5 mg/kg do 2º ao 5º."
+   "nota": "10 mg/kg/dia (máx. 500 mg) por 3 dias. Alternativas: 10 mg/kg no 1º dia e 5 mg/kg do 2º ao 5º; faringite estreptocócica em alérgico à penicilina: 12 mg/kg/dia por 5 dias."
   },
   {
    "id": "p-cefalex",
@@ -2641,7 +2642,7 @@ window.DRB_DATA = {
    "ori": [
     "NÃO DAR AAS NEM IBUPROFENO. RETORNAR IMEDIATAMENTE SE DOR NA BARRIGA, VÔMITOS, SANGRAMENTO, SONOLÊNCIA OU IRRITABILIDADE, MÃOS E PÉS FRIOS OU POUCA URINA, PRINCIPALMENTE QUANDO A FEBRE BAIXAR."
    ],
-   "nota": "Volume do Ministério da Saúde: até 10 kg 130 mL/kg/dia; 10 a 20 kg 100 mL/kg/dia; acima de 20 kg 80 mL/kg/dia."
+   "nota": "Volume do Ministério da Saúde: até 10 kg 130 mL/kg/dia; 10 a 20 kg 100 mL/kg/dia; acima de 20 kg 80 mL/kg/dia. Não usar AINE (ibuprofeno, diclofenaco, nimesulida, cetoprofeno) nem AAS. Orientar sinais de alarme e retorno no dia da melhora da febre."
   }
  ],
  "inf": {}

@@ -90,7 +90,7 @@
       notes: ['IV: ≤ 5 mg/min. Via retal: 0,5 mg/kg. Monitorizar ventilação.'] },
     { id: 'midaz', g: G.ne, name: 'Midazolam (convulsão / sedação aguda)', u: 'mg', route: 'IV, IM ou intranasal',
       pres: [{ l: 'Ampola 5 mg/mL', c: 5 }, { l: 'Ampola 1 mg/mL', c: 1 }],
-      ped: kgd(0.1, 0.2, { int: 'repetir em 5 a 10 min se necessário', maxDose: 10 }), ad: fix(5, 10, { int: 'IM ou IV; repetir em 5 a 10 min' }),
+      ped: kgd(0.1, 0.2, { int: 'repetir em 5 a 10 min se necessário', maxDose: 10 }), ad: fix(5, 10, { int: 'repetir em 5 a 10 min se necessário' }),
       notes: ['IM ou intranasal: 0,2 mg/kg (máx. 10 mg). Risco de depressão respiratória: monitorizar.'] },
     { id: 'fenitoina', g: G.ne, name: 'Fenitoína (ataque)', u: 'mg', route: 'IV lento',
       pres: [{ l: 'Ampola 50 mg/mL (250 mg/5 mL)', c: 50 }],
@@ -194,15 +194,15 @@
       ped: kgd(25, 50, { ref: '100 a 200 mg/kg/dia ÷ 4 doses', int: '6/6 h', maxDose: 2000 }), ad: fix(1000, 2000, { int: '4/4 a 6/6 h', maxDay: '12 g/dia' }) },
     { id: 'cefazolina', g: G.ab, name: 'Cefazolina', u: 'mg', route: 'IV',
       pres: [{ l: '100 mg/mL (1 g em 10 mL)', c: 100 }],
-      ped: kgd(16.7, 33.3, { ref: '50 a 100 mg/kg/dia ÷ 3 doses', int: '8/8 h', maxDose: 2000 }), ad: fix(1000, 2000, { int: '8/8 h' }),
+      ped: kgd(50 / 3, 100 / 3, { ref: '50 a 100 mg/kg/dia ÷ 3 doses', int: '8/8 h', maxDose: 2000 }), ad: fix(1000, 2000, { int: '8/8 h' }),
       notes: ['Profilaxia cirúrgica: 30 mg/kg (máx. 2 g; 3 g se ≥ 120 kg) até 60 min antes da incisão.'] },
     { id: 'clinda', g: G.ab, name: 'Clindamicina', u: 'mg', route: 'IV ou VO',
       pres: [{ l: 'Ampola 150 mg/mL (600 mg/4 mL)', c: 150 }, { l: 'Cápsula 300 mg', c: 300, solid: 1 }],
-      ped: kgd(6.7, 13.3, { ref: '20 a 40 mg/kg/dia ÷ 3 doses', int: '8/8 h', maxDose: 900 }), ad: fix(600, 900, { int: '8/8 h', maxDay: '2,7 g/dia' }),
+      ped: kgd(20 / 3, 40 / 3, { ref: '20 a 40 mg/kg/dia ÷ 3 doses', int: '8/8 h', maxDose: 900 }), ad: fix(600, 900, { int: '8/8 h', maxDay: '2,7 g/dia' }),
       notes: ['Diluir e infundir em ≥ 20 a 30 min (máx. 30 mg/min).'] },
     { id: 'metro', g: G.ab, name: 'Metronidazol', u: 'mg', route: 'IV ou VO',
       pres: [{ l: 'Bolsa 5 mg/mL (500 mg/100 mL)', c: 5 }, { l: 'Comprimido 250 mg', c: 250, solid: 1 }, { l: 'Comprimido 400 mg', c: 400, solid: 1 }],
-      ped: kgd(7.5, 7.5, { ref: '30 mg/kg/dia ÷ 3 doses', int: '8/8 h', maxDose: 500 }), ad: fix(500, 500, { int: '8/8 h' }) },
+      ped: kgd(10, 10, { ref: '30 mg/kg/dia ÷ 3 doses', int: '8/8 h', maxDose: 500 }), ad: fix(500, 500, { int: '8/8 h' }) },
     { id: 'genta', g: G.ab, name: 'Gentamicina', u: 'mg', route: 'IV ou IM',
       pres: [{ l: 'Ampola 40 mg/mL (80 mg/2 mL)', c: 40 }, { l: 'Ampola 10 mg/mL (20 mg/2 mL)', c: 10 }],
       both: kgd(5, 7, { int: '24/24 h (dose única diária)' }),
@@ -424,6 +424,13 @@
     fields: [F.SEL('ind', 'Indicação e fármaco', [['avc_alt', 'AVC isquêmico: alteplase'], ['avc_tnk', 'AVC isquêmico: tenecteplase'], ['iam_tnk', 'IAM com supra de ST: tenecteplase'], ['tep_alt', 'TEP de alto risco: alteplase']], { def: 'avc_alt' }), F.KG()],
     calc: v => {
       const kg = v.kg; if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso do paciente.' }] };
+      const r = tromb_(v, kg), P = D.S.patient, ag = u.num(P.age), ay = isFinite(ag) ? (P.ageU === 'm' ? ag / 12 : P.ageU === 'd' ? ag / 365 : ag) : NaN;
+      if (r && ay < 18) (r.alerts = r.alerts || []).unshift({ lvl: 'crit', text: 'Paciente com menos de 18 anos: trombólise em criança não tem dose nem indicação estabelecidas por esta ferramenta. Decidir com neurologia ou cardiologia pediátrica.' });
+      return r;
+    }
+  };
+  function tromb_(v, kg) {
+    {
       if (v.ind === 'avc_alt') {
         const tot = Math.min(0.9 * kg, 90), b = 0.1 * tot, inf = tot - b;
         return { main: { label: 'Dose total de alteplase', value: fmt(tot, 1), unit: 'mg' },

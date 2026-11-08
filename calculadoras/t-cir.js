@@ -50,7 +50,7 @@
         const al = [{ lvl: grau === 'III' ? 'crit' : grau === 'II' ? 'warn' : 'info', text: 'Conduta sugerida: ' + cond }];
         if (dx === 'Critérios insuficientes') al.unshift({ lvl: 'info', text: 'Diagnóstico exige pelo menos um sinal local (A) e um sinal sistêmico (B). Imagem confirma.' });
         return { main: { label: 'Gravidade', value: dx === 'Critérios insuficientes' ? 'Sem critério' : 'Grau ' + grau, small: false }, sub: dx, alerts: al,
-          text: `Colecistite aguda (Tóquio TG18): ${dx.toLowerCase()}, grau ${grau}. ${cond}` };
+          text: dx === 'Critérios insuficientes' ? 'Colecistite aguda (Tóquio TG18): critérios insuficientes para o diagnóstico.' : `Colecistite aguda (Tóquio TG18): ${dx.toLowerCase()}, grau ${grau}. ${cond}` };
       }
       const A = n(['a1', 'a2']) > 0, B = n(['b1', 'b2']) > 0, Ci = n(['c1', 'c2']) > 0;
       const dx = A && B && Ci ? 'Diagnóstico definitivo' : A && (B || Ci) ? 'Diagnóstico suspeito' : 'Critérios insuficientes';
@@ -61,7 +61,7 @@
           : 'Antibiótico; drenagem biliar se não houver resposta em 24 h (CPRE eletiva se cálculo).';
       return { main: { label: 'Gravidade', value: dx === 'Critérios insuficientes' ? 'Sem critério' : 'Grau ' + grau }, sub: dx,
         alerts: [{ lvl: grau === 'III' ? 'crit' : grau === 'II' ? 'warn' : 'info', text: 'Conduta sugerida: ' + cond }, { lvl: 'info', text: 'Antibiótico cobrindo enterobactérias e anaeróbios conforme o protocolo do hospital, após hemoculturas.' }],
-        text: `Colangite aguda (Tóquio TG18): ${dx.toLowerCase()}, grau ${grau}. ${cond}` };
+        text: dx === 'Critérios insuficientes' ? 'Colangite aguda (Tóquio TG18): critérios insuficientes para o diagnóstico.' : `Colangite aguda (Tóquio TG18): ${dx.toLowerCase()}, grau ${grau}. ${cond}` };
     }
   };
 
@@ -178,7 +178,7 @@
       const si = isFinite(v.fc) && v.pas > 0 ? v.fc / v.pas : NaN;
       const bol = ped ? 20 * kg : 1000;
       const rows = [['Volemia estimada', `${fmt(vol, 0)} mL (${ped ? 80 : 70} mL/kg)`], ['Perda estimada', `${row[1]} (${fmt(vol * pct[0], 0)} a ${fmt(vol * pct[1], 0)} mL)`],
-        ['Parâmetros da classe', `FC ${row[3]} bpm; PAS ${row[4]}; FR ${row[6]}; diurese ${row[7]} mL/h; ${row[8].toLowerCase()}`]];
+        ['Parâmetros da classe', `FC ${row[3]} bpm; PAS ${row[4]}; FR ${row[6]}; diurese ${row[7] === 'desprezível' ? 'desprezível' : row[7] + ' mL/h'}; ${row[8].toLowerCase()}`]];
       if (isFinite(si)) rows.push(['Índice de choque (FC/PAS)', `${fmt(si, 2)}${si >= 0.9 ? ' (anormal, ≥ 0,9)' : ' (normal, < 0,9)'}`]);
       rows.push([`Bolus inicial de cristaloide aquecido`, ped ? `${fmt(bol, 0)} mL (20 mL/kg)` : '1.000 mL (adulto), reavaliar']);
       const al = [];
@@ -203,7 +203,7 @@
       const abc = ['p', 'f', 'pa', 'fc'].filter(k => v[k]).length, ger = !!(v.g1 || v.g2 || v.g3), un = Number(v.un), kg = v.kg;
       const ativ = abc >= 2 || ger;
       const rows = [['Escore ABC', `${abc} de 4${abc >= 2 ? ' (ativar)' : ''}`], ['Proporção 1:1:1', `${un} CH : ${un} PFC (unidades) : ${Math.max(1, Math.round(un / 6))} pool de plaquetas ou ${Math.max(1, Math.round(un / 6))} aférese`]];
-      if (kg > 0) rows.push(['Volume de plasma (15 mL/kg)', `${fmt(15 * kg, 0)} mL (${fmt(Math.ceil(15 * kg / 250), 0)} bolsas de ~250 mL)`]);
+      if (kg > 0) rows.push(['Volume de plasma (15 mL/kg)', `${fmt(15 * kg, 0)} mL (${fmt(Math.ceil(15 * kg / 250), 0)} ${Math.ceil(15 * kg / 250) > 1 ? 'bolsas' : 'bolsa'} de ~250 mL)`]);
       rows.push(['Crioprecipitado', 'Se fibrinogênio < 150 a 200 mg/dL: 10 unidades (ou concentrado de fibrinogênio 3 a 4 g)'], ['Ácido tranexâmico', '1 g IV em 10 min nas primeiras 3 h; depois 1 g em 8 h'],
         ['Cálcio', 'Gluconato de cálcio 10%, 10 mL (1 g) a cada 4 CH ou conforme Ca iônico < 1,1 mmol/L'],
         ['Metas', 'Hb 7 a 9 g/dL; plaquetas > 50.000 (> 100.000 se TCE); INR < 1,5; fibrinogênio > 150 a 200; Ca iônico > 1,1; pH > 7,2; temperatura > 35 °C; lactato em queda']);
@@ -258,6 +258,9 @@
       items.push(['Cuidados', p === 'p' ? 'Sinais vitais 6/6 h; curativo; deambulação precoce; retornar se febre, sangramento ou dor intensa' : 'Sinais vitais 4/4 h nas primeiras 24 h; cabeceira elevada 30°; deambulação precoce e fisioterapia respiratória; controle de diurese; curativo e drenos com débito; orientar sinais de alarme']);
       const txt = 'Prescrição pós-operatória (' + { p: 'pequeno', m: 'médio', g: 'grande' }[p] + ' porte, ' + fmt(kg, 0) + ' kg): ' + items.map(i => i[0] + ': ' + i[1]).join('. ') + '.';
       if (!(v.kg > 0)) al.push({ lvl: 'info', text: 'Peso não informado: volumes calculados para 70 kg.' });
+      const P = D.S.patient, ag = u.num(P.age), ay = isFinite(ag) ? (P.ageU === 'm' ? ag / 12 : P.ageU === 'd' ? ag / 365 : ag) : NaN;
+      if (ay < 18 || (v.kg > 0 && v.kg < 35)) al.unshift({ lvl: 'crit', text: 'Kit montado para adulto. Em criança, a hidratação deve seguir o Holliday-Segar com solução isotônica (ferramenta Soro de manutenção, modo Criança) e as doses dos medicamentos devem ser calculadas por peso.' });
+      al.push({ lvl: 'info', text: 'Outros esquemas de soro (volume reduzido em idoso, ICC ou DRC, sem potássio, só SG com NaCl) estão na ferramenta Soro de manutenção (dieta zero).' });
       return { main: { label: 'Kit', value: { p: 'Pequeno porte', m: 'Médio porte', g: 'Grande porte' }[p], small: true }, rows: items, alerts: al, text: txt };
     }
   };

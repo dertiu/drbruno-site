@@ -55,7 +55,8 @@
       const m = cm / 100, imc = kg / (m * m), sc = Math.sqrt(cm * kg / 3600);
       const cl = imc < 16 ? 'Magreza grau III' : imc < 17 ? 'Magreza grau II' : imc < 18.5 ? 'Magreza grau I' : imc < 25 ? 'Peso adequado' : imc < 30 ? 'Sobrepeso' : imc < 35 ? 'Obesidade grau I' : imc < 40 ? 'Obesidade grau II' : 'Obesidade grau III';
       const rows = [['Superfície corporal (Mosteller)', `${fmt(sc, 2)} m²`]];
-      if (sex) { const ib = ibw(sex, cm), pb = pbw(sex, cm); rows.push(['Peso ideal (Devine)', `${fmt(ib, 1)} kg`], ['Peso ajustado (ideal + 40% do excesso)', `${fmt(ib + 0.4 * (kg - ib), 1)} kg`], ['Peso predito (ventilação, ARDSnet)', `${fmt(pb, 1)} kg`], ['% do peso ideal', `${fmt(kg / ib * 100, 0)}%`]); }
+      if (sex && cm < 152) rows.push(['Peso ideal e peso predito', 'não se aplicam abaixo de 152 cm (fórmulas de adulto)']);
+      else if (sex) { const ib = ibw(sex, cm), pb = pbw(sex, cm); rows.push(['Peso ideal (Devine)', `${fmt(ib, 1)} kg`], ['Peso ajustado (ideal + 40% do excesso)', `${fmt(ib + 0.4 * (kg - ib), 1)} kg`], ['Peso predito (ventilação, ARDSnet)', `${fmt(pb, 1)} kg`], ['% do peso ideal', `${fmt(kg / ib * 100, 0)}%`]); }
       const al = isFinite(age) && age < 18 ? [{ lvl: 'warn', text: 'Menor de 18 anos: a classificação do IMC exige percentil por idade e sexo (curvas OMS). A classificação mostrada vale para adultos.' }] : [];
       return { main: { label: 'IMC', value: fmt(imc, 1), unit: 'kg/m²' }, sub: cl, rows, alerts: al, text: `Peso ${fmt(kg, 1)} kg, altura ${fmt(cm, 0)} cm, IMC ${fmt(imc, 1)} kg/m² (${cl}), SC ${fmt(sc, 2)} m².` };
     }
@@ -221,6 +222,7 @@
     fields: [F.CM(), F.SEX(), F.N('vt', 'Volume corrente em uso', { unit: 'mL' }), F.N('fr', 'Frequência respiratória', { unit: 'irpm' }), F.N('pplat', 'Pressão de platô', { unit: 'cmH₂O' }), F.N('ppico', 'Pressão de pico', { unit: 'cmH₂O' }), F.N('peep', 'PEEP', { unit: 'cmH₂O' }), F.N('fluxo', 'Fluxo inspiratório', { unit: 'L/min' })],
     calc: v => {
       if (!(v.cm > 0) || !v.sex) return { alerts: [{ lvl: 'info', text: 'Informe altura e sexo para o peso predito.' }] };
+      if (v.cm < 152) return { alerts: [{ lvl: 'warn', text: 'A fórmula do peso predito (ARDSnet) vale a partir de 152 cm. Em criança ou adulto muito baixo, use 6 a 8 mL/kg do peso ideal para a idade e ajuste pela pressão de platô e driving pressure.' }] };
       const pb = pbw(v.sex, v.cm), rows = [['VC 6 mL/kg', `${fmt(6 * pb, 0)} mL`], ['VC faixa 4 a 8 mL/kg', `${fmt(4 * pb, 0)} a ${fmt(8 * pb, 0)} mL`]], al = [], tx = [`Peso predito ${fmt(pb, 1)} kg`];
       if (v.vt > 0) { const k = v.vt / pb; rows.push(['VC em uso', `${fmt(k, 1)} mL/kg de peso predito`]); tx.push(`VC ${fmt(v.vt, 0)} mL (${fmt(k, 1)} mL/kg)`); if (k > 8) al.push({ lvl: 'warn', text: 'VC acima de 8 mL/kg de peso predito: reduzir (ventilação protetora).' }); if (v.fr > 0) { rows.push(['Volume-minuto', `${fmt(v.vt * v.fr / 1000, 1)} L/min`]); rows.push(['Índice de Tobin (FR/VC)', `${fmt(v.fr / (v.vt / 1000), 0)} irpm/L`]); } }
       if (v.pplat > 0) { if (v.pplat > 30) al.push({ lvl: 'warn', text: 'Pressão de platô > 30 cmH₂O: reduzir o VC / revisar a estratégia ventilatória.' }); if (isFinite(v.peep)) { const dp = v.pplat - v.peep; rows.push(['Driving pressure (platô − PEEP)', `${fmt(dp, 0)} cmH₂O`]); tx.push(`driving pressure ${fmt(dp, 0)}`); if (dp > 15) al.push({ lvl: 'warn', text: 'Driving pressure > 15 cmH₂O: associada a maior mortalidade na SDRA.' }); if (v.vt > 0 && dp > 0) rows.push(['Complacência estática', `${fmt(v.vt / dp, 0)} mL/cmH₂O`]); } }

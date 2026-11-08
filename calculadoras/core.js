@@ -129,8 +129,8 @@
           sub: it.title, rows: it.rows || [], alerts: it.text ? [{ lvl: it.lvl || 'info', text: it.text }] : [],
           notes: it.notes || []
         };
-        r.text = `${def.title}: ${u.fmt(total, def.dec == null ? 0 : def.dec)}${def.max != null ? '/' + def.max : ''} pontos` +
-          (it.title ? ` (${it.title})` : '') + (parts.length ? '. Itens: ' + parts.join('; ') : '') + (it.text ? '. ' + it.text : '') + '.';
+        r.text = (`${def.title}: ${u.fmt(total, def.dec == null ? 0 : def.dec)}${def.max != null ? '/' + u.fmt(def.max, 1) : ''} pontos` +
+          (it.title ? ` (${it.title})` : '') + (parts.length ? '. Itens: ' + parts.join('; ') : '') + (it.text ? '. ' + it.text : '') + '.').replace(/\.\.$/, '.');
         return r;
       }
     };
