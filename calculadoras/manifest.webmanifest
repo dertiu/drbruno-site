@@ -1,0 +1,17 @@
+{
+  "name": "Calculadoras de plantão | Dr. Bruno Michels",
+  "short_name": "Plantão",
+  "description": "Calculadoras e ferramentas para o plantão, com uso offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1918",
+  "theme_color": "#1a1918",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

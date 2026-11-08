@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Calculadoras de plantão | Dr. Bruno Michels</title>
+  <meta name="description" content="Calculadoras e escalas para o plantão: doses por peso e idade, drogas vasoativas, escores clínicos, gasometria, função renal e mais.">
+  <meta name="theme-color" content="#1a1918">
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body data-theme="dark">
+  <header class="hdr">
+    <div class="hdr-in">
+      <a class="brand" href="#/">
+        <span class="brand-t">Calculadoras</span>
+        <span class="brand-s">Dr. Bruno Michels</span>
+      </a>
+      <button id="pt" class="chip-pt" type="button" hidden></button>
+      <button id="theme" class="icon-btn" type="button" title="Alternar tema" aria-label="Alternar tema"></button>
+    </div>
+  </header>
+  <div id="app"></div>
+  <noscript><p style="padding:24px">Ative o JavaScript para usar as calculadoras.</p></noscript>
+
+  <script src="core.js"></script>
+  <script src="t-med.js"></script>
+  <script src="t-esc.js"></script>
+  <script src="t-lab.js"></script>
+  <script src="t-ped.js"></script>
+  <script src="t-cir.js"></script>
+  <script src="t-util.js"></script>
+  <script>DRB.boot();</script>
+</body>
+</html>
