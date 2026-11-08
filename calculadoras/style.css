@@ -371,6 +371,28 @@ body[data-theme="light"] .rx-paper{box-shadow:0 0 0 1px var(--div),0 10px 24px r
 .adm-gate .title{margin:0}
 .adm-gate .lead{margin:0}
 .adm-gate .copy{min-height:52px}
+.adm-connect{gap:12px;border:2px solid var(--accent);margin-bottom:16px;scroll-margin-top:190px}
+.adm-connect h2{margin:0;font-size:20px}
+.adm-steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:12px;font-size:16px}
+.adm-steps li{padding-left:4px}
+.adm-steps li>span{display:block;margin-top:4px}
+.adm-steps .copy{display:inline-flex;text-decoration:none;min-height:46px}
+.adm-steps li:last-child{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.adm-tok{flex:1;min-width:220px;height:50px}
+.adm-tok input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:var(--text);font-size:16px;padding:0 12px;outline:none}
+.adm-a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.adm-hist{display:flex;flex-direction:column;gap:10px}
+.adm-ver{border:1.5px solid var(--div);border-radius:12px;padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:6px}
+.adm-ver.cur{border-color:var(--ok)}
+.adm-ver-h{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.adm-ver-h span{color:var(--muted);font-size:14.5px}
+.adm-ver p{margin:0;font-size:15.5px}
+.adm-ver .rx-btn{min-height:40px;font-size:14.5px;padding:0 12px}
+.adm-badge{background:var(--okBg);color:var(--ok)!important;border-radius:6px;padding:1px 8px;font-weight:700}
+.adm-sub{margin:10px 0 4px;font-size:16px}
+.adm-rel{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.adm-rel li span{margin-right:12px;color:var(--muted)}
+.adm-save .ico{display:none}
 .adm-err{margin:0;color:var(--crit);font-weight:600;min-height:1.4em}
 .adm-out{min-height:40px;margin-left:10px}
 .adm-link a{color:var(--faint)}

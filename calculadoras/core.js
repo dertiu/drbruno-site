@@ -206,7 +206,7 @@
           h('ul', { class: 'tlist' }, ts.map(row))));
       });
       box.append(disclaimer('Ferramentas de apoio à decisão. Não substituem o julgamento clínico. Confira doses, diluições e indicações com o protocolo da sua instituição e a bula antes de prescrever ou administrar.'));
-      if (!G) box.append(h('p', { class: 'adm-link' }, h('a', { href: 'admin.html' }, 'Painel do editor')));
+      if (!G) box.append(h('p', { class: 'adm-link' }, ((window.DRB_DATA || {}).estatisticas ? 'Este site registra estatísticas anônimas de uso, sem cookies e sem dados pessoais. ' : ''), h('a', { href: 'admin.html' }, 'Painel do editor')));
     }
     root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão'),
       h('p', { class: 'lead' }, G ? 'Toque em uma ferramenta para abrir. A estrela fixa a ferramenta nos favoritos.' : 'Informe o paciente uma vez: peso, idade e sexo preenchem todas as calculadoras.'), box);
@@ -512,10 +512,27 @@
       a.append(hubView(gm && gm[1]));
       document.title = 'Calculadoras de plantão | Dr. Bruno Michels';
     }
+    track(id || 'inicio', t ? t.title : gm ? 'Grupo ' + gm[1] : 'Início');
     window.scrollTo(0, 0);
     sideRefresh(lk ? lk.id : t ? t.id : null, gm ? gm[1] : null);
     closeSide();
   }
+  /* ---------- estatísticas anônimas de uso (GoatCounter, sem cookies) ---------- */
+  const GC = ((window.DRB_DATA || {}).estatisticas || '').trim();
+  let gcLoaded = false, gcQueue = [];
+  function track(path, title) {
+    if (!GC || !/^https?:$/.test(location.protocol) || /^(localhost|127\.)/.test(location.hostname)) return;
+    const send = p => { try { window.goatcounter.count(p); } catch (e) { } };
+    const p = { path: '/calculadoras/' + path, title: title || path };
+    if (window.goatcounter && window.goatcounter.count) return send(p);
+    gcQueue.push(p);
+    if (gcLoaded) return; gcLoaded = true;
+    window.goatcounter = { no_onload: true };
+    const s = document.createElement('script'); s.async = true; s.src = 'https://gc.zgo.at/count.js'; s.dataset.goatcounter = 'https://' + GC + '.goatcounter.com/count';
+    s.onload = () => { gcQueue.splice(0).forEach(send); };
+    document.head.append(s);
+  }
+  D.track = track;
   function setTheme() {
     document.body.dataset.theme = S.theme;
     const b = document.getElementById('theme'); b.innerHTML = '';

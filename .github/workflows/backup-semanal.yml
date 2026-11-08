@@ -1,0 +1,28 @@
+# Backup automático do site: toda segunda-feira às 03:00 (horário de Brasília) e quando acionado manualmente.
+# Gera uma "release" com o zip do site inteiro e mantém as 12 mais recentes.
+name: Backup semanal do site
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Criar backup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DIA=$(TZ=America/Sao_Paulo date +%Y-%m-%d)
+          TAG="backup-$DIA"
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "Backup de hoje já existe"; exit 0; fi
+          zip -qr "site-$DIA.zip" . -x '.git/*'
+          gh release create "$TAG" "site-$DIA.zip" --title "Backup $DIA" --notes "Backup automático semanal do site (cópia completa dos arquivos)." --latest=false
+      - name: Manter só os 12 backups mais recentes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[].tagName' | grep '^backup-' | tail -n +13 | while read -r t; do gh release delete "$t" --yes --cleanup-tag; done

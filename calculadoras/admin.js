@@ -57,6 +57,7 @@
   const base = clone(window.DRB_DATA || { cats: [], receitas: [], inf: {}, aviso: '' });
   let data = u.LS(DRAFT, null) || clone(base);
   data.cats = data.cats || []; data.receitas = data.receitas || []; data.inf = data.inf || {}; data.aviso = data.aviso || '';
+  base.estatisticas = base.estatisticas || '';
   const cfg = Object.assign({ token: '', repo: 'dertiu/drbruno-site', branch: 'main', path: 'calculadoras/dados.js' }, u.LS(CFG, {}));
   const st = { tab: 'rx', sel: data.receitas[0] ? data.receitas[0].id : null, q: '', pkg: '14', page: '3' };
   const isDirty = () => JSON.stringify(data) !== JSON.stringify(base);
@@ -65,28 +66,62 @@
   const slug = s => u.norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'receita';
   const uniq = id => { let x = id, i = 2; while (data.receitas.some(r => r.id === x)) x = id + '-' + i++; return x; };
 
+  data.estatisticas = data.estatisticas || '';
   const root = document.getElementById('adm');
-  const top = h('div', { class: 'adm-top' }), tabs = h('nav', { class: 'adm-tabs', role: 'tablist' }), body = h('div', { class: 'adm-body' });
+  const top = h('div', { class: 'adm-top' }), conn = h('div'), tabs = h('nav', { class: 'adm-tabs', role: 'tablist' }), body = h('div', { class: 'adm-body' });
   root.append(h('h1', { class: 'title' }, 'Painel do editor'),
-    h('p', { class: 'lead' }, 'Inclua e edite receitas, diluições e o aviso da página inicial. As alterações ficam como rascunho neste aparelho até você publicar.'), top, tabs, body);
+    h('p', { class: 'lead' }, 'Edite receitas, diluições e o aviso. Tudo o que você digita fica guardado automaticamente neste aparelho; o botão Salvar coloca as alterações no site para todos.'), top, conn, tabs, body);
+  let flash = null; // mensagem após salvar
 
-  /* ---------- barra de status ---------- */
+  /* ---------- barra de status com o botão Salvar ---------- */
   function bar() {
     top.innerHTML = '';
     const d = isDirty();
-    top.append(h('div', { class: 'adm-status' + (d ? ' dirty' : '') }, h('b', null, d ? 'Rascunho com alterações não publicadas' : 'Sem alterações pendentes'),
-      h('span', null, `${data.receitas.length} receitas · ${Object.keys(data.inf).length} diluições personalizadas`)),
+    top.append(h('div', { class: 'adm-status' + (d ? ' dirty' : '') },
+      h('b', null, d ? 'Alterações ainda não estão no site' : 'Tudo salvo: o site está igual ao painel'),
+      h('span', null, d ? 'Elas estão guardadas neste aparelho. Toque em Salvar para publicar.' : `${data.receitas.length} receitas · ${Object.keys(data.inf).length} diluições personalizadas`)),
       h('div', { class: 'adm-acts' },
-        h('button', { type: 'button', class: 'copy rx-copy', disabled: !d ? true : null, onclick: publish }, 'Publicar no site'),
-        h('button', { type: 'button', class: 'rx-btn', onclick: download }, 'Baixar dados.js'),
-        d && h('button', { type: 'button', class: 'rx-btn', onclick: () => { if (confirm('Descartar todas as alterações do rascunho?')) { data = clone(base); try { localStorage.removeItem(DRAFT); } catch (e) { } st.sel = data.receitas[0] && data.receitas[0].id; render(); } } }, 'Descartar rascunho')));
+        h('button', { type: 'button', class: 'copy rx-copy adm-save', disabled: !d ? true : null, onclick: publish }, icon('copy'), d ? 'Salvar no site' : 'Salvo'),
+        d && h('button', { type: 'button', class: 'rx-btn', onclick: () => { if (confirm('Descartar as alterações que ainda não foram salvas no site?')) { data = clone(base); try { localStorage.removeItem(DRAFT); } catch (e) { } st.sel = data.receitas[0] && data.receitas[0].id; render(); } } }, 'Descartar alterações')));
+    if (flash) top.append(flash);
   }
   function tabBar() {
     tabs.innerHTML = '';
-    [['rx', 'Receitas'], ['inf', 'Diluições'], ['aviso', 'Aviso na página inicial'], ['pub', 'Publicação e chave']].forEach(([id, l]) =>
-      tabs.append(h('button', { type: 'button', role: 'tab', 'aria-selected': st.tab === id ? 'true' : 'false', class: st.tab === id ? 'on' : '', onclick: () => { st.tab = id; render(); } }, l)));
+    [['rx', 'Receitas'], ['inf', 'Diluições'], ['aviso', 'Aviso'], ['hist', 'Histórico e backups'], ['acessos', 'Acessos'], ['cfg', 'Configurações']].forEach(([id, l]) =>
+      tabs.append(h('button', { type: 'button', role: 'tab', 'aria-selected': st.tab === id ? 'true' : 'false', class: st.tab === id ? 'on' : '', onclick: () => { st.tab = id; flash = null; render(); } }, l)));
   }
-  function render() { bar(); tabBar(); body.innerHTML = ''; ({ rx: tabRx, inf: tabInf, aviso: tabAviso, pub: tabPub })[st.tab](); }
+  function render() { bar(); tabBar(); body.innerHTML = ''; ({ rx: tabRx, inf: tabInf, aviso: tabAviso, hist: tabHist, acessos: tabAcessos, cfg: tabCfg })[st.tab](); }
+
+  /* ---------- conectar o painel ao site (primeira vez em cada aparelho) ---------- */
+  const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new?name=' + encodeURIComponent('Painel calculadoras') +
+    '&description=' + encodeURIComponent('Salvar alterações do painel do editor') + '&target_name=' + encodeURIComponent(cfg.repo.split('/')[0]) + '&expires_in=365&contents=write';
+  function connectCard(after) {
+    conn.innerHTML = '';
+    const inp = h('input', { type: 'password', autocomplete: 'off', placeholder: 'github_pat_…', 'aria-label': 'Chave do GitHub' });
+    const msg = h('div');
+    const go = async () => {
+      const t = inp.value.trim(); if (!t) { inp.focus(); return; }
+      cfg.token = t; u.SAVE(CFG, cfg); msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Conferindo a chave…'));
+      try {
+        const r = await gh('GET', `https://api.github.com/repos/${cfg.repo}`);
+        if (!(r.permissions && r.permissions.push)) throw new Error('a chave não tem permissão de escrita (Contents: Read and write) em ' + cfg.repo);
+        conn.innerHTML = ''; track('editor/conectou');
+        if (after) after();
+      } catch (e) { cfg.token = ''; u.SAVE(CFG, cfg); msg.innerHTML = ''; msg.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não conectou: ' + e.message))); }
+    };
+    conn.append(h('section', { class: 'panel adm-connect' },
+      h('h2', null, 'Conectar o painel ao site (só uma vez neste aparelho)'),
+      h('p', { class: 'hint' }, 'O site é hospedado no GitHub. Para o botão Salvar gravar lá, o painel precisa de uma chave da sua conta. Você faz isso uma vez por aparelho e depois é só tocar em Salvar.'),
+      h('ol', { class: 'adm-steps' },
+        h('li', null, h('a', { class: 'copy', href: TOKEN_URL, target: '_blank', rel: 'noopener' }, 'Abrir o GitHub para gerar a chave'), h('span', null, 'Nome, validade e permissão já vêm preenchidos.')),
+        h('li', null, h('span', null, 'Em ', h('b', null, 'Repository access'), ', escolha ', h('b', null, 'Only select repositories'), ' e marque ', h('b', null, cfg.repo.split('/')[1]), '.')),
+        h('li', null, h('span', null, 'Desça até o fim, toque em ', h('b', null, 'Generate token'), ', copie a chave e cole aqui:')),
+        h('li', null, h('span', { class: 'pfin adm-tok' }, inp), h('button', { type: 'button', class: 'copy rx-copy', onclick: go }, 'Conectar e salvar'))),
+      msg,
+      h('button', { type: 'button', class: 'rx-btn', onclick: () => { conn.innerHTML = ''; } }, 'Agora não')));
+    conn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => inp.focus(), 300);
+  }
 
   /* ---------- receitas ---------- */
   function tabRx() {
@@ -209,56 +244,166 @@
       h('span', { class: 'lbl' }, 'Prévia'), pv));
   }
 
-  /* ---------- publicação ---------- */
-  function tabPub() {
+  /* ---------- configurações ---------- */
+  function tabCfg() {
     const msg = h('div');
     const f = (k, label, type, ph) => h('label', { class: 'fld' }, h('span', { class: 'lbl' }, label), h('input', { type: type || 'text', value: cfg[k] || '', placeholder: ph || '', autocomplete: 'off', oninput: e => { cfg[k] = e.target.value.trim(); u.SAVE(CFG, cfg); } }));
     body.append(h('div', { class: 'panel' },
-      h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Chave de publicação'),
-      h('p', { class: 'hint' }, 'O site continua aberto para todos, sem login. Só quem tem esta chave consegue publicar alterações. Ela fica salva apenas neste aparelho.'),
-      h('div', { class: 'fgrid' }, f('token', 'Token do GitHub', 'password', 'github_pat_…'), f('repo', 'Repositório'), f('branch', 'Branch'), f('path', 'Arquivo de dados')),
-      h('div', { class: 'adm-acts' }, h('button', { type: 'button', class: 'rx-btn', onclick: test }, 'Testar acesso'),
-        h('button', { type: 'button', class: 'rx-btn', onclick: () => { cfg.token = ''; u.SAVE(CFG, cfg); render(); } }, 'Apagar a chave deste aparelho')), msg,
-      h('details', { class: 'adm-help', open: cfg.token ? null : true }, h('summary', null, 'Como criar a chave (uma vez só)'),
-        h('ol', null, h('li', null, 'No GitHub: foto do perfil, Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token.'),
-          h('li', null, 'Repository access: Only select repositories, escolha ', h('b', null, cfg.repo), '.'),
-          h('li', null, 'Permissions, Repository permissions, Contents: Read and write. Nada mais.'),
-          h('li', null, 'Defina uma validade (por exemplo, 1 ano), gere, copie e cole acima. Use em aparelho pessoal.')))));
+      h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Conexão com o site'),
+      h('p', { class: 'hint' }, cfg.token ? 'Este aparelho está conectado: o botão Salvar publica direto no site.' : 'Este aparelho ainda não está conectado. Ao tocar em Salvar pela primeira vez, o painel mostra o passo a passo.'),
+      h('div', { class: 'adm-acts' },
+        h('button', { type: 'button', class: 'rx-btn', onclick: () => connectCard(() => render()) }, cfg.token ? 'Trocar a chave' : 'Conectar agora'),
+        h('button', { type: 'button', class: 'rx-btn', onclick: test }, 'Testar conexão'),
+        cfg.token && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (confirm('Desconectar este aparelho? Será preciso colar a chave de novo para salvar.')) { cfg.token = ''; u.SAVE(CFG, cfg); render(); } } }, 'Desconectar este aparelho')), msg,
+      h('details', { class: 'adm-help' }, h('summary', null, 'Avançado'),
+        h('div', { class: 'fgrid' }, f('token', 'Chave do GitHub', 'password', 'github_pat_…'), f('repo', 'Repositório'), f('branch', 'Branch'), f('path', 'Arquivo de dados')))));
     async function test() {
       msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Testando…'));
       try { const r = await gh('GET', `https://api.github.com/repos/${cfg.repo}`); msg.innerHTML = '';
-        msg.append(h('div', { class: 'alert ' + (r.permissions && r.permissions.push ? 'ok' : 'crit') }, icon('alert'), h('span', null, r.permissions && r.permissions.push ? 'Acesso confirmado: pode publicar.' : 'A chave lê o repositório mas não tem permissão de escrita (Contents: Read and write).')));
+        msg.append(h('div', { class: 'alert ' + (r.permissions && r.permissions.push ? 'ok' : 'crit') }, icon('alert'), h('span', null, r.permissions && r.permissions.push ? 'Conexão funcionando: pode salvar.' : 'A chave abre o repositório mas não tem permissão de escrita.')));
       } catch (e) { msg.innerHTML = ''; msg.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Falhou: ' + e.message))); }
     }
   }
 
+  /* ---------- histórico e backups ---------- */
+  const fmtDate = s => { const d = new Date(s); return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+  async function tabHist() {
+    const box = h('div', { class: 'adm-hist' }, h('p', { class: 'hint' }, 'Carregando o histórico…'));
+    const rel = h('div');
+    body.append(
+      h('div', { class: 'panel' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Backups'),
+        h('p', { class: 'hint' }, 'Cada vez que você salva, o GitHub guarda a versão anterior: nada se perde e qualquer versão pode ser restaurada abaixo. Além disso, toda segunda-feira é gerado um backup completo do site.'),
+        h('div', { class: 'adm-acts' },
+          h('a', { class: 'rx-btn adm-a', href: `https://github.com/${cfg.repo}/archive/refs/heads/${cfg.branch}.zip` }, 'Baixar o site inteiro agora (.zip)'),
+          h('button', { type: 'button', class: 'rx-btn', onclick: download }, 'Baixar só os dados (dados.js)')), rel),
+      h('div', { class: 'panel' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Registro das alterações'), box));
+    try {
+      const list = await ghPub(`https://api.github.com/repos/${cfg.repo}/commits?path=${encodeURIComponent(cfg.path)}&sha=${encodeURIComponent(cfg.branch)}&per_page=40`);
+      box.innerHTML = '';
+      if (!list.length) { box.append(h('p', { class: 'hint' }, 'Nenhuma alteração registrada ainda.')); }
+      list.forEach((c, i) => {
+        const who = (c.author && c.author.login) || (c.commit.author && c.commit.author.name) || 'n/d';
+        box.append(h('div', { class: 'adm-ver' + (i === 0 ? ' cur' : '') },
+          h('div', { class: 'adm-ver-h' }, h('b', null, fmtDate(c.commit.author.date)), h('span', null, who), i === 0 && h('span', { class: 'adm-badge' }, 'versão atual do site')),
+          h('p', null, c.commit.message.split('\n')[0]),
+          h('div', { class: 'adm-acts' },
+            h('a', { class: 'rx-btn adm-a', href: c.html_url, target: '_blank', rel: 'noopener' }, 'Ver o que mudou'),
+            h('button', { type: 'button', class: 'rx-btn', onclick: () => getVersion(c.sha).then(t => saveFile(t, 'dados-' + c.sha.slice(0, 7) + '.js')).catch(e => alert('Falhou: ' + e.message)) }, 'Baixar esta versão'),
+            i > 0 && h('button', { type: 'button', class: 'rx-btn', onclick: () => restore(c) }, 'Restaurar esta versão'))));
+      });
+    } catch (e) { box.innerHTML = ''; box.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não carregou o histórico: ' + e.message))); }
+    try {
+      const rs = (await ghPub(`https://api.github.com/repos/${cfg.repo}/releases?per_page=12`)).filter(r => /^backup-/.test(r.tag_name));
+      if (rs.length) rel.append(h('h4', { class: 'adm-sub' }, 'Backups semanais'), h('ul', { class: 'adm-rel' }, rs.map(r => h('li', null, h('span', null, fmtDate(r.created_at)),
+        h('a', { href: (r.assets && r.assets[0] && r.assets[0].browser_download_url) || r.html_url }, 'Baixar (.zip)')))));
+    } catch (e) { }
+  }
+  async function getVersion(sha) {
+    const r = await fetch(`https://raw.githubusercontent.com/${cfg.repo}/${sha}/${cfg.path}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('erro ' + r.status); return r.text();
+  }
+  function parseData(txt) {
+    const i = txt.indexOf('{'), j = txt.lastIndexOf('}');
+    return JSON.parse(txt.slice(i, j + 1));
+  }
+  async function restore(c) {
+    if (!confirm(`Trazer para o painel a versão de ${fmtDate(c.commit.author.date)}? Ela substitui o que está no painel agora; depois confira e toque em Salvar.`)) return;
+    try {
+      const d = parseData(await getVersion(c.sha));
+      d.cats = d.cats || []; d.receitas = d.receitas || []; d.inf = d.inf || {}; d.aviso = d.aviso || ''; d.estatisticas = d.estatisticas || data.estatisticas || '';
+      data = d; st.sel = data.receitas[0] && data.receitas[0].id; saveDraft(); st.tab = 'rx'; st.restoredFrom = fmtDate(c.commit.author.date);
+      flash = h('div', { class: 'alert warn' }, icon('alert'), h('span', null, `Versão de ${st.restoredFrom} carregada no painel. Confira e toque em Salvar para colocá-la no site.`));
+      render();
+    } catch (e) { alert('Não foi possível restaurar: ' + e.message); }
+  }
+
+  /* ---------- acessos (estatísticas anônimas) ---------- */
+  function tabAcessos() {
+    const code = data.estatisticas;
+    const inp = h('input', { value: code, placeholder: 'ex.: brunomichels', autocomplete: 'off', oninput: e => { data.estatisticas = e.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, ''); saveDraft(); } });
+    body.append(h('div', { class: 'panel' },
+      h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Quem está acessando'),
+      code ? h('div', { class: 'adm-acts' }, h('a', { class: 'copy rx-copy adm-a', href: `https://${code}.goatcounter.com`, target: '_blank', rel: 'noopener' }, 'Abrir o painel de acessos'))
+        : h('div', { class: 'alert warn' }, icon('alert'), h('span', null, 'Contador de acessos ainda não ativado. Siga os passos abaixo.')),
+      h('p', { class: 'hint' }, 'O painel de acessos mostra, por dia e por hora: número de visitantes, quais calculadoras e receitas foram abertas, cidade ou região e país aproximados, aparelho, sistema e navegador, de onde o visitante veio, e quando o editor entrou ou salvou. Não usa cookies e não guarda o IP, por isso não mostra o nome de quem acessou: para identificar cada colega seria preciso login.'),
+      h('details', { class: 'adm-help', open: code ? null : true }, h('summary', null, 'Ativar o contador (uma vez)'),
+        h('ol', null,
+          h('li', null, 'Crie a conta gratuita em ', h('a', { href: 'https://www.goatcounter.com/signup', target: '_blank', rel: 'noopener' }, 'goatcounter.com/signup'), '. Em Code, use por exemplo ', h('b', null, 'brunomichels'), ' e confirme o e-mail.'),
+          h('li', null, 'Digite o mesmo código aqui:'),
+          h('li', null, 'Toque em Salvar no topo. O contador começa a registrar em seguida.'))),
+      h('label', { class: 'fld' }, h('span', { class: 'lbl' }, 'Código do contador'), inp)));
+  }
+  let gcReady = false;
+  function track(path) {
+    if (!data.estatisticas) return;
+    const send = () => { try { window.goatcounter.count({ path, title: path, event: true }); } catch (e) { } };
+    if (window.goatcounter && window.goatcounter.count) return send();
+    if (gcReady) return;
+    gcReady = true; window.goatcounter = { no_onload: true };
+    const s = document.createElement('script'); s.async = true; s.src = 'https://gc.zgo.at/count.js'; s.dataset.goatcounter = `https://${data.estatisticas}.goatcounter.com/count`;
+    s.onload = send; document.head.append(s);
+  }
+
+  /* ---------- GitHub ---------- */
   async function gh(method, url, payload) {
-    if (!cfg.token) throw new Error('informe o token na aba Publicação e chave');
+    if (!cfg.token) throw new Error('este aparelho não está conectado');
     const r = await fetch(url, { method, cache: 'no-store', headers: { Authorization: 'Bearer ' + cfg.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, body: payload ? JSON.stringify(payload) : undefined });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((r.status === 401 ? 'chave inválida ou expirada' : r.status === 403 || r.status === 404 ? 'sem permissão para este repositório' : 'erro ' + r.status) + (j.message ? ' (' + j.message + ')' : ''));
+    if (!r.ok) throw new Error((r.status === 401 ? 'chave inválida ou expirada' : r.status === 403 || r.status === 404 ? 'sem permissão para este repositório' : r.status === 409 ? 'o site mudou enquanto você editava; tente salvar de novo' : 'erro ' + r.status) + (j.message ? ' (' + j.message + ')' : ''));
     return j;
+  }
+  async function ghPub(url) { // leitura: usa a chave se houver, senão acesso público
+    if (cfg.token) return gh('GET', url);
+    const r = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error(r.status === 403 ? 'limite de consultas do GitHub atingido; conecte o aparelho (Configurações) ou tente em 1 hora' : 'erro ' + r.status);
+    return r.json();
   }
   const fileText = () => { const d = clone(data); d.atualizado = new Date().toISOString().slice(0, 10); return '/* Dados editáveis pelo painel do editor (admin.html). Não editar à mão se for usar o painel. */\nwindow.DRB_DATA = ' + JSON.stringify(d, null, 1) + ';\n'; };
   const b64 = str => { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
-  function download() { const a = h('a', { href: URL.createObjectURL(new Blob([fileText()], { type: 'text/javascript' })), download: 'dados.js' }); document.body.append(a); a.click(); a.remove(); }
+  function saveFile(txt, name) { const a = h('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), download: name }); document.body.append(a); a.click(); a.remove(); }
+  function download() { saveFile(fileText(), 'dados-' + new Date().toISOString().slice(0, 10) + '.js'); }
+
+  // resumo legível do que mudou, para o registro
+  function summary() {
+    const out = [], bm = new Map(base.receitas.map(r => [r.id, r])), dm = new Map(data.receitas.map(r => [r.id, r]));
+    const add = [], ed = [], del = [];
+    data.receitas.forEach(r => { const o = bm.get(r.id); if (!o) add.push(r.t); else if (JSON.stringify(o) !== JSON.stringify(r)) ed.push(r.t); });
+    base.receitas.forEach(r => { if (!dm.has(r.id)) del.push(r.t); });
+    if (add.length) out.push('criou ' + add.join(', '));
+    if (ed.length) out.push('editou ' + ed.join(', '));
+    if (del.length) out.push('excluiu ' + del.join(', '));
+    const ik = new Set([...Object.keys(base.inf || {}), ...Object.keys(data.inf || {})]);
+    const ich = [...ik].filter(k => JSON.stringify((base.inf || {})[k]) !== JSON.stringify(data.inf[k])).map(k => (D.INF.find(x => x.id === k) || { name: k }).name);
+    if (ich.length) out.push('diluição de ' + ich.join(', '));
+    if ((base.aviso || '') !== data.aviso) out.push('aviso da página inicial');
+    if ((base.estatisticas || '') !== data.estatisticas) out.push('contador de acessos');
+    if (JSON.stringify(base.cats) !== JSON.stringify(data.cats)) out.push('categorias');
+    if (st.restoredFrom) out.unshift('restaurou a versão de ' + st.restoredFrom);
+    let s = out.join('; ') || 'ajustes';
+    return s.length > 300 ? s.slice(0, 297) + '…' : s;
+  }
+
   async function publish() {
     const bad = data.receitas.filter(r => !r.t.trim() || !r.it.some(it => it.n.trim()));
-    if (bad.length && !confirm(`${bad.length} receita(s) sem título ou sem item: ${bad.map(r => r.t || r.id).join(', ')}. Publicar mesmo assim?`)) return;
-    if (!cfg.token) { st.tab = 'pub'; render(); alert('Cadastre a chave de publicação primeiro.'); return; }
-    const btn = top.querySelector('.rx-copy'); if (btn) { btn.disabled = true; btn.textContent = 'Publicando…'; }
+    if (bad.length && !confirm(`${bad.length} receita(s) sem título ou sem item: ${bad.map(r => r.t || r.id).join(', ')}. Salvar mesmo assim?`)) return;
+    if (!cfg.token) { connectCard(publish); return; }
+    const btn = top.querySelector('.adm-save'); if (btn) { btn.disabled = true; btn.lastChild.textContent = 'Salvando…'; }
     try {
       const url = `https://api.github.com/repos/${cfg.repo}/contents/${cfg.path}`;
       let sha; try { sha = (await gh('GET', url + '?ref=' + encodeURIComponent(cfg.branch))).sha; } catch (e) { if (!/sem permissão/.test(e.message)) throw e; }
-      const res = await gh('PUT', url, { message: 'Painel do editor: atualiza receitas e dados das calculadoras', content: b64(fileText()), branch: cfg.branch, sha });
-      Object.keys(base).forEach(k => delete base[k]); Object.assign(base, clone(data));
+      const res = await gh('PUT', url, { message: 'Painel do editor: ' + summary(), content: b64(fileText()), branch: cfg.branch, sha });
+      Object.keys(base).forEach(k => delete base[k]); Object.assign(base, clone(data)); st.restoredFrom = null;
       try { localStorage.removeItem(DRAFT); } catch (e) { }
+      track('editor/salvou');
+      flash = h('div', { class: 'alert ok' }, icon('alert'), h('span', null, 'Salvo no site. Em alguns minutos todos os colegas veem a alteração (quem estiver com o site aberto, ao recarregar). O registro fica na aba Histórico e backups. ', res.commit && h('a', { href: res.commit.html_url, target: '_blank', rel: 'noopener' }, 'Ver no GitHub')));
       bar();
-      top.append(h('div', { class: 'alert ok' }, icon('alert'), h('span', null, 'Publicado. O site atualiza em 1 a 2 minutos; quem estiver com a página aberta vê a novidade ao recarregar duas vezes. ', res.commit && h('a', { href: res.commit.html_url, target: '_blank', rel: 'noopener' }, 'Ver alteração no GitHub'))));
     } catch (e) {
-      bar(); top.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não publicou: ' + e.message + '. O rascunho continua salvo neste aparelho.')));
+      flash = h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não salvou no site: ' + e.message + '. Suas alterações continuam guardadas neste aparelho.'));
+      if (/inválida|expirada/.test(e.message)) { cfg.token = ''; u.SAVE(CFG, cfg); }
+      bar();
     }
   }
 
+  track('editor/entrou');
   render();
 })();
