@@ -5,6 +5,7 @@
     tools: [],
     groups: [
       { id: 'med', c: '#e9b766', title: 'Medicações e infusões' },
+      { id: 'rx', c: '#e6a3c4', title: 'Receitas prontas' },
       { id: 'cir', c: '#ee9474', title: 'Cirurgia e trauma' },
       { id: 'ped', c: '#71cbe3', title: 'Pediatria e emergência' },
       { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos' },
@@ -15,6 +16,7 @@
     ]
   };
   D.add = (...t) => D.tools.push(...t);
+  D.links = [];
   const u = D.u = {};
 
   /* ---------- utilitários ---------- */
@@ -143,7 +145,7 @@
     patient: Object.assign({ kg: '', age: '', ageU: 'a', sex: '', cm: '' }, u.LS('drb_patient', {})),
     vals: {}, q: ''
   };
-  const savePatient = () => { u.SAVE('drb_patient', S.patient); chip(); };
+  const savePatient = D.savePatient = () => { u.SAVE('drb_patient', S.patient); chip(); };
   const ageLabel = () => {
     const a = S.patient.age; if (a === '' || a == null) return '';
     return a + ' ' + ({ a: 'anos', m: 'meses', d: 'dias' }[S.patient.ageU] || 'anos');
@@ -173,7 +175,7 @@
     const byId = id => D.tools.find(t => t.id === id);
     const row = t => {
       const g = D.groups.find(x => x.id === t.g) || {};
-      const a = h('a', { class: 'trow-a', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, rel: t.href ? 'noopener' : null },
+      const a = h('a', { class: 'trow-a', href: t.href || '#/' + t.id, target: t.href && t.href[0] !== '#' ? '_blank' : null, rel: t.href && t.href[0] !== '#' ? 'noopener' : null },
         h('span', { class: 'tt' }, t.title), h('span', { class: 'td' }, t.desc));
       const st = h('button', { class: 'star' + (isFav(t.id) ? ' on' : ''), type: 'button', title: isFav(t.id) ? 'Remover dos favoritos' : 'Adicionar aos favoritos', 'aria-label': 'Favoritar ' + t.title, 'aria-pressed': isFav(t.id) ? 'true' : 'false',
         onclick: e => { e.preventDefault(); toggleFav(t.id); draw(); } }, icon('star', isFav(t.id)));
@@ -225,7 +227,7 @@
   const disclaimer = txt => h('p', { class: 'disc' }, icon('alert'), txt);
 
   /* ---------- tela de ferramenta ---------- */
-  function toolView(t) {
+  function toolView(t, sub) {
     const st = S.vals[t.id] || (S.vals[t.id] = { raw: {} });
     const raw = st.raw;
     const root = h('main', { class: 'wrap' });
@@ -235,7 +237,7 @@
       h('h1', { class: 'title' }, t.title),
       h('p', { class: 'tdesc' }, t.desc));
     if (t.render) {
-      root.append(t.render(h, u));
+      root.append(t.render(h, u, sub));
       root.append(disclaimer(t.disc || 'Ferramenta de apoio.'));
       return root;
     }
@@ -438,7 +440,7 @@
       else OPEN.fav = o;
       box.classList.toggle('open', o); head.setAttribute('aria-expanded', o); u.SAVE('drb_open', OPEN);
     } }, h('i', { class: 'dot' }), h('span', { class: 'gn' }, g.title), h('span', { class: 'gc' }, String(ts.length)), icon('chev', false, 16));
-    const list = h('div', { class: 'sgl' }, ts.map(t => h('a', { class: 'sl', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, 'data-k': t.id + (fav ? '-f' : '') }, t.title)));
+    const list = h('div', { class: 'sgl' }, ts.map(t => h('a', { class: 'sl', href: t.href || '#/' + t.id, target: t.href && t.href[0] !== '#' ? '_blank' : null, 'data-k': t.id + (fav ? '-f' : '') }, t.title)));
     box.append(head, list);
     return box;
   }
@@ -461,7 +463,7 @@
       const q = u.norm(inp.value.trim()); box.innerHTML = ''; items = []; cur = -1;
       if (!q) { box.hidden = true; return; }
       const parts = q.split(/\s+/);
-      const scored = D.tools.map(t => {
+      const scored = D.tools.concat(D.links).map(t => {
         const ti = u.norm(t.title), all = u.norm(t.title + ' ' + t.desc + ' ' + (t.kw || ''));
         if (!parts.every(p => all.includes(p))) return null;
         return { t, s: (ti.startsWith(q) ? 0 : ti.includes(q) ? 1 : parts.every(p => ti.includes(p)) ? 2 : 3) };
@@ -470,7 +472,7 @@
       if (!scored.length) { box.append(h('div', { class: 'gse' }, 'Nenhuma ferramenta encontrada.')); return; }
       scored.forEach(({ t }) => {
         const g = D.groups.find(x => x.id === t.g) || {};
-        const a = h('a', { class: 'gsi', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, style: '--gc:' + (g.c || 'var(--accent)'), onclick: () => { inp.value = ''; box.hidden = true; inp.blur(); } },
+        const a = h('a', { class: 'gsi', href: t.href || '#/' + t.id, target: t.href && t.href[0] !== '#' ? '_blank' : null, style: '--gc:' + (g.c || 'var(--accent)'), onclick: () => { inp.value = ''; box.hidden = true; inp.blur(); } },
           h('span', { class: 'gk' }, g.title || ''), h('span', { class: 'gt' }, t.title), h('span', { class: 'gd' }, t.desc));
         box.append(a); items.push(a);
       });
@@ -493,19 +495,21 @@
   function route() {
     const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
     const gm = id.match(/^g\/(.+)$/);
-    const t = gm ? null : D.tools.find(x => x.id === id && !x.href);
+    const base = gm ? '' : id.split('/')[0], sub = gm ? '' : id.slice(base.length + 1);
+    const t = gm ? null : D.tools.find(x => x.id === base && !x.href);
+    const lk = D.tools.find(x => x.href === '#/' + id);
     const a = app(); a.innerHTML = '';
     if (t) {
       S.recents = [t.id, ...S.recents.filter(r => r !== t.id)].slice(0, 6);
       u.SAVE('drb_recents', S.recents);
-      a.append(toolView(t));
+      a.append(toolView(t, sub));
       document.title = t.title + ' | Calculadoras Dr. Bruno Michels';
     } else {
       a.append(hubView(gm && gm[1]));
       document.title = 'Calculadoras de plantão | Dr. Bruno Michels';
     }
     window.scrollTo(0, 0);
-    sideRefresh(t ? t.id : null, gm ? gm[1] : null);
+    sideRefresh(lk ? lk.id : t ? t.id : null, gm ? gm[1] : null);
     closeSide();
   }
   function setTheme() {

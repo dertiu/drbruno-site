@@ -111,8 +111,8 @@
     { n: 'Dipirona xarope 50 mg/mL', f: kg => `${a(Math.min(kg * 0.4, 20))} mL`, i: '6/6 h; máx. 20 mL; acima de 3 meses', min: 0.25 },
     { n: 'Dipirona injetável 500 mg/mL', f: kg => `${a(Math.min(kg / 20, 2))} mL IV`, i: 'Diluir; máx. 2 mL (1 g)', min: 0.25 },
     { n: 'Paracetamol gotas 200 mg/mL', f: kg => `${fmt(Math.min(kg, 50), 0)} gotas`, i: '6/6 h (10 mg/kg); máx. 50 gotas' },
-    { n: 'Ibuprofeno gotas 50 mg/mL', f: kg => `${fmt(Math.min(2 * kg, 80), 0)} gotas`, i: '6/8 h (5 mg/kg); acima de 6 meses', min: 0.5 },
-    { n: 'Ibuprofeno gotas 100 mg/mL', f: kg => `${fmt(Math.min(kg, 40), 0)} gotas`, i: '6/8 h (5 mg/kg); máx. 40 gotas; acima de 6 meses', min: 0.5 },
+    { n: 'Ibuprofeno gotas 50 mg/mL', f: kg => `${fmt(Math.min(2 * kg, 40), 0)} gotas`, i: '6/8 h; 2 gotas/kg; máx. 40 gotas; acima de 6 meses', min: 0.5 },
+    { n: 'Ibuprofeno gotas 100 mg/mL', f: kg => `${fmt(Math.min(kg, 40), 0)} gotas`, i: '6/8 h; 1 gota/kg; máx. 40 gotas; acima de 6 meses', min: 0.5 },
     { sec: 'Antibióticos' },
     { n: 'Amoxicilina 250 mg/5 mL', f: kg => `${a(Math.min(kg / 3, 10))} mL`, i: '8/8 h; máx. 10 mL/dose (50 mg/kg/dia)' },
     { n: 'Amoxicilina + clavulanato (250 + 62,5 mg/5 mL)', f: kg => `${a(kg / 3)} mL`, i: '8/8 h' },
@@ -123,7 +123,7 @@
     { n: 'Prednisolona 3 mg/mL', f: kg => `${a(Math.min(kg / 6, 10))} mL`, i: '12/12 h (1 mg/kg/dia); máx. 20 mL/dia' },
     { n: 'Dexametasona injetável (4 mg/mL)', f: kg => `${a(Math.min(0.3 * kg, 4) / 4)} mL (${a(Math.min(0.3 * kg, 4))} mg)`, i: '0,3 mg/kg; máx. 4 mg' },
     { n: 'Hidrocortisona IV', f: kg => `${a(5 * kg)} mg (asma) ou ${a(10 * kg)} mg (alergia grave)`, i: '5 mg/kg na asma; 10 mg/kg na reação alérgica' },
-    { n: 'Dexclorfeniramina 2 mg/5 mL', f: kg => `${a(Math.min(kg / 4, 5))} mL`, i: '8/8 h; máx. 5 mL; acima de 2 anos', min: 2 },
+    { n: 'Dexclorfeniramina 2 mg/5 mL', f: (kg, y) => !isFinite(y) ? '1,25 mL (2 a 6 anos); 2,5 mL (6 a 12); 5 mL (≥ 12)' : y < 6 ? '1,25 mL' : y < 12 ? '2,5 mL' : '5 mL', i: '8/8 h, pela faixa etária da bula; acima de 2 anos', min: 2 },
     { sec: 'Antieméticos' },
     { n: 'Ondansetrona injetável (2 mg/mL)', f: kg => `${a(0.075 * kg)} mL (${a(0.15 * kg)} mg)`, i: '0,15 mg/kg IV lento; máx. 4 mg' },
     { n: 'Bromoprida gotas 4 mg/mL', f: kg => `${fmt(Math.min(kg, 30), 0)} gotas`, i: '8/8 h; máx. 30 gotas' }
@@ -139,7 +139,7 @@
       const age = v.age, rows = [], txt = [], al = [];
       ONE.forEach(o => {
         if (o.sec) { rows.push({ sec: o.sec }); return; }
-        const dose = o.f(kg), blocked = isFinite(age) && o.min && age < o.min;
+        const dose = o.f(kg, age), blocked = isFinite(age) && o.min && age < o.min;
         rows.push([o.n + (blocked ? ' (idade abaixo da mínima)' : ''), blocked ? 'não usar' : dose, o.i]);
         if (!blocked) txt.push(`${o.n}: ${dose}`);
         else al.push({ lvl: 'warn', text: `${o.n}: não recomendado para esta idade.` });
