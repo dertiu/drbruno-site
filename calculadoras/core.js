@@ -187,6 +187,8 @@
       if (G) {
         root.querySelector('.title').textContent = G.title;
       } else {
+        const av = ((window.DRB_DATA || {}).aviso || '').trim();
+        if (av) box.append(h('div', { class: 'aviso', role: 'note' }, icon('alert'), h('span', null, av)));
         box.append(patientPanel());
         const favs = S.favs.map(byId).filter(Boolean), rec = S.recents.map(byId).filter(t => t && !S.favs.includes(t.id)).slice(0, 5);
         if (favs.length || rec.length) {
@@ -204,6 +206,7 @@
           h('ul', { class: 'tlist' }, ts.map(row))));
       });
       box.append(disclaimer('Ferramentas de apoio à decisão. Não substituem o julgamento clínico. Confira doses, diluições e indicações com o protocolo da sua instituição e a bula antes de prescrever ou administrar.'));
+      if (!G) box.append(h('p', { class: 'adm-link' }, h('a', { href: 'admin.html' }, 'Painel do editor')));
     }
     root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão'),
       h('p', { class: 'lead' }, G ? 'Toque em uma ferramenta para abrir. A estrela fixa a ferramenta nos favoritos.' : 'Informe o paciente uma vez: peso, idade e sexo preenchem todas as calculadoras.'), box);

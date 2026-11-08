@@ -70,11 +70,11 @@
     { id: 'predni', g: G.al, name: 'Prednisolona / prednisona', u: 'mg', route: 'VO',
       pres: [{ l: 'Solução oral 3 mg/mL', c: 3 }, { l: 'Solução oral 1 mg/mL', c: 1 }, { l: 'Comprimido 20 mg', c: 20, solid: 1 }, { l: 'Comprimido 5 mg', c: 5, solid: 1 }],
       ped: kgd(1, 2, { int: '1×/dia ou 12/12 h', maxDose: 60, maxDay: '60 mg/dia' }), ad: fix(40, 60, { int: '1×/dia por 5 dias (asma/DPOC)' }) },
-    { id: 'salbu', g: G.al, name: 'Salbutamol (nebulização)', u: 'mg', route: 'inalatória',
-      pres: [{ l: 'Solução para nebulização 5 mg/mL (0,5%)', c: 5 }],
-      ped: p => { const d = Math.min(5, Math.max(2.5, 0.15 * p.kg)); return { lo: d, hi: d, ref: '0,15 mg/kg (mín. 2,5 mg e máx. 5 mg)', int: '20/20 min × 3 na crise; depois 4/4 a 6/6 h' }; },
-      ad: fix(2.5, 5, { int: '20/20 min × 3 na crise; depois 4/4 a 6/6 h' }),
-      notes: ['Diluir em 3 a 5 mL de SF 0,9% e nebulizar com O₂ a 6 a 8 L/min. Na crise grave, considerar nebulização contínua.'] },
+    { id: 'salbu', g: G.al, name: 'Salbutamol (aerossol 200 mcg/jato)', u: 'mcg', route: 'inalatória com espaçador',
+      pres: [{ l: 'Aerossol 200 mcg/jato', c: 200, puff: 1 }],
+      ped: p => { const d = Math.round(Math.min(800, Math.max(200, 50 * p.kg)) / 200) * 200; return { lo: d, hi: d, ref: '50 mcg/kg (mín. 1 jato e máx. 4 jatos de 200 mcg)', int: '20/20 min × 3 na crise; depois 4/4 h' }; },
+      ad: fix(400, 800, { int: '20/20 min × 3 na crise; depois 4/4 h' }),
+      notes: ['Sempre com espaçador (com máscara em crianças pequenas): 1 jato por vez e 5 a 6 respirações entre os jatos.', 'Se o aerossol disponível for de 100 mcg/jato, o número de jatos dobra.'] },
     { id: 'ipra', g: G.al, name: 'Brometo de ipratrópio (nebulização)', u: 'mg', route: 'inalatória',
       pres: [{ l: 'Solução 0,25 mg/mL', c: 0.25 }],
       ped: p => { if (!(p.kg > 0)) return { lo: NaN, hi: NaN }; const d = p.kg < 20 ? 0.25 : 0.5; return { lo: d, hi: d, ref: p.kg < 20 ? '< 20 kg: 0,25 mg' : '≥ 20 kg: 0,5 mg', int: '20/20 min × 3 na crise' }; },
@@ -254,7 +254,8 @@
       rows.push(['Via', d.route], ['Faixa etária usada', cat]);
       let main, vol = '';
       if (pr.c > 0) {
-        if (pr.solid) { main = { label: 'Quantidade por dose', value: u.rangeAuto(lo / pr.c, hi / pr.c), unit: 'comprimido(s)' }; vol = `${u.rangeAuto(lo / pr.c, hi / pr.c)} comprimido(s) de ${fmt(pr.c, 3)} ${unit}`; al.push({ lvl: 'info', text: 'Fracionar comprimido apenas se for sulcado e a dose permitir.' }); }
+        if (pr.puff) { main = { label: 'Jatos por dose', value: u.rangeAuto(lo / pr.c, hi / pr.c), unit: 'jato(s)' }; vol = `${u.rangeAuto(lo / pr.c, hi / pr.c)} jato(s) de ${fmt(pr.c, 0)} ${unit}`; }
+        else if (pr.solid) { main = { label: 'Quantidade por dose', value: u.rangeAuto(lo / pr.c, hi / pr.c), unit: 'comprimido(s)' }; vol = `${u.rangeAuto(lo / pr.c, hi / pr.c)} comprimido(s) de ${fmt(pr.c, 3)} ${unit}`; al.push({ lvl: 'info', text: 'Fracionar comprimido apenas se for sulcado e a dose permitir.' }); }
         else { main = { label: 'Volume por dose', value: u.rangeAuto(lo / pr.c, hi / pr.c), unit: 'mL' }; vol = `${u.rangeAuto(lo / pr.c, hi / pr.c)} mL`; }
         rows.splice(1, 0, ['Apresentação', pr.l]);
       } else {
@@ -298,6 +299,10 @@
     { id: 'insu', g: IG.ou, name: 'Insulina regular', du: 'U/h', amtU: 'U', amt: 100, vol: 100, min: 0.5, max: 15, def: 5, steps: [1, 2, 4, 6, 8, 10], note: 'Padrão: 100 U em 100 mL de SF 0,9% (1 U/mL). Na CAD, 0,1 U/kg/h (use a calculadora de insulina). Considere preencher o equipo (priming) conforme protocolo.' },
     { id: 'panto', g: IG.ou, name: 'Pantoprazol (HDA)', du: 'mg/h', amtU: 'mg', amt: 80, vol: 100, min: 4, max: 8, def: 8, steps: [8], note: 'Bolus de 80 mg, depois 8 mg/h. Padrão: 80 mg em 100 mL de SF 0,9% (0,8 mg/mL).' }
   ];
+  // diluições padrão editadas no painel do editor (dados.js)
+  D.INF_DEF = INF.map(d => ({ id: d.id, amt: d.amt, vol: d.vol, note: d.note }));
+  (function () { const ov = (window.DRB_DATA || {}).inf || {}; INF.forEach(d => { const o = ov[d.id]; if (!o) return; if (o.amt > 0) d.amt = o.amt; if (o.vol > 0) d.vol = o.vol; if (o.note) d.note = o.note; }); })();
+  D.INF = INF;
   const parseU = du => { const p = du.split('/'); return p.length === 3 ? { num: p[0], perKg: true, time: p[2] } : { num: p[0], perKg: false, time: p[1] }; };
   const toNum = (amtU, num) => (amtU === num ? 1 : amtU === 'mg' && num === 'mcg' ? 1000 : amtU === 'mcg' && num === 'mg' ? 0.001 : 1);
   const savedDil = id => (u.LS('drb_dil', {}) || {})[id];
@@ -455,7 +460,7 @@
     fields: v => {
       const out = [F.SEG('mode', '', [['corr', 'Correção de glicemia'], ['cad', 'CAD: infusão']], { def: 'corr' })];
       if (v.mode === 'cad') {
-        out.push(F.KG(), F.AGE(), F.N('gl', 'Glicemia', { unit: 'mg/dL' }), F.N('k', 'Potássio sérico', { unit: 'mEq/L' }));
+        out.push(F.NOTE('Para conduzir a CAD hora a hora (expansão, potássio, bomba, soro glicosado e meta), use a ferramenta “CAD: protocolo passo a passo”.'), F.KG(), F.AGE(), F.N('gl', 'Glicemia', { unit: 'mg/dL' }), F.N('k', 'Potássio sérico', { unit: 'mEq/L' }));
       } else {
         out.push(F.N('dtd', 'Dose total diária de insulina', { unit: 'U/dia', full: true }),
           F.SEG('tipo', 'Insulina de correção', [['1800', 'Análogo rápido (1800)'], ['1500', 'Regular (1500)']], { def: '1800' }),
