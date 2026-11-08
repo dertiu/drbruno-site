@@ -173,7 +173,7 @@
       const al = [];
       if (tig < 4) al.push({ lvl: 'info', text: 'TIG abaixo de 4 mg/kg/min: aceitável em crianças maiores com manutenção; em lactentes jovens ou risco de hipoglicemia, prefira glicose 10% ou monitore a glicemia.' });
       if (tig > 8) al.push({ lvl: 'warn', text: 'TIG acima de 8 mg/kg/min: risco de hiperglicemia; revisar a concentração de glicose.' });
-      al.push({ lvl: 'info', text: 'Sugestão prática por 500 mL: SG 5% 250 mL + SF 0,9% 250 mL com KCl 19,1% ' + fmt(kcl / (man / 500), 1) + ' mL (aprox. 2 mEq/100 mL de K). Essa mistura isotônica fornece mais sódio que os 3 mEq/100 mL de Holliday-Segar, de propósito. Confira Na⁺ sérico: se hiponatremia, use solução isotônica sem hipotônica livre.' });
+      al.push({ lvl: 'info', text: 'Sugestão prática isotônica por 500 mL: SG 5% 500 mL + NaCl 20% 22 mL + KCl 19,1% ' + fmt(kcl / (man / 500), 1) + ' mL (Na⁺ cerca de 143 mEq/L e K⁺ cerca de 20 mEq/L). A mistura SG 5% + SF 0,9% meio a meio é hipotônica (equivale a NaCl 0,45%): evite em crianças internadas. Confira o Na⁺ sérico.' });
       al.push({ lvl: 'info', text: 'Só inclua potássio após diurese presente e K⁺ sérico conhecido.' });
       return { main: { label: 'Manutenção em 24 h', value: fmt(man, 0), unit: 'mL' }, rows, alerts: al,
         text: `Hidratação pediátrica (${fmt(kg, 1)} kg): manutenção ${fmt(man, 0)} mL/24 h (${fmt(mh, 1)} mL/h)${exp ? '; expansão ' + fmt(expv, 0) + ' mL' : ''}${defv ? '; déficit ' + fmt(defv, 0) + ' mL' : ''}; Na ${fmt(na, 0)} mEq/dia, K ${fmt(k, 0)} mEq/dia; TIG ${fmt(tig, 1)} mg/kg/min.` };
