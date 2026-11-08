@@ -1,49 +1,46 @@
-/* Painel do editor: edita receitas, diluições e aviso; publica dados.js no GitHub com a chave do editor.
-   Os colegas usam o site sem login. A senha abaixo só fecha a tela do painel; quem publica de fato é a chave (token) do GitHub. */
+/* Painel do editor: edita receitas, diluições e aviso e salva para todos (dados.js no GitHub).
+   Os colegas usam o site sem login. A senha (PBKDF2) abre o painel; a gravação usa a chave do GitHub do editor,
+   guardada apenas no aparelho dele. */
 (function () {
   'use strict';
-  const PASS = '91c9b010a5d3609113c96b4351f1ec58306b6cb824c4ce81dc23467f20a37ed0'; // SHA-256 da senha do painel
-  const SKEY = 'drb_adm_ok';
-  function sha256js(str) {
-    const b = new TextEncoder().encode(str), K = [], H = [];
-    const isP = n => { for (let i = 2; i * i <= n; i++) if (n % i === 0) return false; return true; };
-    const frac = x => ((x - Math.floor(x)) * 4294967296) >>> 0;
-    for (let n = 2, c = 0; c < 64; n++) if (isP(n)) { if (c < 8) H[c] = frac(Math.pow(n, 1 / 2)); K[c++] = frac(Math.cbrt(n)); }
-    const len = ((b.length + 9 + 63) >> 6) << 6, m = new Uint8Array(len); m.set(b); m[b.length] = 0x80;
-    const dv = new DataView(m.buffer); dv.setUint32(len - 4, b.length * 8);
-    const W = new Uint32Array(64), rr = (x, n) => (x >>> n) | (x << (32 - n));
-    for (let i = 0; i < len; i += 64) {
-      for (let t = 0; t < 16; t++) W[t] = dv.getUint32(i + t * 4);
-      for (let t = 16; t < 64; t++) { const a = W[t - 15], c = W[t - 2]; W[t] = (W[t - 16] + (rr(a, 7) ^ rr(a, 18) ^ (a >>> 3)) + W[t - 7] + (rr(c, 17) ^ rr(c, 19) ^ (c >>> 10))) >>> 0; }
-      let [a, bb, c, d, e, f, g, h] = H;
-      for (let t = 0; t < 64; t++) {
-        const t1 = (h + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + W[t]) >>> 0, t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) >>> 0;
-        h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = bb; bb = a; a = (t1 + t2) >>> 0;
-      }
-      [a, bb, c, d, e, f, g, h].forEach((x, j) => { H[j] = (H[j] + x) >>> 0; });
-    }
-    return H.map(x => x.toString(16).padStart(8, '0')).join('');
+  const SALT = 'b44916b6c2580307493157d5d9e683e3', VER = '1029be47d6dbcbea5de139b10f1b8639ea0f11e62c411e662de7eb96c83fbeaf', ITER = 600000;
+  const SKEY = 'drb_adm_k';
+  const hex = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
+  const unhex = s => new Uint8Array(s.match(/../g).map(x => parseInt(x, 16)));
+  const subtle = window.crypto && crypto.subtle;
+  async function derive(pw) {
+    const base = await subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+    return new Uint8Array(await subtle.deriveBits({ name: 'PBKDF2', salt: unhex(SALT), iterations: ITER, hash: 'SHA-256' }, base, 256));
   }
-  async function sha256(str) {
-    try { if (window.crypto && crypto.subtle) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(d)).map(x => x.toString(16).padStart(2, '0')).join(''); } } catch (e) { }
-    return sha256js(str);
-  }
-  window.DRB_SHA = sha256js;
-  const ok = () => { try { return sessionStorage.getItem(SKEY) === PASS; } catch (e) { return false; } };
+  const verOf = async raw => hex(await subtle.digest('SHA-256', raw));
   const h = window.DRB.u.h;
   try { document.body.dataset.theme = JSON.parse(localStorage.getItem('drb_theme') || '"dark"'); } catch (e) { }
-  if (!ok()) {
-    const root = document.getElementById('adm');
+  const root0 = document.getElementById('adm');
+  if (!subtle) {
+    if (location.protocol === 'http:' && !/^(localhost|127\.)/.test(location.hostname)) { location.replace('https://' + location.host + location.pathname); return; }
+    root0.append(h('div', { class: 'alert crit' }, h('span', null, 'Este navegador não permite abrir o painel com segurança. Use um navegador atualizado pelo endereço com https.')));
+    return;
+  }
+  let rawKey = null;
+  try { const s = sessionStorage.getItem(SKEY); if (s) rawKey = unhex(s); } catch (e) { }
+  if (!rawKey) {
     const inp = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Senha', placeholder: 'Senha' });
     const err = h('p', { class: 'adm-err', role: 'alert' });
+    const btn = h('button', { type: 'button', class: 'copy rx-copy' }, 'Entrar');
     const go = async () => {
-      const hh = await sha256(inp.value);
-      if (hh === PASS) { try { sessionStorage.setItem(SKEY, PASS); } catch (e) { } location.reload(); }
-      else { err.textContent = 'Senha incorreta.'; inp.select(); }
+      if (!inp.value) { inp.focus(); return; }
+      btn.disabled = true; btn.textContent = 'Conferindo…'; err.textContent = '';
+      try {
+        const raw = await derive(inp.value);
+        if (await verOf(raw) === VER) { try { sessionStorage.setItem(SKEY, hex(raw)); } catch (e) { } location.reload(); return; }
+        err.textContent = 'Senha incorreta.'; inp.select();
+      } catch (e) { err.textContent = 'Erro ao conferir a senha: ' + e.message; }
+      btn.disabled = false; btn.textContent = 'Entrar';
     };
+    btn.onclick = go;
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-    root.append(h('section', { class: 'adm-gate panel' }, h('h1', { class: 'title' }, 'Área do editor'), h('p', { class: 'lead' }, 'Digite a senha para abrir o painel.'),
-      h('label', { class: 'pf' }, h('span', null, 'Senha'), h('span', { class: 'pfin' }, inp)), h('button', { type: 'button', class: 'copy rx-copy', onclick: go }, 'Entrar'), err));
+    root0.append(h('section', { class: 'adm-gate panel' }, h('h1', { class: 'title' }, 'Área do editor'), h('p', { class: 'lead' }, 'Digite a senha para abrir o painel.'),
+      h('label', { class: 'pf' }, h('span', null, 'Senha'), h('span', { class: 'pfin' }, inp)), btn, err));
     setTimeout(() => inp.focus(), 50);
     return;
   }
@@ -59,6 +56,7 @@
   data.cats = data.cats || []; data.receitas = data.receitas || []; data.inf = data.inf || {}; data.aviso = data.aviso || '';
   base.estatisticas = base.estatisticas || '';
   const cfg = Object.assign({ token: '', repo: 'dertiu/drbruno-site', branch: 'main', path: 'calculadoras/dados.js' }, u.LS(CFG, {}));
+  const saveCfg = () => u.SAVE(CFG, cfg);
   const st = { tab: 'rx', sel: data.receitas[0] ? data.receitas[0].id : null, q: '', pkg: '14', page: '3' };
   const isDirty = () => JSON.stringify(data) !== JSON.stringify(base);
   let tmr = null;
@@ -70,7 +68,7 @@
   const root = document.getElementById('adm');
   const top = h('div', { class: 'adm-top' }), conn = h('div'), tabs = h('nav', { class: 'adm-tabs', role: 'tablist' }), body = h('div', { class: 'adm-body' });
   root.append(h('h1', { class: 'title' }, 'Painel do editor'),
-    h('p', { class: 'lead' }, 'Edite receitas, diluições e o aviso. Tudo o que você digita fica guardado automaticamente neste aparelho; o botão Salvar coloca as alterações no site para todos.'), top, conn, tabs, body);
+    h('p', { class: 'lead' }, 'Edite receitas, diluições e o aviso. O botão Salvar coloca as alterações no site para todos os colegas.'), top, conn, tabs, body);
   let flash = null; // mensagem após salvar
 
   /* ---------- barra de status com o botão Salvar ---------- */
@@ -78,11 +76,11 @@
     top.innerHTML = '';
     const d = isDirty();
     top.append(h('div', { class: 'adm-status' + (d ? ' dirty' : '') },
-      h('b', null, d ? 'Alterações ainda não estão no site' : 'Tudo salvo: o site está igual ao painel'),
-      h('span', null, d ? 'Elas estão guardadas neste aparelho. Toque em Salvar para publicar.' : `${data.receitas.length} receitas · ${Object.keys(data.inf).length} diluições personalizadas`)),
+      h('b', null, d ? 'Há alterações não salvas' : 'Tudo salvo: todos os colegas já veem esta versão'),
+      h('span', null, d ? 'Toque em Salvar para colocar no site para todos.' : `${data.receitas.length} receitas · ${Object.keys(data.inf).length} diluições personalizadas`)),
       h('div', { class: 'adm-acts' },
-        h('button', { type: 'button', class: 'copy rx-copy adm-save', disabled: !d ? true : null, onclick: publish }, icon('copy'), d ? 'Salvar no site' : 'Salvo'),
-        d && h('button', { type: 'button', class: 'rx-btn', onclick: () => { if (confirm('Descartar as alterações que ainda não foram salvas no site?')) { data = clone(base); try { localStorage.removeItem(DRAFT); } catch (e) { } st.sel = data.receitas[0] && data.receitas[0].id; render(); } } }, 'Descartar alterações')));
+        h('button', { type: 'button', class: 'copy rx-copy adm-save', disabled: !d ? true : null, onclick: publish }, icon('copy'), d ? 'Salvar para todos' : 'Salvo'),
+        d && h('button', { type: 'button', class: 'rx-btn', onclick: () => { if (confirm('Descartar as alterações que ainda não foram salvas?')) { data = clone(base); try { localStorage.removeItem(DRAFT); } catch (e) { } st.sel = data.receitas[0] && data.receitas[0].id; render(); } } }, 'Descartar alterações')));
     if (flash) top.append(flash);
   }
   function tabBar() {
@@ -101,22 +99,22 @@
     const msg = h('div');
     const go = async () => {
       const t = inp.value.trim(); if (!t) { inp.focus(); return; }
-      cfg.token = t; u.SAVE(CFG, cfg); msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Conferindo a chave…'));
+      cfg.token = t; saveCfg(); msg.innerHTML = ''; msg.append(h('p', { class: 'hint' }, 'Conferindo a chave…'));
       try {
         const r = await gh('GET', `https://api.github.com/repos/${cfg.repo}`);
         if (!(r.permissions && r.permissions.push)) throw new Error('a chave não tem permissão de escrita (Contents: Read and write) em ' + cfg.repo);
         conn.innerHTML = ''; track('editor/conectou');
         if (after) after();
-      } catch (e) { cfg.token = ''; u.SAVE(CFG, cfg); msg.innerHTML = ''; msg.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não conectou: ' + e.message))); }
+      } catch (e) { cfg.token = ''; saveCfg(); msg.innerHTML = ''; msg.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não conectou: ' + e.message))); }
     };
     conn.append(h('section', { class: 'panel adm-connect' },
-      h('h2', null, 'Conectar o painel ao site (só uma vez neste aparelho)'),
-      h('p', { class: 'hint' }, 'O site é hospedado no GitHub. Para o botão Salvar gravar lá, o painel precisa de uma chave da sua conta. Você faz isso uma vez por aparelho e depois é só tocar em Salvar.'),
+      h('h2', null, 'Ativar o botão Salvar (uma única vez)'),
+      h('p', { class: 'hint' }, 'O site fica hospedado no GitHub. Para gravar lá, o painel precisa de uma chave da sua conta, que fica guardada só neste aparelho. Depois disso, cada Salvar publica para todos os colegas na hora.'),
       h('ol', { class: 'adm-steps' },
         h('li', null, h('a', { class: 'copy', href: TOKEN_URL, target: '_blank', rel: 'noopener' }, 'Abrir o GitHub para gerar a chave'), h('span', null, 'Nome, validade e permissão já vêm preenchidos.')),
         h('li', null, h('span', null, 'Em ', h('b', null, 'Repository access'), ', escolha ', h('b', null, 'Only select repositories'), ' e marque ', h('b', null, cfg.repo.split('/')[1]), '.')),
         h('li', null, h('span', null, 'Desça até o fim, toque em ', h('b', null, 'Generate token'), ', copie a chave e cole aqui:')),
-        h('li', null, h('span', { class: 'pfin adm-tok' }, inp), h('button', { type: 'button', class: 'copy rx-copy', onclick: go }, 'Conectar e salvar'))),
+        h('li', null, h('span', { class: 'pfin adm-tok' }, inp), h('button', { type: 'button', class: 'copy rx-copy', onclick: go }, 'Ativar e salvar'))),
       msg,
       h('button', { type: 'button', class: 'rx-btn', onclick: () => { conn.innerHTML = ''; } }, 'Agora não')));
     conn.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -247,14 +245,14 @@
   /* ---------- configurações ---------- */
   function tabCfg() {
     const msg = h('div');
-    const f = (k, label, type, ph) => h('label', { class: 'fld' }, h('span', { class: 'lbl' }, label), h('input', { type: type || 'text', value: cfg[k] || '', placeholder: ph || '', autocomplete: 'off', oninput: e => { cfg[k] = e.target.value.trim(); u.SAVE(CFG, cfg); } }));
+    const f = (k, label, type, ph) => h('label', { class: 'fld' }, h('span', { class: 'lbl' }, label), h('input', { type: type || 'text', value: cfg[k] || '', placeholder: ph || '', autocomplete: 'off', oninput: e => { cfg[k] = e.target.value.trim(); saveCfg(); } }));
     body.append(h('div', { class: 'panel' },
       h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0' }, 'Conexão com o site'),
-      h('p', { class: 'hint' }, cfg.token ? 'Este aparelho está conectado: o botão Salvar publica direto no site.' : 'Este aparelho ainda não está conectado. Ao tocar em Salvar pela primeira vez, o painel mostra o passo a passo.'),
+      h('p', { class: 'hint' }, cfg.token ? 'Ativado: o botão Salvar publica para todos os colegas.' : 'Ainda não ativado. Ao tocar em Salvar pela primeira vez, o painel mostra o passo a passo.'),
       h('div', { class: 'adm-acts' },
         h('button', { type: 'button', class: 'rx-btn', onclick: () => connectCard(() => render()) }, cfg.token ? 'Trocar a chave' : 'Conectar agora'),
         h('button', { type: 'button', class: 'rx-btn', onclick: test }, 'Testar conexão'),
-        cfg.token && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (confirm('Desconectar este aparelho? Será preciso colar a chave de novo para salvar.')) { cfg.token = ''; u.SAVE(CFG, cfg); render(); } } }, 'Desconectar este aparelho')), msg,
+        cfg.token && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (confirm('Desconectar este aparelho? Será preciso colar a chave de novo para salvar.')) { cfg.token = ''; saveCfg(); render(); } } }, 'Desconectar este aparelho')), msg,
       h('details', { class: 'adm-help' }, h('summary', null, 'Avançado'),
         h('div', { class: 'fgrid' }, f('token', 'Chave do GitHub', 'password', 'github_pat_…'), f('repo', 'Repositório'), f('branch', 'Branch'), f('path', 'Arquivo de dados')))));
     async function test() {
@@ -346,7 +344,7 @@
 
   /* ---------- GitHub ---------- */
   async function gh(method, url, payload) {
-    if (!cfg.token) throw new Error('este aparelho não está conectado');
+    if (!cfg.token) throw new Error('o botão Salvar ainda não foi ativado');
     const r = await fetch(url, { method, cache: 'no-store', headers: { Authorization: 'Bearer ' + cfg.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, body: payload ? JSON.stringify(payload) : undefined });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((r.status === 401 ? 'chave inválida ou expirada' : r.status === 403 || r.status === 404 ? 'sem permissão para este repositório' : r.status === 409 ? 'o site mudou enquanto você editava; tente salvar de novo' : 'erro ' + r.status) + (j.message ? ' (' + j.message + ')' : ''));
@@ -395,11 +393,11 @@
       Object.keys(base).forEach(k => delete base[k]); Object.assign(base, clone(data)); st.restoredFrom = null;
       try { localStorage.removeItem(DRAFT); } catch (e) { }
       track('editor/salvou');
-      flash = h('div', { class: 'alert ok' }, icon('alert'), h('span', null, 'Salvo no site. Em alguns minutos todos os colegas veem a alteração (quem estiver com o site aberto, ao recarregar). O registro fica na aba Histórico e backups. ', res.commit && h('a', { href: res.commit.html_url, target: '_blank', rel: 'noopener' }, 'Ver no GitHub')));
+      flash = h('div', { class: 'alert ok' }, icon('alert'), h('span', null, 'Salvo para todos. Em alguns minutos os colegas já veem a alteração (quem estiver com o site aberto, ao recarregar a página). O registro fica em Histórico e backups. ', res.commit && h('a', { href: res.commit.html_url, target: '_blank', rel: 'noopener' }, 'Ver no GitHub')));
       bar();
     } catch (e) {
-      flash = h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não salvou no site: ' + e.message + '. Suas alterações continuam guardadas neste aparelho.'));
-      if (/inválida|expirada/.test(e.message)) { cfg.token = ''; u.SAVE(CFG, cfg); }
+      flash = h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'Não salvou: ' + e.message + '. Nada foi perdido: as alterações continuam no painel; tente Salvar de novo.'));
+      if (/inválida|expirada/.test(e.message)) { cfg.token = ''; saveCfg(); }
       bar();
     }
   }
