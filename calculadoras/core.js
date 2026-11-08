@@ -4,14 +4,14 @@
   const D = window.DRB = {
     tools: [],
     groups: [
-      { id: 'med', title: 'Medicações e infusões' },
-      { id: 'cir', title: 'Cirurgia e trauma' },
-      { id: 'ped', title: 'Pediatria e emergência' },
-      { id: 'esc', title: 'Escores clínicos' },
-      { id: 'lab', title: 'Renal, metabólico e gasometria' },
-      { id: 'vent', title: 'Ventilação, oxigênio e fluidos' },
-      { id: 'util', title: 'Utilidades do plantão' },
-      { id: 'peri', title: 'Perícia' }
+      { id: 'med', c: '#e1ad66', title: 'Medicações e infusões' },
+      { id: 'cir', c: '#e07b5a', title: 'Cirurgia e trauma' },
+      { id: 'ped', c: '#62b8cf', title: 'Pediatria e emergência' },
+      { id: 'esc', c: '#9cc06a', title: 'Escores clínicos' },
+      { id: 'lab', c: '#b78fe0', title: 'Renal, metabólico e gasometria' },
+      { id: 'vent', c: '#7ea7ec', title: 'Ventilação, oxigênio e fluidos' },
+      { id: 'util', c: '#c8c4bd', title: 'Utilidades do plantão' },
+      { id: 'peri', c: '#9a9690', title: 'Perícia' }
     ]
   };
   D.add = (...t) => D.tools.push(...t);
@@ -61,6 +61,9 @@
     alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
     hist: '<path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    chev: '<path d="M9 6l6 6-6 6"/>',
+    home: '<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>'
   };
   const icon = u.icon = (n, fill, size) => {
@@ -160,15 +163,16 @@
   function toggleFav(id) {
     S.favs = isFav(id) ? S.favs.filter(f => f !== id) : [...S.favs, id];
     u.SAVE('drb_favs', S.favs);
+    if (typeof sideRefresh === 'function') sideRefresh(sideKeyT, sideKeyG);
   }
   const grpName = id => (D.groups.find(g => g.id === id) || {}).title || '';
 
-  function hubView() {
+  function hubView(gid) {
     const root = h('main', { class: 'wrap' });
-    root.append(h('h1', { class: 'title' }, 'Plantão e perícia'), h('p', { class: 'lead' }, 'Calculadoras e escalas para o dia a dia.'));
+    const G = gid && D.groups.find(g => g.id === gid);
+    root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão e perícia'), h('p', { class: 'lead' }, G ? 'Escolha a ferramenta.' : 'Escolha um grupo na barra lateral, busque no topo ou use os atalhos abaixo.'));
     const box = h('div');
-    const inp = h('input', { type: 'search', placeholder: 'Buscar: noradrenalina, AVC, TEP, sódio…', 'aria-label': 'Buscar ferramenta', autocomplete: 'off', value: S.q, oninput: e => { S.q = e.target.value; draw(); } });
-    root.append(h('label', { class: 'search' }, icon('search'), inp), box);
+    root.append(box);
 
     const toolCard = t => {
       const a = t.href
@@ -176,16 +180,16 @@
         : h('a', { class: 'lnk', href: '#/' + t.id });
       a.append(h('span', { class: 'ck' }, grpName(t.g)), h('span', { class: 'ct' }, t.title), h('span', { class: 'cd' }, t.desc));
       const st = h('button', { class: 'star' + (isFav(t.id) ? ' on' : ''), type: 'button', title: 'Favoritar', 'aria-label': 'Favoritar ' + t.title, onclick: e => { e.preventDefault(); e.stopPropagation(); toggleFav(t.id); draw(); } }, icon('star', isFav(t.id)));
-      return h('div', { class: 'card' }, a, st);
+      return h('div', { class: 'card', style: '--gc:' + ((D.groups.find(g => g.id === t.g) || {}).c || 'var(--accent)') }, a, st);
     };
     const pill = (t, cls, ic) => h('a', { class: 'pill ' + (cls || ''), href: t.href || '#/' + t.id, target: t.href ? '_blank' : null }, ic && icon(ic, false, 14), t.title);
 
     function draw() {
       box.innerHTML = '';
-      const q = u.norm(S.q.trim());
+      const q = '';
       const match = t => !q || u.norm(t.title + ' ' + t.desc + ' ' + (t.kw || '')).includes(q);
       const byId = id => D.tools.find(t => t.id === id);
-      if (!q) {
+      if (!G) {
         const favs = S.favs.map(byId).filter(Boolean);
         if (favs.length) box.append(h('h2', { class: 'kick' }, 'Favoritos'), h('div', { class: 'pills' }, favs.map(t => pill(t, 'fav'))));
         const rec = S.recents.map(byId).filter(Boolean);
@@ -193,13 +197,14 @@
       }
       let any = false;
       D.groups.forEach(g => {
+        if (G && g.id !== G.id) return;
         const ts = D.tools.filter(t => t.g === g.id && match(t));
         if (!ts.length) return; any = true;
-        box.append(h('section', { class: 'grp' },
+        box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--accent)'), id: 'grp-' + g.id },
           h('div', { class: 'grp-h' }, h('h2', null, g.title), h('span', null, ts.length + (ts.length === 1 ? ' ferramenta' : ' ferramentas'))),
           h('div', { class: 'cards' }, ts.map(toolCard))));
       });
-      if (!any) box.append(h('p', { class: 'empty-s' }, `Nenhuma ferramenta encontrada para “${S.q}”.`));
+      if (!any) box.append(h('p', { class: 'empty-s' }, 'Nenhuma ferramenta neste grupo.'));
       box.append(disclaimer('Ferramentas de apoio à decisão. Não substituem o julgamento clínico. Confira doses, diluições e indicações com o protocolo da sua instituição e a bula antes de prescrever ou administrar.'));
     }
     draw();
@@ -398,10 +403,81 @@
       (r.rows && r.rows.length ? '. ' + r.rows.map(x => x[0] + ': ' + x[1]).join('; ') : '') + '.';
   }
 
+  /* ---------- barra lateral e busca global ---------- */
+  const OPEN = u.LS('drb_open', {});
+  let sideKeyT = null, sideKeyG = null;
+  function sideBuild() {
+    const el = document.getElementById('side'); if (!el) return;
+    el.innerHTML = '';
+    const nav = h('nav', { 'aria-label': 'Ferramentas' });
+    nav.append(h('a', { class: 'sl home', href: '#/', 'data-k': 'home' }, icon('home', false, 18), 'Início'));
+    const favs = S.favs.map(id => D.tools.find(t => t.id === id)).filter(Boolean);
+    if (favs.length) nav.append(sideGroup_({ id: 'fav', title: 'Favoritos', c: 'var(--accent)' }, favs, true));
+    D.groups.forEach(g => { const ts = D.tools.filter(t => t.g === g.id); if (ts.length) nav.append(sideGroup_(g, ts)); });
+    el.append(nav);
+  }
+  function sideGroup_(g, ts, fav) {
+    const open = OPEN[g.id] !== false && (OPEN[g.id] || fav || g.id === 'med');
+    const box = h('div', { class: 'sg' + (open ? ' open' : ''), 'data-g': g.id, style: '--gc:' + g.c });
+    const head = h('button', { class: 'sgh', type: 'button', 'aria-expanded': open ? 'true' : 'false', onclick: () => {
+      const o = !box.classList.contains('open'); box.classList.toggle('open', o); head.setAttribute('aria-expanded', o); OPEN[g.id] = o; u.SAVE('drb_open', OPEN);
+    } }, h('i', { class: 'dot' }), h('span', { class: 'gn' }, g.title), h('span', { class: 'gc' }, String(ts.length)), icon('chev', false, 16));
+    const list = h('div', { class: 'sgl' }, ts.map(t => h('a', { class: 'sl', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, 'data-k': t.id + (fav ? '-f' : '') }, t.title)));
+    if (!fav) list.prepend(h('a', { class: 'sl all', href: '#/g/' + g.id, 'data-k': 'g/' + g.id }, 'Ver todos do grupo'));
+    box.append(head, list);
+    return box;
+  }
+  function sideRefresh(tid, gid) {
+    sideKeyT = tid || null; sideKeyG = gid || null;
+    sideBuild();
+    const el = document.getElementById('side'); if (!el) return;
+    const key = tid ? tid : gid ? 'g/' + gid : 'home';
+    el.querySelectorAll('.sl').forEach(a => { const k = a.getAttribute('data-k'); if (k === key || k === key + '-f') { a.classList.add('act'); a.setAttribute('aria-current', 'page'); } });
+    const t = tid && D.tools.find(x => x.id === tid), g = t ? t.g : gid;
+    const grp = g && el.querySelector('.sg[data-g="' + g + '"]'); if (grp) { grp.classList.add('open'); grp.querySelector('.sgh').setAttribute('aria-expanded', 'true'); }
+    const act = el.querySelector('.sl.act'); if (act && act.scrollIntoView && el.offsetParent) act.scrollIntoView({ block: 'nearest' });
+  }
+  const closeSide = () => { document.body.classList.remove('side-open'); };
+  function searchInit() {
+    const inp = document.getElementById('gs'), box = document.getElementById('gsr'); if (!inp) return;
+    let items = [], cur = -1;
+    const run = () => {
+      const q = u.norm(inp.value.trim()); box.innerHTML = ''; items = []; cur = -1;
+      if (!q) { box.hidden = true; return; }
+      const parts = q.split(/\s+/);
+      const scored = D.tools.map(t => {
+        const ti = u.norm(t.title), all = u.norm(t.title + ' ' + t.desc + ' ' + (t.kw || ''));
+        if (!parts.every(p => all.includes(p))) return null;
+        return { t, s: (ti.startsWith(q) ? 0 : ti.includes(q) ? 1 : parts.every(p => ti.includes(p)) ? 2 : 3) };
+      }).filter(Boolean).sort((a, b) => a.s - b.s).slice(0, 9);
+      box.hidden = false;
+      if (!scored.length) { box.append(h('div', { class: 'gse' }, 'Nenhuma ferramenta encontrada.')); return; }
+      scored.forEach(({ t }) => {
+        const g = D.groups.find(x => x.id === t.g) || {};
+        const a = h('a', { class: 'gsi', href: t.href || '#/' + t.id, target: t.href ? '_blank' : null, style: '--gc:' + (g.c || 'var(--accent)'), onclick: () => { inp.value = ''; box.hidden = true; inp.blur(); } },
+          h('span', { class: 'gk' }, g.title || ''), h('span', { class: 'gt' }, t.title), h('span', { class: 'gd' }, t.desc));
+        box.append(a); items.push(a);
+      });
+      mark(0);
+    };
+    const mark = i => { items.forEach((a, j) => a.classList.toggle('on', j === i)); cur = i; if (items[i]) items[i].scrollIntoView({ block: 'nearest' }); };
+    inp.addEventListener('input', run);
+    inp.addEventListener('focus', () => { if (inp.value) run(); });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) mark((cur + 1) % items.length); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) mark((cur - 1 + items.length) % items.length); }
+      else if (e.key === 'Enter') { if (items[cur]) { e.preventDefault(); items[cur].click(); if (items[cur].getAttribute('target') !== '_blank') location.hash = items[cur].getAttribute('href'); } }
+      else if (e.key === 'Escape') { inp.value = ''; box.hidden = true; inp.blur(); }
+    });
+    document.addEventListener('click', e => { if (!e.target.closest('.gsw')) box.hidden = true; });
+    document.addEventListener('keydown', e => { if ((e.key === '/' || (e.key === 'k' && (e.ctrlKey || e.metaKey))) && !/INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || '')) { e.preventDefault(); inp.focus(); inp.select(); } });
+  }
+
   /* ---------- roteamento e inicialização ---------- */
   function route() {
     const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
-    const t = D.tools.find(x => x.id === id && !x.href);
+    const gm = id.match(/^g\/(.+)$/);
+    const t = gm ? null : D.tools.find(x => x.id === id && !x.href);
     const a = app(); a.innerHTML = '';
     if (t) {
       S.recents = [t.id, ...S.recents.filter(r => r !== t.id)].slice(0, 6);
@@ -409,10 +485,12 @@
       a.append(toolView(t));
       document.title = t.title + ' | Calculadoras Dr. Bruno Michels';
     } else {
-      a.append(hubView());
+      a.append(hubView(gm && gm[1]));
       document.title = 'Calculadoras de plantão | Dr. Bruno Michels';
     }
     window.scrollTo(0, 0);
+    sideRefresh(t ? t.id : null, gm ? gm[1] : null);
+    closeSide();
   }
   function setTheme() {
     document.body.dataset.theme = S.theme;
@@ -421,7 +499,11 @@
     const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = S.theme === 'dark' ? '#1a1918' : '#f3f2f2';
   }
   D.boot = function () {
-    setTheme(); chip();
+    setTheme(); chip(); searchInit();
+    const mb = document.getElementById('menu'); if (mb) mb.append(icon('menu'));
+    const gsi = document.querySelector('.gsico'); if (gsi) gsi.append(icon('search'));
+    if (mb) mb.onclick = () => document.body.classList.toggle('side-open');
+    const ov = document.getElementById('ov'); if (ov) ov.onclick = closeSide;
     document.getElementById('theme').onclick = () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; u.SAVE('drb_theme', S.theme); setTheme(); };
     document.getElementById('pt').onclick = () => {
       S.patient = { kg: '', age: '', ageU: 'a', sex: '', cm: '' }; S.vals = {}; savePatient(); route();

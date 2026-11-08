@@ -18,15 +18,24 @@
 <body data-theme="dark">
   <header class="hdr">
     <div class="hdr-in">
+      <button id="menu" class="icon-btn menu-b" type="button" title="Menu" aria-label="Abrir menu de ferramentas"></button>
       <a class="brand" href="#/">
         <span class="brand-t">Calculadoras</span>
         <span class="brand-s">Dr. Bruno Michels</span>
       </a>
+      <div class="gsw">
+        <label class="gs"><span class="gsico"></span><input id="gs" type="search" placeholder="Buscar ferramenta: noradrenalina, AVC, sódio…  ( / )" autocomplete="off" aria-label="Buscar ferramenta"></label>
+        <div id="gsr" class="gsr" hidden></div>
+      </div>
       <button id="pt" class="chip-pt" type="button" hidden></button>
       <button id="theme" class="icon-btn" type="button" title="Alternar tema" aria-label="Alternar tema"></button>
     </div>
   </header>
-  <div id="app"></div>
+  <div class="shell">
+    <aside id="side" class="side" aria-label="Menu lateral"></aside>
+    <div id="ov" class="ov"></div>
+    <div id="app"></div>
+  </div>
   <noscript><p style="padding:24px">Ative o JavaScript para usar as calculadoras.</p></noscript>
 
   <script src="core.js"></script>

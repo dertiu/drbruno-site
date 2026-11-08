@@ -1,5 +1,5 @@
 /* Cache para uso offline no plantão. Atualiza em segundo plano a cada abertura. */
-const CACHE = 'calc-v2';
+const CACHE = 'calc-v3';
 const ASSETS = ['./', 'index.html', 'style.css', 'core.js', 't-med.js', 't-esc.js', 't-lab.js', 't-ped.js', 't-cir.js', 't-util.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
