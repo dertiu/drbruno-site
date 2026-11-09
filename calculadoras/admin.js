@@ -84,7 +84,16 @@
     }
   })();
   const st = { tab: 'rx', sel: data.receitas[0] ? data.receitas[0].id : null, q: '', pkg: '14', page: '3' };
-  const isDirty = () => JSON.stringify(data) !== JSON.stringify(base);
+  // descrições cirúrgicas: arquivo separado (descricoes.js), salvo junto quando muda
+  const DDRAFT = 'drb_admin_desc_draft', DPATH = 'calculadoras/descricoes.js';
+  const dbase = clone(window.DRB_DESC || { cats: [], m: [] });
+  let ddata = u.LS(DDRAFT, null) || clone(dbase);
+  ddata.cats = ddata.cats || []; ddata.m = ddata.m || [];
+  const dDirty = () => JSON.stringify(ddata) !== JSON.stringify(dbase);
+  const rDirty = () => JSON.stringify(data) !== JSON.stringify(base);
+  const isDirty = () => rDirty() || dDirty();
+  const saveDDraft = () => { clearTimeout(dtmr); dtmr = setTimeout(() => { if (dDirty()) u.SAVE(DDRAFT, ddata); else { try { localStorage.removeItem(DDRAFT); } catch (e) { } } bar(); }, 300); };
+  let dtmr = null;
   let tmr = null;
   const saveDraft = () => { clearTimeout(tmr); tmr = setTimeout(() => { if (isDirty()) u.SAVE(DRAFT, data); else { try { localStorage.removeItem(DRAFT); } catch (e) { } } bar(); }, 250); };
   const slug = s => u.norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'receita';
@@ -94,7 +103,7 @@
   const root = document.getElementById('adm');
   const top = h('div', { class: 'adm-top' }), conn = h('div'), tabs = h('nav', { class: 'adm-tabs', role: 'tablist' }), body = h('div', { class: 'adm-body' });
   root.append(h('h1', { class: 'title' }, 'Painel do editor'),
-    h('p', { class: 'lead' }, 'Edite receitas, diluições e o aviso. O botão Salvar coloca as alterações no site para todos os colegas.'), top, conn, tabs, body);
+    h('p', { class: 'lead' }, 'Edite receitas, descrições cirúrgicas, diluições e o aviso. O botão Salvar coloca as alterações no site para todos os colegas.'), top, conn, tabs, body);
   let flash = null; // mensagem após salvar
 
   /* ---------- barra de status com o botão Salvar ---------- */
@@ -103,18 +112,18 @@
     const d = isDirty();
     top.append(h('div', { class: 'adm-status' + (d ? ' dirty' : '') },
       h('b', null, d ? 'Há alterações não salvas' : 'Tudo salvo: todos os colegas já veem esta versão'),
-      h('span', null, d ? 'Toque em Salvar para colocar no site para todos.' : `${data.receitas.length} receitas · ${Object.keys(data.inf).length} diluições personalizadas`)),
+      h('span', null, d ? 'Toque em Salvar para colocar no site para todos.' : `${data.receitas.length} receitas · ${ddata.m.length} descrições cirúrgicas · ${Object.keys(data.inf).length} diluições personalizadas`)),
       h('div', { class: 'adm-acts' },
         h('button', { type: 'button', class: 'copy rx-copy adm-save', disabled: !d ? true : null, onclick: publish }, icon('copy'), d ? 'Salvar para todos' : 'Salvo'),
-        d && h('button', { type: 'button', class: 'rx-btn', onclick: () => { if (confirm('Descartar as alterações que ainda não foram salvas?')) { data = clone(base); try { localStorage.removeItem(DRAFT); } catch (e) { } st.sel = data.receitas[0] && data.receitas[0].id; render(); } } }, 'Descartar alterações')));
+        d && h('button', { type: 'button', class: 'rx-btn', onclick: () => { if (confirm('Descartar as alterações que ainda não foram salvas?')) { data = clone(base); ddata = clone(dbase); try { localStorage.removeItem(DRAFT); localStorage.removeItem(DDRAFT); } catch (e) { } st.sel = data.receitas[0] && data.receitas[0].id; render(); } } }, 'Descartar alterações')));
     if (flash) top.append(flash);
   }
   function tabBar() {
     tabs.innerHTML = '';
-    [['rx', 'Receitas'], ['inf', 'Diluições'], ['aviso', 'Aviso'], ['hist', 'Histórico e backups'], ['acessos', 'Acessos'], ['cfg', 'Configurações']].forEach(([id, l]) =>
+    [['rx', 'Receitas'], ['desc', 'Descrições cirúrgicas'], ['inf', 'Diluições'], ['aviso', 'Aviso'], ['hist', 'Histórico e backups'], ['acessos', 'Acessos'], ['cfg', 'Configurações']].forEach(([id, l]) =>
       tabs.append(h('button', { type: 'button', role: 'tab', 'aria-selected': st.tab === id ? 'true' : 'false', class: st.tab === id ? 'on' : '', onclick: () => { st.tab = id; flash = null; render(); } }, l)));
   }
-  function render() { bar(); tabBar(); body.innerHTML = ''; ({ rx: tabRx, inf: tabInf, aviso: tabAviso, hist: tabHist, acessos: tabAcessos, cfg: tabCfg })[st.tab](); }
+  function render() { bar(); tabBar(); body.innerHTML = ''; ({ rx: tabRx, desc: tabDesc, inf: tabInf, aviso: tabAviso, hist: tabHist, acessos: tabAcessos, cfg: tabCfg })[st.tab](); }
 
   /* ---------- conectar o painel ao site (primeira vez em cada aparelho) ---------- */
   const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new?name=' + encodeURIComponent('Painel calculadoras') +
@@ -146,6 +155,52 @@
       h('button', { type: 'button', class: 'rx-btn', onclick: () => { conn.innerHTML = ''; } }, 'Agora não')));
     conn.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setTimeout(() => inp.focus(), 300);
+  }
+
+  /* ---------- descrições cirúrgicas ---------- */
+  function tabDesc() {
+    const wrap = h('div', { class: 'adm-rx' }), left = h('section', { class: 'adm-l' }), right = h('section', { class: 'adm-r' });
+    wrap.append(left, right); body.append(wrap);
+    if (!window.DRB_DESC) { right.append(h('div', { class: 'alert crit' }, icon('alert'), h('span', null, 'O arquivo descricoes.js não carregou. Recarregue a página.'))); return; }
+    const cname = id => (ddata.cats.find(c => c.id === id) || {}).t || id;
+    const q = h('input', { type: 'search', placeholder: 'Filtrar descrições', value: st.dq || '', 'aria-label': 'Filtrar descrições', oninput: e => { st.dq = e.target.value; list(); } });
+    const ul = h('ul', { class: 'rx-list' });
+    const dslug = s => u.norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'modelo';
+    const duniq = id => { let x = id, i = 2; while (ddata.m.some(r => r.id === x)) x = id + '-' + i++; return x; };
+    left.append(h('button', { type: 'button', class: 'copy', onclick: () => {
+      const id = duniq('nova-descricao'); ddata.m.unshift({ id, c: (ddata.cats[0] || {}).id || 'abd', t: 'Nova descrição', a: '', an: '', dx: '', cp: '', rel: 'Procedimento sem intercorrências.', s: ['Paciente em posição DDH sob ___', 'Assepsia + antissepsia + colocação de campos estéreis'] }); st.dsel = id; saveDDraft(); render();
+    } }, '+ Nova descrição'), h('label', { class: 'gs' }, icon('search'), q), ul);
+    function list() {
+      ul.innerHTML = '';
+      const nq = u.norm((st.dq || '').trim()), parts = nq ? nq.split(/\s+/) : [];
+      ddata.m.filter(r => !parts.length || parts.every(p => u.norm(r.t + ' ' + r.a + ' ' + cname(r.c)).includes(p))).forEach(r => {
+        ul.append(h('li', { class: 'rx-item' + (r.id === st.dsel ? ' on' : '') }, h('button', { type: 'button', class: 'rx-open', onclick: () => { st.dsel = r.id; render(); } },
+          h('span', { class: 'rx-t' }, r.t, h('small', { class: 'adm-cat' }, cname(r.c) + (r.a ? ' · ' + r.a : ''))))));
+      });
+    }
+    list();
+    const r = ddata.m.find(x => x.id === st.dsel);
+    if (!r) { right.append(h('div', { class: 'rx-blank' }, h('h2', null, 'Selecione ou crie uma descrição'), h('p', null, ddata.m.length + ' modelos. As alterações vão para todos ao tocar em Salvar.'))); return; }
+    const ch = () => saveDDraft();
+    const inp = (label, k, o) => h('label', { class: 'fld' + (o && o.full ? ' full' : '') }, h('span', { class: 'lbl' }, label), h('input', Object.assign({ value: r[k] || '', oninput: e => { r[k] = e.target.value; ch(); } }, o && o.attrs)));
+    const catSel = h('select', { onchange: e => {
+      if (e.target.value === '__new') { const t = prompt('Nome da nova categoria:'); if (t && t.trim()) { const id = dslug(t); if (!ddata.cats.some(c => c.id === id)) ddata.cats.push({ id, t: t.trim() }); r.c = id; } saveDDraft(); render(); return; }
+      r.c = e.target.value; ch();
+    } }, ddata.cats.map(c => h('option', { value: c.id }, c.t)), h('option', { value: '__new' }, 'Nova categoria…'));
+    catSel.value = r.c;
+    const steps = h('textarea', { rows: 16, oninput: e => { r.s = e.target.value.split('\n').map(x => x.trim()).filter(Boolean); ch(); } }, (r.s || []).join('\n'));
+    right.append(
+      h('div', { class: 'adm-head' }, h('h2', null, r.t || 'Sem título'), h('span', { class: 'adm-id' }, 'link: #/descricoes/' + r.id)),
+      h('div', { class: 'panel' },
+        h('div', { class: 'fgrid' }, inp('Título (procedimento e variação)', 't', { full: true }),
+          h('label', { class: 'fld' }, h('span', { class: 'lbl' }, 'Categoria'), catSel), inp('Modelo de (cirurgião)', 'a', { attrs: { placeholder: 'Dra Fulana' } }),
+          inp('Tipo de anestesia', 'an'), inp('Diagnóstico pré-operatório', 'dx'),
+          inp('Cirurgia proposta e realizada (com código, se quiser)', 'cp', { full: true }), inp('Relatório da cirurgia', 'rel', { full: true })),
+        h('label', { class: 'fld' }, h('span', { class: 'lbl' }, 'Passos da descrição (um por linha, sem número; use ___ para o que precisa ser completado)'), steps),
+        h('div', { class: 'adm-acts' },
+          h('button', { type: 'button', class: 'rx-btn', onclick: () => { const c = clone(r); c.id = duniq(r.id + '-copia'); c.t = r.t + ' (cópia)'; ddata.m.splice(ddata.m.indexOf(r) + 1, 0, c); st.dsel = c.id; saveDDraft(); render(); } }, 'Duplicar'),
+          h('a', { class: 'rx-btn adm-a', href: 'index.html#/descricoes/' + r.id, target: '_blank', rel: 'noopener' }, 'Ver no site'),
+          h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (confirm(`Excluir a descrição “${r.t}”?`)) { ddata.m.splice(ddata.m.indexOf(r), 1); st.dsel = null; saveDDraft(); render(); } } }, 'Excluir descrição'))));
   }
 
   /* ---------- receitas ---------- */
@@ -386,6 +441,19 @@
     return r.json();
   }
   const fileText = () => { const d = clone(data); d.atualizado = new Date().toISOString().slice(0, 10); return '/* Dados editáveis pelo painel do editor (admin.html). Não editar à mão se for usar o painel. */\nwindow.DRB_DATA = ' + JSON.stringify(d, null, 1) + ';\n'; };
+  const descText = () => '/* Descrições cirúrgicas: modelos por procedimento e autor. Editável pelo painel do editor (admin.html). */\nwindow.DRB_DESC = {"atualizado":' + JSON.stringify(new Date().toISOString().slice(0, 10)) + ',"cats":' + JSON.stringify(ddata.cats) + ',"m":[\n' + ddata.m.map(m => JSON.stringify(m)).join(',\n') + '\n]};\n';
+  function dsummary() {
+    const bm = new Map(dbase.m.map(r => [r.id, r])), dm = new Map(ddata.m.map(r => [r.id, r])), out = [];
+    const add = ddata.m.filter(r => !bm.has(r.id)).map(r => r.t), ed = ddata.m.filter(r => bm.has(r.id) && JSON.stringify(bm.get(r.id)) !== JSON.stringify(r)).map(r => r.t), del = dbase.m.filter(r => !dm.has(r.id)).map(r => r.t);
+    if (add.length) out.push('criou ' + add.join(', ')); if (ed.length) out.push('editou ' + ed.join(', ')); if (del.length) out.push('excluiu ' + del.join(', '));
+    if (JSON.stringify(dbase.cats) !== JSON.stringify(ddata.cats)) out.push('categorias');
+    const s2 = 'descrições: ' + (out.join('; ') || 'ajustes'); return s2.length > 300 ? s2.slice(0, 297) + '…' : s2;
+  }
+  async function putFile(path, text, message) {
+    const url = `https://api.github.com/repos/${cfg.repo}/contents/${path}`;
+    let sha; try { sha = (await gh('GET', url + '?ref=' + encodeURIComponent(cfg.branch))).sha; } catch (e) { if (!/sem permissão/.test(e.message)) throw e; }
+    return gh('PUT', url, { message, content: b64(text), branch: cfg.branch, sha });
+  }
   const b64 = str => { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
   function saveFile(txt, name) { const a = h('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), download: name }); document.body.append(a); a.click(); a.remove(); }
   function download() { saveFile(fileText(), 'dados-' + new Date().toISOString().slice(0, 10) + '.js'); }
@@ -417,11 +485,17 @@
     if (!cfg.token) { connectCard(publish); return; }
     const btn = top.querySelector('.adm-save'); if (btn) { btn.disabled = true; btn.lastChild.textContent = 'Salvando…'; }
     try {
-      const url = `https://api.github.com/repos/${cfg.repo}/contents/${cfg.path}`;
-      let sha; try { sha = (await gh('GET', url + '?ref=' + encodeURIComponent(cfg.branch))).sha; } catch (e) { if (!/sem permissão/.test(e.message)) throw e; }
-      const res = await gh('PUT', url, { message: 'Painel do editor: ' + summary(), content: b64(fileText()), branch: cfg.branch, sha });
-      Object.keys(base).forEach(k => delete base[k]); Object.assign(base, clone(data)); st.restoredFrom = null;
-      try { localStorage.removeItem(DRAFT); } catch (e) { }
+      let res = null;
+      if (rDirty()) {
+        res = await putFile(cfg.path, fileText(), 'Painel do editor: ' + summary());
+        Object.keys(base).forEach(k => delete base[k]); Object.assign(base, clone(data)); st.restoredFrom = null;
+        try { localStorage.removeItem(DRAFT); } catch (e) { }
+      }
+      if (dDirty()) {
+        res = await putFile(DPATH, descText(), 'Painel do editor: ' + dsummary());
+        Object.keys(dbase).forEach(k => delete dbase[k]); Object.assign(dbase, clone(ddata));
+        try { localStorage.removeItem(DDRAFT); } catch (e) { }
+      }
       track('editor/salvou');
       flash = h('div', { class: 'alert ok' }, icon('alert'), h('span', null, 'Salvo para todos. Em alguns minutos os colegas já veem a alteração (quem estiver com o site aberto, ao recarregar a página). O registro fica em Histórico e backups. ', res.commit && h('a', { href: res.commit.html_url, target: '_blank', rel: 'noopener' }, 'Ver no GitHub')));
       bar();

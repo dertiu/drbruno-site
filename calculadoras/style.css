@@ -492,3 +492,25 @@ body[data-theme="light"] .rx-paper{box-shadow:0 0 0 1px var(--div),0 10px 24px r
 }
 @media print{.hdr,.side,.mini,.copy,.star,.toprow,.ov{display:none!important}.shell{display:block}body{background:#fff;color:#000}.panel{border:1px solid #999}}
 @media(max-width:600px){.hdr-in{gap:8px;padding:10px 12px}.chip-pt>.ico{display:none}.brand-t{font-size:16px}}
+/* descrições cirúrgicas */
+.desc-a{font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface2);border-radius:6px;padding:1px 7px;flex:none;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rx-item.on .desc-a{color:var(--text)}
+.desc-n{margin:-4px 2px 0}
+.desc-head h2{margin:0 0 4px;font-size:22px;line-height:1.25}
+.desc-meta{color:var(--muted);font-size:14.5px}
+.desc-form .inwrap input{font-size:17px;font-weight:600}
+.desc-tipo{flex-wrap:wrap}
+.desc-tipo button{flex:1 1 120px}
+.desc-steps,.desc-rel{width:100%;background:#fbfaf7;color:#1b1f24;border:1.5px solid var(--line2);border-radius:10px;padding:14px 16px;font:16px/1.6 Atkinson,system-ui,sans-serif;resize:vertical;outline:none}
+.desc-steps{min-height:320px}
+.desc-rel{background:var(--bg);color:var(--text);font-size:16px;line-height:1.45}
+.desc-steps:focus,.desc-rel:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--tint)}
+.desc-chk{display:flex;align-items:center;gap:10px;font-size:15.5px;color:var(--muted);cursor:pointer}
+.desc-chk input{width:20px;height:20px;accent-color:var(--accent)}
+.desc-sibl{display:flex;flex-wrap:wrap;gap:6px}
+.desc-sibl .rx-cat{text-align:left;line-height:1.3;padding:6px 12px;max-width:100%;white-space:normal;height:auto}
+@media(max-width:700px){.desc-form .fgrid{grid-template-columns:minmax(0,1fr)}}
+.desc-back{display:none;min-height:42px;margin-bottom:10px}
+@media(max-width:1000px){.desc.has-sel>.rx-l{display:none}.desc .desc-back{display:inline-flex;align-items:center}.desc .rx-cats{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}.desc .rx-cats .rx-cat{flex:none}}
+.desc .desc-more{position:static!important;border:0!important;padding:0!important}
+.desc .rx-actions .copy svg,.desc .rx-actions .rx-btn svg{flex:none}
