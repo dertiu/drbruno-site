@@ -527,5 +527,6 @@ CID: ___`],
     ['ori', 'Orientações e declarações', 'pré-operatório, curativo na UBS, cadeira de rodas'],
     ['cross', 'Respostas CROSS e NIR', 'caso aceito, negado por superlotação, não referência']
   ].map(([c, t, d]) => ({ id: 'pront-' + c, g: 'pront', title: t, desc: 'Modelos: ' + d, kw: 'prontuario modelo ' + t + ' ' + d, href: '#/prontuario/c:' + c }));
+  M.forEach(m => D.links.push({ id: 'prl-' + m.id, g: 'pront', title: m.t, desc: 'Modelo de prontuário: ' + catName(m.c), kw: 'modelo prontuario texto ' + catName(m.c), href: '#/prontuario/' + m.id }));
   D.add(tool, ...links);
 })();

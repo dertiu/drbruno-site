@@ -161,5 +161,12 @@
     ['cp', 'Cabeça e pescoço', 'tireoidectomia, submandibular, esvaziamento'], ['torac', 'Torácica e via aérea', 'traqueostomia, drenagem, lobectomia'],
     ['onco', 'Oncologia, ginecologia e urologia', 'histerectomia, nefrectomia, Whipple'], ['proc', 'Procedimentos à beira do leito', 'cateter central, portocath, paracentese, toracocentese']
   ].map(([c, t, d]) => ({ id: 'desc-' + c, g: 'desc', title: t, desc: 'Descrições: ' + d, kw: 'descrição cirúrgica ' + t + ' ' + d, href: '#/descricoes/c:' + c }));
+  // a busca do topo também encontra cada modelo (carrega os dados na primeira vez que a busca é usada)
+  D.onSearch = (D.onSearch || []).concat(done => load(err => {
+    if (err || !window.DRB_DESC) return;
+    const cn = {}; window.DRB_DESC.cats.forEach(c => { cn[c.id] = c.t; });
+    window.DRB_DESC.m.forEach(m => D.links.push({ id: 'dsl-' + m.id, g: 'desc', title: m.t + (m.a ? ' (' + m.a + ')' : ''), desc: 'Descrição cirúrgica: ' + (cn[m.c] || ''), kw: 'descricao cirurgica ' + (m.cp || '') + ' ' + (cn[m.c] || ''), href: '#/descricoes/' + m.id }));
+    done();
+  }));
   D.add(tool, ...links);
 })();

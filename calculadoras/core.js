@@ -68,7 +68,9 @@
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
     chev: '<path d="M9 6l6 6-6 6"/>',
     home: '<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
-    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>'
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>',
+    reset: '<path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5"/>',
+    down: '<path d="M12 4v12M6 11l6 6 6-6M5 21h14"/>'
   };
   const icon = u.icon = (n, fill, size) => {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -156,10 +158,50 @@
     const el = document.getElementById('pt'); if (!el) return;
     const p = S.patient;
     const bits = [p.kg !== '' && p.kg + ' kg', ageLabel(), p.sex, p.cm !== '' && p.cm + ' cm'].filter(Boolean);
-    el.hidden = !bits.length;
+    el.hidden = false;
     el.textContent = '';
-    if (bits.length) { el.append(icon('user', false, 16), ...bits.map(b => h('span', { class: 'tok' }, b))); el.title = 'Paciente atual. Toque para editar.'; }
+    el.classList.toggle('empty', !bits.length);
+    el.append(icon('user', false, 18), ...(bits.length ? bits.map(b => h('span', { class: 'tok' }, b)) : [h('span', { class: 'lbl-pt' }, 'Paciente')]));
+    el.title = bits.length ? 'Paciente atual. Toque para editar.' : 'Informar peso, idade e sexo do paciente';
+    el.setAttribute('aria-label', bits.length ? 'Paciente atual: ' + bits.join(', ') + '. Editar' : 'Informar paciente');
   }
+
+  /* ---------- aviso rápido (toast) ---------- */
+  let toastT = null;
+  const toast = D.toast = msg => {
+    let el = document.getElementById('toast');
+    if (!el) { el = h('div', { id: 'toast', class: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.append(el); }
+    el.textContent = msg; el.classList.add('on');
+    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1800);
+    try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) { }
+  };
+
+  /* ---------- paciente em qualquer tela (folha rápida) ---------- */
+  const KEEP = ['descricoes', 'prontuario', 'handover'];
+  function openPatient() {
+    if (document.getElementById('ptsheet')) return;
+    const before = JSON.stringify(S.patient);
+    const ret = document.activeElement;
+    const close = () => {
+      document.removeEventListener('keydown', onKey);
+      wrap.remove(); document.body.classList.remove('sheet-open');
+      const changed = JSON.stringify(S.patient) !== before;
+      const cur = decodeURIComponent((location.hash || '').replace(/^#\/?/, '')).split('/')[0];
+      if (changed && KEEP.indexOf(cur) < 0) { const y = window.scrollY; route(true); window.scrollTo(0, y); }
+      if (changed) toast('Paciente atualizado');
+      if (ret && ret.focus) try { ret.focus(); } catch (e) { }
+    };
+    const onKey = e => { if (e.key === 'Escape') close(); else if (e.key === 'Enter' && e.target.tagName === 'INPUT') { const ins = [...sheet.querySelectorAll('input')], i = ins.indexOf(e.target); if (i >= 0 && ins[i + 1]) { e.preventDefault(); ins[i + 1].focus(); } else close(); } };
+    const sheet = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Paciente atual' },
+      patientPanel({ keep: true, onNew: () => { close(); } }),
+      h('p', { class: 'hint' }, 'Peso, idade, sexo e altura preenchem sozinhos todas as calculadoras. Nada é enviado: fica só neste aparelho.'),
+      h('button', { type: 'button', class: 'copy sheet-ok', onclick: close }, 'Concluir'));
+    const wrap = h('div', { id: 'ptsheet', class: 'sheet-w', onclick: e => { if (e.target === wrap) close(); } }, sheet);
+    document.body.append(wrap); document.body.classList.add('sheet-open');
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => { const i = sheet.querySelector('input'); if (i) { i.focus(); try { i.select(); } catch (e) { } } }, 60);
+  }
+  D.openPatient = openPatient;
 
   /* ---------- hub ---------- */
   const app = () => document.getElementById('app');
@@ -167,6 +209,7 @@
   function toggleFav(id) {
     S.favs = isFav(id) ? S.favs.filter(f => f !== id) : [...S.favs, id];
     u.SAVE('drb_favs', S.favs);
+    toast(isFav(id) ? 'Adicionado aos favoritos' : 'Removido dos favoritos');
     if (typeof sideRefresh === 'function') sideRefresh(sideKeyT, sideKeyG);
   }
   const grpName = id => (D.groups.find(g => g.id === id) || {}).title || '';
@@ -193,6 +236,7 @@
         if (av) box.append(h('div', { class: 'aviso', role: 'note' }, icon('alert'), h('span', null, av)));
         box.append(patientPanel());
         const favs = S.favs.map(byId).filter(Boolean), rec = S.recents.map(byId).filter(t => t && !S.favs.includes(t.id)).slice(0, 5);
+        if (!favs.length && !rec.length) box.append(h('p', { class: 'hint tip' }, icon('star', false, 16), 'Toque na estrela de uma ferramenta para fixá-la aqui no topo.'));
         if (favs.length || rec.length) {
           const q = h('section', { class: 'quick' });
           if (favs.length) q.append(h('h2', { class: 'qh' }, 'Favoritos'), h('div', { class: 'chips' }, favs.map(t => h('a', { class: 'qchip fav', href: t.href || '#/' + t.id }, icon('star', true, 14), t.title))));
@@ -203,28 +247,41 @@
       D.groups.forEach(g => {
         if (G && g.id !== G.id) return;
         const ts = D.tools.filter(t => t.g === g.id); if (!ts.length) return;
-        box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id },
-          !G && h('h2', { class: 'grp-t' }, h('a', { href: '#/g/' + g.id }, h('i', { class: 'dot' }), g.title, h('span', { class: 'n' }, ts.length + ''))),
-          h('ul', { class: 'tlist' }, ts.map(row))));
+        if (G) { box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id }, h('ul', { class: 'tlist' }, ts.map(row)))); return; }
+        const HO = u.LS('drb_home_open', {});
+        const open = HO[g.id] != null ? !!HO[g.id] : window.innerWidth >= 900;
+        const sec = h('section', { class: 'grp acc' + (open ? ' open' : ''), style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id });
+        const list = h('ul', { class: 'tlist' });
+        const fill = () => { if (!list.firstChild) list.append(...ts.map(row)); };
+        if (open) fill();
+        const head = h('button', { type: 'button', class: 'grp-b', 'aria-expanded': open ? 'true' : 'false', onclick: () => {
+          const o2 = !sec.classList.contains('open'); if (o2) fill();
+          sec.classList.toggle('open', o2); head.setAttribute('aria-expanded', o2);
+          const m = u.LS('drb_home_open', {}); m[g.id] = o2; u.SAVE('drb_home_open', m);
+        } }, h('i', { class: 'dot' }), h('span', { class: 'grp-n' }, h('span', { class: 'grp-nt' }, g.title), h('span', { class: 'grp-pv' }, ts.slice(0, 4).map(t => t.title).join(' · '))), h('span', { class: 'n' }, ts.length + ''), icon('chev', false, 18));
+        sec.append(h('h2', { class: 'grp-t' }, head), list);
+        box.append(sec);
       });
       box.append(disclaimer('Ferramentas de apoio à decisão. Não substituem o julgamento clínico. Confira doses, diluições e indicações com o protocolo da sua instituição e a bula antes de prescrever ou administrar.'));
       if (!G) box.append(h('p', { class: 'adm-link' }, ((window.DRB_DATA || {}).estatisticas ? 'Este site registra estatísticas anônimas de uso, sem cookies e sem dados pessoais. ' : ''), h('a', { href: 'admin.html' }, 'Painel do editor')));
     }
     root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão'),
-      h('p', { class: 'lead' }, G ? 'Toque em uma ferramenta para abrir. A estrela fixa a ferramenta nos favoritos.' : 'Informe o paciente uma vez: peso, idade e sexo preenchem todas as calculadoras.'), box);
+      h('p', { class: 'lead' }, G ? 'Toque em uma ferramenta para abrir. A estrela fixa a ferramenta nos favoritos.' : 'Informe o paciente uma vez e ele preenche todas as calculadoras. Busque no topo ou abra uma área abaixo.'), box);
     draw();
     return root;
   }
-  function patientPanel() {
+  function patientPanel(o) {
+    o = o || {};
     const p = S.patient;
+    const wipe = () => { if (!o.keep) S.vals = {}; };
     const f = (id, label, unit, w) => h('label', { class: 'pf ' + (w || '') }, h('span', null, label),
-      h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', autocomplete: 'off', value: p[id] || '', 'aria-label': label, oninput: e => { S.patient[id] = e.target.value; S.vals = {}; savePatient(); } }), unit && h('span', { class: 'u' }, unit)));
-    const ageU = h('select', { 'aria-label': 'Unidade da idade', onchange: e => { S.patient.ageU = e.target.value; S.vals = {}; savePatient(); } }, [['a', 'anos'], ['m', 'meses'], ['d', 'dias']].map(([v, l]) => h('option', { value: v }, l)));
+      h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', autocomplete: 'off', value: p[id] || '', 'aria-label': label, oninput: e => { S.patient[id] = e.target.value; wipe(); savePatient(); } }), unit && h('span', { class: 'u' }, unit)));
+    const ageU = h('select', { 'aria-label': 'Unidade da idade', onchange: e => { S.patient.ageU = e.target.value; wipe(); savePatient(); } }, [['a', 'anos'], ['m', 'meses'], ['d', 'dias']].map(([v, l]) => h('option', { value: v }, l)));
     ageU.value = p.ageU || 'a';
-    const age = h('label', { class: 'pf' }, h('span', null, 'Idade'), h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', autocomplete: 'off', value: p.age || '', 'aria-label': 'Idade', oninput: e => { S.patient.age = e.target.value; S.vals = {}; savePatient(); } }), ageU));
+    const age = h('label', { class: 'pf' }, h('span', null, 'Idade'), h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', autocomplete: 'off', value: p.age || '', 'aria-label': 'Idade', oninput: e => { S.patient.age = e.target.value; wipe(); savePatient(); } }), ageU));
     const sex = h('div', { class: 'pf' }, h('span', null, 'Sexo'), h('div', { class: 'pseg', role: 'group', 'aria-label': 'Sexo' }, [['M', 'Masc.'], ['F', 'Fem.']].map(([v, l]) =>
-      h('button', { type: 'button', class: p.sex === v ? 'on' : '', 'aria-pressed': p.sex === v ? 'true' : 'false', onclick: e => { S.patient.sex = S.patient.sex === v ? '' : v; S.vals = {}; savePatient(); e.currentTarget.parentNode.querySelectorAll('button').forEach(b => { const on = b === e.currentTarget && S.patient.sex === v; b.className = on ? 'on' : ''; b.setAttribute('aria-pressed', on); }); } }, l))));
-    const clear = h('button', { type: 'button', class: 'pclear', onclick: () => { S.patient = { kg: '', age: '', ageU: 'a', sex: '', cm: '' }; S.vals = {}; savePatient(); route(); } }, 'Novo paciente');
+      h('button', { type: 'button', class: p.sex === v ? 'on' : '', 'aria-pressed': p.sex === v ? 'true' : 'false', onclick: e => { S.patient.sex = S.patient.sex === v ? '' : v; wipe(); savePatient(); e.currentTarget.parentNode.querySelectorAll('button').forEach(b => { const on = b === e.currentTarget && S.patient.sex === v; b.className = on ? 'on' : ''; b.setAttribute('aria-pressed', on); }); } }, l))));
+    const clear = h('button', { type: 'button', class: 'pclear', onclick: () => { S.patient = { kg: '', age: '', ageU: 'a', sex: '', cm: '' }; S.vals = {}; savePatient(); if (o.onNew) o.onNew(); else { route(); toast('Paciente limpo'); } } }, 'Novo paciente');
     return h('section', { class: 'pat', 'aria-label': 'Paciente atual' },
       h('div', { class: 'pat-h' }, h('h2', null, 'Paciente atual'), clear),
       h('div', { class: 'pat-g' }, f('kg', 'Peso', 'kg'), age, sex, f('cm', 'Altura', 'cm')));
@@ -238,7 +295,9 @@
     const root = h('main', { class: 'wrap' });
     const starB = h('button', { class: 'icon-btn star-b' + (isFav(t.id) ? ' on' : ''), type: 'button', title: 'Favoritar', 'aria-label': 'Favoritar', onclick: () => { toggleFav(t.id); starB.className = 'icon-btn star-b' + (isFav(t.id) ? ' on' : ''); starB.innerHTML = ''; starB.append(icon('star', isFav(t.id))); } }, icon('star', isFav(t.id)));
     root.append(
-      h('div', { class: 'toprow' }, h('a', { class: 'back', href: '#/g/' + t.g }, icon('back'), grpName(t.g)), starB),
+      h('div', { class: 'toprow' }, h('a', { class: 'back', href: '#/g/' + t.g }, icon('back'), grpName(t.g)),
+        !t.render && h('button', { class: 'icon-btn clr-b', type: 'button', title: 'Limpar os campos desta ferramenta', 'aria-label': 'Limpar campos', onclick: () => { Object.keys(raw).forEach(k => delete raw[k]); build(); toast('Campos limpos'); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, icon('reset')),
+        starB),
       h('h1', { class: 'title' }, t.title),
       h('p', { class: 'tdesc' }, t.desc));
     if (t.render) {
@@ -349,10 +408,10 @@
         if (!grid) { grid = h('div', { class: 'fgrid' }); form.append(grid); }
         grid.append(fieldEl(f));
       });
-      const nf = fields.filter(f => f.type !== 'sec' && f.type !== 'note').length;
-      if (nf > 7 && !mini) {
-        mini = h('div', { class: 'mini', role: 'button', onclick: () => res.scrollIntoView({ behavior: 'smooth' }) }, h('span', null, ''), h('b', null, ''));
+      if (!mini) {
+        mini = h('div', { class: 'mini', role: 'button', tabindex: '0', title: 'Ver o resultado completo', onclick: () => res.scrollIntoView({ behavior: 'smooth' }) }, h('span', null, ''), h('b', null, ''));
         root.append(mini);
+        if ('IntersectionObserver' in window) new IntersectionObserver(es => { mini.classList.toggle('off', es[0].isIntersecting); }, { rootMargin: '0px 0px -90px 0px' }).observe(res);
       }
       update();
     }
@@ -363,7 +422,7 @@
       renderResult(res, r, t, obj => { Object.assign(raw, obj); build(); });
       if (mini) {
         mini.hidden = !(r && r.main);
-        if (r && r.main) { mini.firstChild.textContent = r.main.label || 'Resultado'; mini.lastChild.textContent = r.main.value + (r.main.unit ? ' ' + r.main.unit : ''); }
+        if (r && r.main) { const nv = r.main.value + (r.main.unit ? ' ' + r.main.unit : ''); if (mini.lastChild.textContent !== nv) { mini.classList.remove('pulse'); void mini.offsetWidth; mini.classList.add('pulse'); } mini.firstChild.textContent = (r.main.label || 'Resultado') + (r.sub ? ' · ' + r.sub : ''); mini.lastChild.textContent = nv; }
       }
     }
     build();
@@ -436,6 +495,10 @@
     if (favs.length) nav.append(sideGroup_({ id: 'fav', title: 'Favoritos', c: 'var(--read)' }, favs, true));
     D.groups.forEach(g => { const ts = D.tools.filter(t => t.g === g.id); if (ts.length) nav.append(sideGroup_(g, ts)); });
     el.append(nav);
+    const foot = h('div', { class: 'side-f' },
+      h('button', { type: 'button', class: 'sl', onclick: () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; u.SAVE('drb_theme', S.theme); setTheme(); sideRefresh(sideKeyT, sideKeyG); } }, icon(S.theme === 'dark' ? 'sun' : 'moon', false, 18), S.theme === 'dark' ? 'Tema claro' : 'Tema escuro'),
+      D.installEvt && h('button', { type: 'button', class: 'sl', onclick: () => { const ev = D.installEvt; D.installEvt = null; try { ev.prompt(); } catch (e) { } sideRefresh(sideKeyT, sideKeyG); } }, icon('down', false, 18), 'Instalar no aparelho'));
+    el.append(foot);
   }
   function sideGroup_(g, ts, fav) {
     const open = fav ? OPEN.fav !== false : OPEN.cur === g.id;
@@ -467,26 +530,43 @@
     let items = [], cur = -1;
     const run = () => {
       const q = u.norm(inp.value.trim()); box.innerHTML = ''; items = []; cur = -1;
-      if (!q) { box.hidden = true; return; }
+      if (!q) {
+        const ids = [...S.favs, ...S.recents.filter(r => !S.favs.includes(r))].slice(0, 8);
+        const ts = ids.map(id => D.tools.find(t => t.id === id)).filter(Boolean);
+        if (!ts.length || document.activeElement !== inp) { box.hidden = true; return; }
+        box.hidden = false; box.append(h('div', { class: 'gsh' }, 'Favoritos e recentes'));
+        ts.forEach(t => {
+          const g = D.groups.find(x => x.id === t.g) || {};
+          const a = h('a', { class: 'gsi sm', href: t.href || '#/' + t.id, style: '--gc:' + (g.c || 'var(--accent)'), onclick: () => { box.hidden = true; inp.blur(); } }, h('span', { class: 'gt' }, t.title));
+          box.append(a); items.push(a);
+        });
+        return;
+      }
       const parts = q.split(/\s+/);
-      const scored = D.tools.concat(D.links).map(t => {
+      const nT = D.tools.length;
+      const scored = D.tools.concat(D.links).map((t, ix) => {
         const ti = u.norm(t.title), all = u.norm(t.title + ' ' + t.desc + ' ' + (t.kw || ''));
         if (!parts.every(p => all.includes(p))) return null;
-        return { t, s: (ti.startsWith(q) ? 0 : ti.includes(q) ? 1 : parts.every(p => ti.includes(p)) ? 2 : 3) };
-      }).filter(Boolean).sort((a, b) => a.s - b.s).slice(0, 9);
+        return { t, s: (ti.startsWith(q) ? 0 : ti.includes(q) ? 1 : parts.every(p => ti.includes(p)) ? 2 : 3) + (ix >= nT ? 0.5 : 0) };
+      }).filter(Boolean).sort((a, b) => a.s - b.s);
+      const total = scored.length; scored.length = Math.min(total, 14);
       box.hidden = false;
       if (!scored.length) { box.append(h('div', { class: 'gse' }, 'Nenhuma ferramenta encontrada.')); return; }
       scored.forEach(({ t }) => {
         const g = D.groups.find(x => x.id === t.g) || {};
         const a = h('a', { class: 'gsi', href: t.href || '#/' + t.id, target: t.href && t.href[0] !== '#' ? '_blank' : null, style: '--gc:' + (g.c || 'var(--accent)'), onclick: () => { inp.value = ''; box.hidden = true; inp.blur(); } },
-          h('span', { class: 'gk' }, g.title || ''), h('span', { class: 'gt' }, t.title), h('span', { class: 'gd' }, t.desc));
+          D.links.indexOf(t) < 0 && h('span', { class: 'gk' }, g.title || ''), h('span', { class: 'gt' }, t.title), h('span', { class: 'gd' }, t.desc));
+        if (D.links.indexOf(t) >= 0) a.classList.add('lk');
         box.append(a); items.push(a);
       });
+      if (total > scored.length) box.append(h('div', { class: 'gse' }, 'Mais ' + (total - scored.length) + ' resultados. Digite mais para refinar.'));
       mark(0);
     };
+    let lazy = false;
+    const warm = () => { if (lazy) return; lazy = true; (D.onSearch || []).forEach(f => { try { f(() => { if (inp.value.trim() && document.activeElement === inp) run(); }); } catch (e) { } }); };
     const mark = i => { items.forEach((a, j) => a.classList.toggle('on', j === i)); cur = i; if (items[i]) items[i].scrollIntoView({ block: 'nearest' }); };
     inp.addEventListener('input', run);
-    inp.addEventListener('focus', () => { if (inp.value) run(); });
+    inp.addEventListener('focus', () => { warm(); run(); });
     inp.addEventListener('keydown', e => {
       if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) mark((cur + 1) % items.length); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) mark((cur - 1 + items.length) % items.length); }
@@ -498,7 +578,8 @@
   }
 
   /* ---------- roteamento e inicialização ---------- */
-  function route() {
+  function route(keep) {
+    keep = keep === true;
     const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
     const gm = id.match(/^g\/(.+)$/);
     const base = gm ? '' : id.split('/')[0], sub = gm ? '' : id.slice(base.length + 1);
@@ -506,7 +587,7 @@
     const lk = D.tools.find(x => x.href === '#/' + id);
     const a = app(); a.innerHTML = '';
     if (t) {
-      S.recents = [t.id, ...S.recents.filter(r => r !== t.id)].slice(0, 6);
+      if (!keep) S.recents = [t.id, ...S.recents.filter(r => r !== t.id)].slice(0, 6);
       u.SAVE('drb_recents', S.recents);
       a.append(toolView(t, sub));
       document.title = t.title + ' | Calculadoras Dr. Bruno Michels';
@@ -514,8 +595,7 @@
       a.append(hubView(gm && gm[1]));
       document.title = 'Calculadoras de plantão | Dr. Bruno Michels';
     }
-    track(id || 'inicio', t ? t.title : gm ? 'Grupo ' + gm[1] : 'Início');
-    window.scrollTo(0, 0);
+    if (!keep) { track(id || 'inicio', t ? t.title : gm ? 'Grupo ' + gm[1] : 'Início'); window.scrollTo(0, 0); }
     sideRefresh(lk ? lk.id : t ? t.id : null, gm ? gm[1] : null);
     closeSide();
   }
@@ -545,14 +625,25 @@
     setTheme(); chip(); searchInit();
     const mb = document.getElementById('menu'); if (mb) mb.append(icon('menu'));
     const gsi = document.querySelector('.gsico'); if (gsi) gsi.append(icon('search'));
+    const gin = document.getElementById('gs'); if (gin && window.innerWidth < 600) gin.placeholder = 'Buscar no app';
+    else if (gin) gin.placeholder = 'Buscar: noradrenalina, AVC, apendicectomia, evolução…';
     if (mb) mb.onclick = () => document.body.classList.toggle('side-open');
     const ov = document.getElementById('ov'); if (ov) ov.onclick = closeSide;
     document.getElementById('theme').onclick = () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; u.SAVE('drb_theme', S.theme); setTheme(); };
-    document.getElementById('pt').onclick = () => {
-      if (location.hash && location.hash !== '#/') location.hash = '#/';
-      setTimeout(() => { const i = document.querySelector('.pat input'); if (i) i.focus(); }, 60);
-    };
-    window.addEventListener('hashchange', route);
+    document.getElementById('pt').onclick = openPatient;
+    // números: seleciona o valor ao focar e Enter pula para o próximo campo
+    document.addEventListener('focusin', e => { const el = e.target; if (el && el.tagName === 'INPUT' && el.getAttribute('inputmode') === 'decimal' && el.value) setTimeout(() => { try { if (document.activeElement === el) el.select(); } catch (x) { } }, 0); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeSide();
+      if (e.key !== 'Enter' || !e.target || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox') return;
+      const grid = e.target.closest('.fgrid, .pat-g'); if (!grid || e.target.closest('.sheet')) return;
+      const scope = e.target.closest('.panel, .pat') || grid;
+      const ins = [...scope.querySelectorAll('input:not([type=checkbox]), select')], i = ins.indexOf(e.target);
+      e.preventDefault(); if (i >= 0 && ins[i + 1]) ins[i + 1].focus(); else e.target.blur();
+    });
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); D.installEvt = e; sideRefresh(sideKeyT, sideKeyG); });
+    window.addEventListener('appinstalled', () => { D.installEvt = null; sideRefresh(sideKeyT, sideKeyG); });
+    window.addEventListener('hashchange', () => route());
     route();
     if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) navigator.serviceWorker.register('sw.js').catch(() => { });
   };
