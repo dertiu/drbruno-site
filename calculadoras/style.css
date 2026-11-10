@@ -607,3 +607,17 @@ button.sl .ico{color:var(--muted)}
 .desc-opt:has(input:checked){border-color:var(--accent);background:var(--tint);color:var(--accentText)}
 .desc-dest{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:-6px}
 .desc-dest .rx-cat{min-height:38px;padding:4px 14px}
+/* fichas por procedimento */
+.desc-fam{padding:16px;margin-bottom:14px}
+.desc-fam .fgrid{gap:14px}
+.desc-ax .seg{display:flex;flex-wrap:wrap}
+.desc-ax .seg button{flex:1 1 auto;min-width:64px}
+.desc-ax .seg.seg-n button{min-width:52px;flex:1 1 0}
+.desc-ax .seg button:disabled{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.desc-ax .hint{margin-top:6px;font-size:14px}
+.desc-fam .alert{margin-top:12px}
+.desc-fam .rx-cat small{font-weight:400;opacity:.8}
+.desc-fam .rx-cat.adp{border-style:dashed}
+.desc-ax .seg.seg-n{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr))}
+.desc-ax .seg.seg-n button{min-width:0;padding:0 4px}
+@media(max-width:1000px){.wrap:has(.desc.has-sel)>.title,.wrap:has(.desc.has-sel)>.tdesc,.wrap:has(.desc.has-sel) .toprow{display:none}}

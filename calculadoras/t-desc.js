@@ -41,7 +41,7 @@
     contagem: { l: 'Contagem conferida', x: 'Contagem de compressas, gazes e instrumentais conferida', pos: 'syn', skip: /contagem/i },
     infiltr: { l: 'Anestésico local nas incisões', x: 'Infiltração das incisões com anestésico local', pos: 'cur', skip: /infiltra/i },
     aberta: { l: 'Ferida deixada aberta', x: 'Ferida deixada aberta para cicatrização por segunda intenção', pos: 'cur', skip: /segunda inten/i },
-    drSuc: { l: 'Dreno de sucção', x: 'Posicionamento de dreno de sucção fechado, exteriorizado por contra-abertura e fixado à pele', pos: 'syn', skip: /\bdrenos?\b/i },
+    drSuc: { ax: 'dr', l: 'Dreno de sucção', x: 'Posicionamento de dreno de sucção fechado, exteriorizado por contra-abertura e fixado à pele', pos: 'syn', skip: /\bdrenos?\b/i },
     drCav: { l: 'Dreno na cavidade', x: 'Posicionamento de dreno tubulolaminar em ___, exteriorizado por contra-abertura em ___ e fixado à pele', pos: 'syn', skip: /\bdrenos?\b/i },
     liqLivre: { l: 'Líquido livre', x: 'Presença de líquido livre ___ em cavidade, aproximadamente ___ mL, aspirado', pos: 'ach' },
     invOk: { l: 'Restante da cavidade sem lesões', x: 'Restante do inventário da cavidade sem outras lesões', pos: 'ach', skip: /sem (outras|demais) les/i },
@@ -51,21 +51,21 @@
   };
   const OPTS = {
     apend: [
-      { l: 'Secreção purulenta', x: 'Presença de secreção purulenta em fossa ilíaca direita e pelve, aspirada', pos: 'ach', skip: /purulent/i },
-      { l: 'Abscesso bloqueado', x: 'Presença de abscesso periapendicular bloqueado por epíplon e alças, desfeito e drenado', pos: 'ach', skip: /abscesso/i },
+      { ax: 'fase', l: 'Secreção purulenta', x: 'Presença de secreção purulenta em fossa ilíaca direita e pelve, aspirada', pos: 'ach', skip: /purulent/i },
+      { ax: 'fase', l: 'Abscesso bloqueado', x: 'Presença de abscesso periapendicular bloqueado por epíplon e alças, desfeito e drenado', pos: 'ach', skip: /abscesso/i },
       { l: 'Base íntegra', x: 'Base apendicular íntegra e viável', pos: 'ach', skip: /base (apendicular )?(íntegra|integra|em boas|vi[áa]vel)/i },
       { l: 'Sepultamento do coto', x: 'Sepultamento do coto apendicular com sutura em bolsa', pos: 'pre', skip: /sepultamento|em bolsa/i },
       'lavagem',
       { l: 'Dreno de Penrose', x: 'Posicionamento de dreno de Penrose em fossa ilíaca direita e pelve, exteriorizado por contra-abertura em flanco direito e fixado à pele', pos: 'syn', skip: /\bdrenos?\b/i },
       'cultura', 'anatomo', 'contagem', 'infiltr'],
     vb: [
-      { l: 'Colecistite aguda', x: 'Vesícula biliar com paredes espessadas e edemaciadas, com aderências de epíplon, compatível com colecistite aguda', pos: 'ach', skip: /colecistite|espessad/i },
+      { ax: 'q', l: 'Colecistite aguda', x: 'Vesícula biliar com paredes espessadas e edemaciadas, com aderências de epíplon, compatível com colecistite aguda', pos: 'ach', skip: /colecistite|espessad/i },
       { l: 'Visão crítica de segurança', x: 'Obtida visão crítica de segurança antes da clipagem', at: /clip|ligadura d[oa] (ducto|art[ée]ria|c[ií]stic)/i, skip: /vis[aã]o cr[ií]tica/i },
       { l: 'Colangiografia', x: 'Colangiografia intraoperatória sem falhas de enchimento e com boa passagem de contraste ao duodeno', at: /dissec[cç][aã]o da ves[ií]cula|leito hep[áa]tico/i, skip: /colangiografia/i },
       { l: 'Abertura da vesícula', x: 'Abertura acidental da vesícula durante a dissecção, com extravasamento de bile e cálculos, aspirados e retirados', pos: 'pre', skip: /extravasamento/i },
       { l: 'Retirada em bolsa', x: 'Retirada da vesícula em bolsa extratora pelo portal umbilical', pos: 'pre', skip: /bolsa|endobag/i },
       { l: 'Lavagem do leito', x: 'Lavagem do leito hepático e do espaço sub-hepático com soro fisiológico 0,9%', pos: 'pre', skip: /lavagem/i },
-      { l: 'Dreno sub-hepático', x: 'Posicionamento de dreno tubulolaminar em leito hepático, exteriorizado por contra-abertura em flanco direito e fixado à pele', pos: 'syn', skip: /\bdrenos?\b/i },
+      { ax: 'dr', l: 'Dreno sub-hepático', x: 'Posicionamento de dreno tubulolaminar em leito hepático, exteriorizado por contra-abertura em flanco direito e fixado à pele', pos: 'syn', skip: /\bdrenos?\b/i },
       'anatomo', 'contagem', 'infiltr'],
     hing: [
       { l: 'Hérnia indireta', x: 'Identificada hérnia inguinal indireta, com saco herniário dissecado e tratado por ligadura alta', at: /tela|refor[cç]o/i, skip: /indireta/i },
@@ -87,7 +87,102 @@
     onco: ['anatomo', 'lavagem', 'drCav', 'contagem'],
     proc: ['usg', 'rxTx']
   };
-  const optsFor = (c, txt) => (OPTS[c] || []).map((o, i) => Object.assign({ id: c + i }, typeof o === 'string' ? O[o] : o)).filter(o => !(o.skip && o.skip.test(txt)));
+  const optsFor = (c, txt, fm) => (OPTS[c] || []).map((o, i) => Object.assign({ id: c + i }, typeof o === 'string' ? O[o] : o))
+    .filter(o => !(o.skip && o.skip.test(txt)) && !(o.ax && fm && FAM[fm] && FAM[fm].ax.some(a => a.k === o.ax || (o.ax === 'fase' && a.k === 'grau'))));
+
+  /* ---------- fichas por procedimento: seletores que trocam o texto ---------- */
+  const NOTFIND = /(dissec|isolamento|ligadura|clip|retirad|sec[cç][aã]o|ex[eé]rese|invagina|libera|envi|drenagem|lavagem|colet|passagem|coloca|posiciona|realizad|esvazia|ressec|bolsa)/i;
+  function setFinding(lines, isF, text) {
+    const k = lines.findIndex(l => isF(l) && !NOTFIND.test(l.replace(/^\s*invent[áa]rio[^:]*:\s*/i, '')));
+    if (k >= 0) { const pre = (lines[k].match(/^\s*invent[áa]rio[^:]*:\s*(?=\S)/i) || [''])[0]; lines[k] = pre + text; return k; }
+    const iv = lines.findIndex(l => /invent[áa]rio|achados?:/i.test(l));
+    const at = iv >= 0 ? iv + 1 : Math.min(4, lines.length);
+    lines.splice(at, 0, text); return at;
+  }
+  const dropIf = (lines, keep, rx) => lines.filter((l, i) => i === keep || !rx.test(l));
+  const addOnce = (lines, rx, o) => rx.test(lines.join('\n')) ? lines : insertOpt(lines, o);
+  const APF = l => /ap[eê]ndice/i.test(l) && /(identificad|edemac|hiperem|inflam|aument|necros|perfur|fase|grau|compat|supurad|calibre|bloqueio)/i.test(l);
+  const DESCR = /purulent|\bpus\b|abscesso|bloqueio|necros|perfura|fezes em cavidade|l[ií]quido (livre|claro)|desserosid|fibrina (em|aderida)|presen[cç]a de fibrina/i;
+  const ACTION = /^\s*(drenagem|lavagem|colet|passagem|coloca|posiciona|aspira|realizad|isolamento|ligadura|sec[cç]|dissec|retirad|envi|identifica[dç][ao]s? (áreas|[aá]rea) de perfura[cç][aã]o em ceco)/i;
+  const LOWRM = /drenagem de abscesso|lavagem|cultura|colet(ad|a)[oa]? (de )?l[ií]quido|\bdrenos?\b|penrose|sulctor|suctor/i;
+  const GF = {
+    1: 'Identificado apêndice cecal edemaciado e hiperemiado, sem fibrina, necrose ou perfuração, compatível com apendicite aguda fase 1 (edematosa)',
+    2: 'Identificado apêndice cecal edemaciado e hiperemiado, com exsudato fibrinoso em sua superfície, sem necrose ou perfuração, compatível com apendicite aguda fase 2 (fibrinosa)',
+    3: 'Identificado apêndice cecal com áreas de necrose, sem perfuração, com fibrina e pequena quantidade de líquido seropurulento em fossa ilíaca direita, aspirado, compatível com apendicite aguda fase 3 (necrótica)',
+    4: 'Identificado apêndice cecal necrosado e perfurado, bloqueado por epíplon e alças, com secreção purulenta em fossa ilíaca direita e pelve, aspirada, compatível com apendicite aguda fase 4 (perfurada)'
+  };
+  const GVc = ' da classificação laparoscópica';
+  const GV = {
+    1: 'Identificado apêndice cecal com hiperemia e edema, sem exsudato fibrinoso, necrose ou coleções, compatível com apendicite aguda grau 1' + GVc,
+    2: 'Identificado apêndice cecal hiperemiado e edemaciado, com exsudato fibrinoso, sem necrose ou coleções, compatível com apendicite aguda grau 2' + GVc,
+    3: 'Identificado apêndice cecal com necrose segmentar e base apendicular viável, sem coleções, compatível com apendicite aguda grau 3' + GVc,
+    '4A': 'Identificado apêndice cecal com abscesso periapendicular bloqueado por epíplon e alças, desfeito e aspirado, compatível com apendicite aguda grau 4A' + GVc,
+    '4B': 'Identificado apêndice cecal com peritonite regional, com secreção purulenta em fossa ilíaca direita e pelve, aspirada, compatível com apendicite aguda grau 4B' + GVc,
+    '4C': 'Identificado apêndice cecal com necrose da base apendicular, compatível com apendicite aguda grau 4C' + GVc,
+    5: 'Identificado apêndice cecal perfurado, com peritonite purulenta difusa em ___ quadrantes, aspirada, compatível com apendicite aguda grau 5' + GVc
+  };
+  function apendTf(f, v, vl) {
+    const hi = vl ? ['4A', '4B', '5'].indexOf(v) >= 0 : v === '4';
+    const low = vl ? ['1', '2'].indexOf(v) >= 0 : ['1', '2'].indexOf(v) >= 0;
+    let ls = f.s.split('\n').filter(x => tidy(x));
+    const k = setFinding(ls, APF, (vl ? GV : GF)[v]);
+    ls = ls.filter((l, i) => i === k || !(DESCR.test(l) && !ACTION.test(l)));
+    const k2 = ls.indexOf((vl ? GV : GF)[v]) >= 0 ? ls.indexOf((vl ? GV : GF)[v]) : ls.findIndex(l => l.indexOf((vl ? GV : GF)[v]) >= 0);
+    if (low) ls = dropIf(ls, k2, LOWRM);
+    if (hi) { ls = addOnce(ls, /lavagem/i, O.lavagem); if (!/cultura/i.test(ls.join(' '))) { const j = ls.findIndex(l => l.indexOf((vl ? GV : GF)[v]) >= 0); ls.splice(j + 1, 0, O.cultura.x); } }
+    if (vl && v === '4C' && !/base apendicular necrosada/i.test(ls.join(' '))) { const j = ls.findIndex(l => l.indexOf(GV['4C']) >= 0); ls.splice(j + 1, 0, 'Tratamento da base apendicular necrosada com ___'); }
+    f.s = ls.join('\n'); f.tipo = hi ? 'Infectada' : 'Contaminada';
+  }
+  const VF = l => /ves[ií]cula/i.test(l) && /(parede|leito hep|ader[eê]n|distendid|ingurgit|escleroat|necros|inflamat|espessad|finas|tamanho)/i.test(l);
+  const QV = {
+    elet: ['Identificada vesícula biliar em leito hepático, normodistendida, com paredes finas e aderências frouxas, sem sinais inflamatórios agudos', 'Colelitíase', 'Limpa-contaminada'],
+    aguda: ['Identificada vesícula biliar distendida, com paredes espessadas e edemaciadas e aderências de epíplon, compatível com colecistite aguda', 'Colecistite aguda', 'Contaminada'],
+    gang: ['Identificada vesícula biliar ingurgitada, bloqueada por epíplon, com paredes espessadas e áreas de necrose, compatível com colecistite aguda gangrenosa', 'Colecistite aguda gangrenosa', 'Infectada'],
+    dif: ['Identificada vesícula biliar escleroatrófica, com paredes espessadas e múltiplas aderências firmes ao duodeno e ao leito hepático, com dissecção trabalhosa do trígono hepatocístico', 'Colelitíase (vesícula escleroatrófica)', 'Limpa-contaminada']
+  };
+  function cvlTf(f, v) {
+    let ls = f.s.split('\n').filter(x => tidy(x));
+    const k = setFinding(ls, VF, QV[v][0]);
+    if (v === 'elet' || v === 'dif') ls = ls.filter((l, i) => i === k || !(/necros|perfura|purulent|isquemiad|bloqueio/i.test(l) && !ACTION.test(l)));
+    f.s = ls.join('\n'); f.dx = QV[v][1]; f.tipo = QV[v][2];
+  }
+  const DRX = /\bdrenos?\b|penrose|sulctor|suctor/i;
+  function drTf(f, v, cat) {
+    let ls = f.s.split('\n').filter(x => tidy(x));
+    if (v === 'sem') ls = ls.filter(l => !DRX.test(l));
+    else if (!DRX.test(ls.join(' '))) ls = insertOpt(ls, cat === 'vb' ? (OPTS.vb.find(o => o.ax === 'dr')) : O.drSuc);
+    f.s = ls.join('\n');
+  }
+  const SEXO = [['H', 'Homem'], ['M', 'Mulher']];
+  const FAM = {
+    apend: { t: 'Apendicectomia', d: { fase: '1' }, ax: [{ k: 'fase', l: 'Fase', o: [['1', 'Fase 1', 'edematosa'], ['2', 'Fase 2', 'fibrinosa'], ['3', 'Fase 3', 'necrótica'], ['4', 'Fase 4', 'perfurada']], tf: (f, v) => apendTf(f, v, false) }] },
+    apendvl: { t: 'Apendicectomia videolaparoscópica', d: { grau: '1' }, ax: [{ k: 'grau', l: 'Grau (classificação laparoscópica)', o: [['1', '1', 'hiperemia e edema'], ['2', '2', 'exsudato fibrinoso'], ['3', '3', 'necrose segmentar'], ['4A', '4A', 'abscesso'], ['4B', '4B', 'peritonite regional'], ['4C', '4C', 'necrose da base'], ['5', '5', 'peritonite difusa']], tf: (f, v) => apendTf(f, v, true) }] },
+    cvl: { t: 'Colecistectomia videolaparoscópica', d: { q: 'elet', dr: 'sem' }, ax: [
+      { k: 'q', l: 'Achado', o: [['elet', 'Sem inflamação', 'colelitíase, paredes finas'], ['aguda', 'Colecistite aguda', 'paredes espessadas e edemaciadas'], ['gang', 'Gangrenosa', 'necrose de parede'], ['dif', 'Escleroatrófica', 'aderências firmes, dissecção difícil']], tf: cvlTf },
+      { k: 'dr', l: 'Dreno', o: [['sem', 'Sem dreno'], ['com', 'Com dreno']], tf: (f, v) => drTf(f, v, 'vb') }] },
+    hing: { t: 'Herniorrafia inguinal', d: { ld: 'D', sx: 'H', rec: 'pri', dr: 'sem' }, ax: [
+      { k: 'ld', l: 'Lado', o: [['D', 'Direita'], ['E', 'Esquerda'], ['B', 'Bilateral']], can: (a, b) => a !== 'B' && b !== 'B', tf: (f, v, mv) => { if (mv && mv !== v) ['dx', 'cp', 'cr', 's'].forEach(k => { f[k] = swapSide(f[k]); }); } },
+      { k: 'sx', l: 'Paciente', o: SEXO },
+      { k: 'rec', l: 'Hérnia', o: [['pri', 'Primária'], ['rec', 'Recidivada']] },
+      { k: 'dr', l: 'Dreno', o: [['sem', 'Sem dreno'], ['com', 'Com dreno']], tf: (f, v) => drTf(f, v, 'hing') }] },
+    humb: { t: 'Herniorrafia umbilical', d: { tela: 'sem' }, ax: [{ k: 'tela', l: 'Tela', o: [['sem', 'Sem tela'], ['com', 'Com tela']] }] },
+    hinc: { t: 'Herniorrafia incisional', d: { tela: 'com' }, ax: [{ k: 'tela', l: 'Tela', o: [['sem', 'Sem tela'], ['com', 'Com tela']] }] },
+    hepi: { t: 'Herniorrafia epigástrica', d: {}, ax: [] },
+    perit: { t: 'Peritoneostomia', d: {}, ax: [] }
+  };
+  const axOk = (a, mv, sv) => mv === sv || (a.can ? a.can(mv, sv) && !!a.tf : !!a.tf);
+  function cands(fm, sel) {
+    const F = FAM[fm], ms = window.DRB_DESC.m.filter(m => m.fm === fm);
+    const ex = ms.filter(m => F.ax.every(a => ((m.x || {})[a.k] || '') === sel[a.k]));
+    const others = () => ms.filter(m => ex.indexOf(m) < 0 && F.ax.every(a => axOk(a, (m.x || {})[a.k] || '', sel[a.k])));
+    const dd = m => F.ax.reduce((t, a) => { const ix = v => a.o.findIndex(o => o[0] === v); const mv = (m.x || {})[a.k] || ''; return t + (mv ? Math.abs(ix(mv) - ix(sel[a.k])) : 1.5); }, 0);
+    if (ex.length) return { list: ex, adapted: false, more: others().sort((x, y) => dd(x) - dd(y)) };
+    const sc = ms.map(m => ({ m, n: F.ax.filter(a => ((m.x || {})[a.k] || '') !== sel[a.k]).length, ok: F.ax.every(a => axOk(a, (m.x || {})[a.k] || '', sel[a.k])) })).filter(z => z.ok);
+    if (!sc.length) return { list: [], adapted: true };
+    const min = Math.min(...sc.map(z => z.n));
+    const dist = m => F.ax.reduce((t, a) => { const ix = v => a.o.findIndex(o => o[0] === v); const mv = (m.x || {})[a.k] || ''; return t + (mv ? Math.abs(ix(mv) - ix(sel[a.k])) : 1.5); }, 0);
+    return { list: sc.filter(z => z.n === min).map(z => z.m).sort((x, y) => dist(x) - dist(y)), adapted: true };
+  }
   function insertOpt(lines, o) {
     const n = lines.length; let i = -1;
     const firstClose = () => { for (let k = Math.floor(n / 2); k < n; k++) if (CLOSE.test(lines[k])) return k; return n; };
@@ -148,6 +243,7 @@
     const count = h('p', { class: 'hint desc-n' });
     side.append(h('label', { class: 'gs rx-search' }, u.icon('search'), search), catBox, count, ul);
     const setUrl = () => { try { history.replaceState(null, '', '#/descricoes' + (st.sel ? '/' + st.sel : st.cat ? '/c:' + st.cat : '')); } catch (e) { } };
+    st.ax = null;
     const catName = id => id === 'my' ? 'Meus modelos' : (CATS.find(c => c.id === id) || {}).t || '';
 
     function chips() {
@@ -158,9 +254,9 @@
     function list() {
       ul.innerHTML = '';
       const q = u.norm(st.q.trim()), parts = q ? q.split(/\s+/) : [];
-      const ms = all().filter(m => (!st.cat || m.c === st.cat) && (!parts.length || parts.every(p => u.norm(m.t + ' ' + m.a + ' ' + m.cp + ' ' + catName(m.c) + ali(m)).includes(p))));
+      const ms = all().filter(m => (!st.cat || m.c === st.cat) && (!parts.length || parts.every(p => u.norm(m.t + ' ' + m.a + ' ' + m.cp + ' ' + catName(m.c) + ali(m) + (m.fm && FAM[m.fm] ? ' ' + FAM[m.fm].t : '')).includes(p))));
       const gs = [], ix = {};
-      ms.forEach(m => { const k = m.mine ? 'my|' + m.id : m.c + '|' + m.t; if (!ix[k]) { ix[k] = { m, v: [] }; gs.push(ix[k]); } ix[k].v.push(m); });
+      ms.forEach(m => { const k = m.mine ? 'my|' + m.id : m.fm ? 'f|' + m.fm : m.c + '|' + m.t; if (!ix[k]) { ix[k] = { m, v: [] }; gs.push(ix[k]); } ix[k].v.push(m); });
       count.textContent = gs.length + (gs.length === 1 ? ' procedimento' : ' procedimentos') + ' · ' + ms.length + (ms.length === 1 ? ' modelo' : ' modelos');
       if (!ms.length) { ul.append(h('li', { class: 'rx-empty' }, 'Nenhum modelo encontrado. Tente outro termo ou limpe os filtros.')); return; }
       let last = null;
@@ -169,11 +265,12 @@
         if (!st.cat && m.c !== last) { last = m.c; ul.append(h('li', { class: 'rx-h' }, catName(m.c))); }
         const on = g.v.some(x => x.id === st.sel);
         ul.append(h('li', { class: 'rx-item' + (on ? ' on' : '') },
-          h('button', { type: 'button', class: 'rx-open', onclick: () => { open(on ? st.sel : m.id); if (window.innerWidth < 1000) window.scrollTo(0, 0); } },
-            h('span', { class: 'rx-t' }, m.t), g.v.length > 1 ? h('span', { class: 'desc-a desc-k' }, g.v.length + ' modelos') : m.a && h('span', { class: 'desc-a' }, m.a))));
+          h('button', { type: 'button', class: 'rx-open', onclick: () => { if (on) open(st.sel, st.ax); else if (m.fm && FAM[m.fm]) openFam(m.fm); else open(m.id); if (window.innerWidth < 1000) window.scrollTo(0, 0); } },
+            h('span', { class: 'rx-t' }, m.fm && FAM[m.fm] ? FAM[m.fm].t : m.t), g.v.length > 1 ? h('span', { class: 'desc-a desc-k' }, g.v.length + ' modelos') : m.a && h('span', { class: 'desc-a' }, m.a))));
       });
     }
-    function open(id) { st.sel = id; st.f = null; list(); render(); setUrl(); }
+    function open(id, ax) { st.sel = id; st.f = null; st.ax = ax || null; list(); render(); setUrl(); }
+    function openFam(fm) { const sel = Object.assign({}, FAM[fm].d); const c = cands(fm, sel); const m0 = c.list[0] || DATA.m.find(x => x.fm === fm); open(m0.id, sel); }
     const mark = () => root.classList.toggle('has-sel', !!st.sel);
 
     function fresh(m) {
@@ -186,49 +283,70 @@
       mark();
       if (!m) {
         doc.append(h('div', { class: 'rx-blank' }, h('h2', null, 'Escolha um procedimento'),
-          h('p', null, 'São ' + DATA.m.length + ' modelos de descrição agrupados por procedimento. Abra um procedimento, escolha o modelo do cirurgião ou da técnica, marque o que foi feito e copie no formato do relatório de cirurgia. Você pode guardar a sua versão em Meus modelos, que fica salva neste aparelho.')));
+          h('p', null, 'São ' + DATA.m.length + ' modelos do serviço agrupados por procedimento. Abra um procedimento, escolha a fase, o achado, o lado ou o dreno, depois o modelo do cirurgião, marque o que foi feito e copie no formato do relatório de cirurgia. Você pode guardar a sua versão em Meus modelos, que fica salva neste aparelho.')));
         return;
       }
-      if (!st.f) st.f = fresh(m);
+      const F = m.fm && FAM[m.fm];
+      if (F && !st.ax) { st.ax = Object.assign({}, F.d); F.ax.forEach(a => { const v = (m.x || {})[a.k]; if (v) st.ax[a.k] = v; }); }
+      if (!st.f) {
+        st.f = fresh(m); st.f.ad = [];
+        if (F) F.ax.forEach(a => { const mv = (m.x || {})[a.k] || ''; if (mv !== st.ax[a.k] && a.tf) { a.tf(st.f, st.ax[a.k], mv); st.f.ad.push(a.l.split(' (')[0].toLowerCase()); } });
+        st.f.gen = st.f.s;
+      }
       const f = st.f;
       const back = h('button', { type: 'button', class: 'rx-btn desc-back', onclick: () => { st.sel = null; st.f = null; list(); render(); setUrl(); window.scrollTo(0, 0); } }, '‹ Todos os modelos');
-      const head = h('div', { class: 'desc-head' }, back, h('h2', null, m.t), h('span', { class: 'desc-meta' }, [catName(m.c), m.a && 'Modelo: ' + m.a].filter(Boolean).join(' · ')));
+      const head = h('div', { class: 'desc-head' }, back, h('h2', null, F ? F.t : m.t), h('span', { class: 'desc-meta' }, [catName(m.c), m.a && 'Modelo: ' + m.a + (m.nt ? ' (' + m.nt + ')' : '')].filter(Boolean).join(' · ')));
+      // seletores da ficha
+      let famBox = '';
+      if (F) {
+        const pick = (k, v) => {
+          if (st.f && st.f.s !== st.f.gen && !confirm('Trocar a opção refaz o texto e descarta as suas edições nos passos. Continuar?')) return;
+          const sel = Object.assign({}, st.ax, { [k]: v }); const c = cands(m.fm, sel); if (!c.list.length) return;
+          const nx = c.list.find(x => x.a === m.a) || c.list[0];
+          st.ax = sel; st.sel = nx.id; st.f = null; st.more = false; list(); render(); setUrl();
+        };
+        const axes = F.ax.map(a => {
+          const cur = a.o.find(o => o[0] === st.ax[a.k]) || a.o[0];
+          return h('div', { class: 'fld full desc-ax' }, h('span', { class: 'lbl' }, a.l),
+            h('div', { class: 'seg' + (a.o.length > 4 ? ' seg-n' : ''), role: 'group', 'aria-label': a.l }, a.o.map(([v, l]) => {
+              const okv = cands(m.fm, Object.assign({}, st.ax, { [a.k]: v })).list.length > 0;
+              const on = st.ax[a.k] === v;
+              return h('button', { type: 'button', class: on ? 'on' : '', disabled: !okv, title: okv ? '' : 'Sem modelo para esta combinação', 'aria-pressed': on ? 'true' : 'false', onclick: () => { if (!on) pick(a.k, v); } }, l);
+            })), cur[2] ? h('span', { class: 'hint' }, cur[1] + ': ' + cur[2]) : '');
+        });
+        const c = cands(m.fm, st.ax);
+        const seen = {}; const vlab = x => { const a = x.a || 'Modelo do serviço'; seen[a] = (seen[a] || 0) + 1; return a + (seen[a] > 1 ? ' ' + seen[a] : ''); };
+        const moreU = []; (c.more || []).forEach(x => { if (!moreU.some(y => y.a === x.a)) moreU.push(x); });
+        const showMore = st.more || c.list.length < 2 || moreU.some(x => x.id === m.id);
+        const pool = c.list.concat(showMore ? moreU : []);
+        const chipsM = pool.length > 1 || moreU.length ? h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Modelo do cirurgião'),
+          h('div', { class: 'desc-sibl' }, pool.map(x => h('button', { type: 'button', class: 'rx-cat' + (x.id === m.id ? ' on' : '') + (c.list.indexOf(x) < 0 ? ' adp' : ''), title: c.list.indexOf(x) < 0 ? 'Modelo de outra ' + F.ax.map(a => a.l.split(' (')[0].toLowerCase()).join('/') + ', adaptado' : '', 'aria-pressed': x.id === m.id ? 'true' : 'false', onclick: () => { if (x.id === m.id) return; if (st.f.s !== st.f.gen && !confirm('Trocar o modelo descarta as suas edições nos passos. Continuar?')) return; open(x.id, st.ax); } }, vlab(x), x.nt ? h('small', null, ' · ' + x.nt) : '', c.list.indexOf(x) < 0 ? h('small', null, ' · adaptado') : '')),
+            !showMore && moreU.length ? h('button', { type: 'button', class: 'rx-cat adp', onclick: () => { st.more = true; render(); } }, '+ ' + moreU.length + ' cirurgiões com o texto adaptado') : '')) : '';
+        const note = f.ad.length ? h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, 'O serviço não tem um modelo exatamente assim. O texto foi montado a partir do modelo de ' + (m.a || 'um cirurgião do serviço') + ', ajustando ' + f.ad.join(' e ') + '. Confira os achados e os passos.')) : '';
+        famBox = h('div', { class: 'panel desc-fam' }, h('div', { class: 'fgrid' }, ...axes, chipsM), note);
+      }
       const inp = (k, label, ph) => h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, label), h('span', { class: 'inwrap' }, h('input', { value: f[k], 'data-k': k, placeholder: ph || '', autocomplete: 'off', oninput: e => { f[k] = e.target.value; chk(); } })));
       const tipo = h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Cirurgia tipo (potencial de contaminação)'),
         h('div', { class: 'seg desc-tipo', role: 'group', 'aria-label': 'Potencial de contaminação' }, TIPOS.map(([v, l]) => h('button', { type: 'button', class: f.tipo === v ? 'on' : '', 'aria-pressed': f.tipo === v ? 'true' : 'false', onclick: e => { f.tipo = v; e.currentTarget.parentNode.querySelectorAll('button').forEach(b => { const on = b === e.currentTarget; b.className = on ? 'on' : ''; b.setAttribute('aria-pressed', on); }); } }, l))));
       const ta = h('textarea', { class: 'desc-steps', 'aria-label': 'Passos da descrição cirúrgica, um por linha', spellcheck: 'true', oninput: e => { f.s = e.target.value; grow(); chk(); } });
       ta.value = f.s;
       const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(2000, ta.scrollHeight + 4) + 'px'; };
-      // variações do mesmo procedimento (outros cirurgiões e técnicas)
-      const vs = m.mine ? [] : DATA.m.filter(x => x.c === m.c && x.t === m.t);
-      const seen = {}; const vlab = x => { const a = x.a || 'Modelo'; seen[a] = (seen[a] || 0) + 1; return a + (seen[a] > 1 ? ' ' + seen[a] : ''); };
-      const varBox = vs.length > 1 && h('div', { class: 'panel desc-var' }, h('span', { class: 'lbl' }, vs.length + ' modelos deste procedimento. Escolha o que mais se parece com a sua cirurgia:'),
-        h('div', { class: 'desc-sibl' }, vs.map(x => h('button', { type: 'button', class: 'rx-cat' + (x.id === m.id ? ' on' : ''), 'aria-pressed': x.id === m.id ? 'true' : 'false', onclick: () => { if (x.id !== m.id) open(x.id); } }, vlab(x), h('small', null, ' · ' + x.s.length + ' passos')))));
-      // lado (hérnia inguinal unilateral)
-      const setAll = () => { ta.value = f.s; form.querySelectorAll('input[data-k]').forEach(i => { i.value = f[i.dataset.k]; }); grow(); chk(); };
-      const ladoBox = f.ld && h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Lado'),
-        h('div', { class: 'seg', role: 'group', 'aria-label': 'Lado da cirurgia' }, [['D', 'Direita'], ['E', 'Esquerda']].map(([v, l]) => h('button', { type: 'button', class: f.ld === v ? 'on' : '', 'aria-pressed': f.ld === v ? 'true' : 'false', onclick: e => {
-          if (f.ld === v) return; f.ld = v;
-          ['dx', 'cp', 'cr', 's'].forEach(k => { f[k] = swapSide(f[k]); });
-          e.currentTarget.parentNode.querySelectorAll('button').forEach(b => { const on = b === e.currentTarget; b.className = on ? 'on' : ''; b.setAttribute('aria-pressed', on); });
-          setAll(); D.toast && D.toast('Lado trocado para ' + l.toLowerCase() + ' em todo o texto');
-        } }, l))));
       // itens para marcar
-      const ops = optsFor(m.bc || m.c, f.base);
+      const ops = optsFor(m.bc || m.c, f.base, m.fm);
       const optBox = ops.length && h('div', { class: 'desc-opts' }, h('span', { class: 'lbl' }, 'Marque o que foi feito ou encontrado para incluir na descrição'),
         h('div', { class: 'desc-optl' }, ops.map(o => { const c = h('input', { type: 'checkbox', onchange: e => {
           let ls = f.s.split('\n');
           if (e.target.checked) { ls = insertOpt(ls.filter(x => tidy(x)), o); f.on[o.id] = 1; } else { ls = ls.filter(x => tidy(x) !== o.x); delete f.on[o.id]; }
           f.s = ls.join('\n'); ta.value = f.s; grow(); chk();
           if (e.target.checked) { const p = f.s.indexOf(o.x); try { ta.setSelectionRange(p, p + o.x.length); } catch (x) { } }
-        } }); c.checked = !!f.on[o.id]; return h('label', { class: 'desc-opt', title: o.x }, c, h('span', null, o.l)); })));
+        } }); c.checked = f.s.split('\n').some(x => tidy(x) === o.x); return h('label', { class: 'desc-opt', title: o.x }, c, h('span', null, o.l)); })));
       const destBox = h('div', { class: 'desc-dest' }, h('span', { class: 'hint' }, 'Destino:'), DEST.map(([l, x]) => h('button', { type: 'button', class: 'rx-cat', onclick: () => { f.rel = 'Procedimento sem intercorrências, paciente encaminhado para ' + x + ' aos cuidados da equipe anestésica.'; relF.querySelector('textarea').value = f.rel; chk(); } }, l)));
       const numB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.num = e.target.checked; } }), 'Numerar os passos ao copiar');
       numB.firstChild.checked = f.num;
       const warn = h('div');
       const relF = h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Relatório da cirurgia (intercorrências e destino)'), h('textarea', { class: 'desc-rel', rows: 3, oninput: e => { f.rel = e.target.value; chk(); } }, f.rel));
       const form = h('div', { class: 'panel desc-form' },
-        h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), ladoBox || '', tipo, relF, destBox),
+        h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox),
         h('h3', { class: 'sec' }, 'Descrição cirúrgica'), optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Os campos com ___ precisam ser completados (lado, número do dreno, volume…).'), ta, numB, warn);
       function chk() {
         const n = ((f.s + ' ' + f.cp + ' ' + f.cr + ' ' + f.rel).match(/_{3,}/g) || []).length;
@@ -253,17 +371,17 @@
         copyBtn('Copiar relatório', full, 'copy rx-copy'),
         copyBtn('Copiar descrição', body));
       const acts2 = h('div', { class: 'rx-actions desc-more' },
-        h('button', { type: 'button', class: 'rx-btn', onclick: () => { st.f = fresh(m); render(); } }, 'Restaurar o modelo'),
+        h('button', { type: 'button', class: 'rx-btn', onclick: () => { st.f = null; render(); } }, 'Restaurar o modelo'),
         h('button', { type: 'button', class: 'rx-btn', onclick: saveMy }, m.mine ? 'Atualizar meu modelo' : 'Salvar em Meus modelos'),
         m.mine && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (!confirm('Excluir “' + m.t + '” de Meus modelos?')) return; saveMine(loadMine().filter(x => x.id !== m.id)); st.sel = null; chips(); list(); render(); setUrl(); } }, 'Excluir meu modelo'));
       function saveMy() {
         const l = loadMine();
-        const rec = { bc: m.bc || m.c, ld: f.ld || undefined, id: m.mine ? m.id : 'meu-' + Date.now().toString(36), t: m.mine ? m.t : (prompt('Nome do seu modelo:', m.t) || '').trim(), a: 'Meu modelo', base: m.mine ? m.base : m.id, an: f.an, dx: f.dx, cp: f.cp, cr: f.cr, tipo: f.tipo, rel: f.rel, s: steps() };
+        const rec = { bc: m.bc || m.c, id: m.mine ? m.id : 'meu-' + Date.now().toString(36), t: m.mine ? m.t : (prompt('Nome do seu modelo:', m.t) || '').trim(), a: 'Meu modelo', base: m.mine ? m.base : m.id, an: f.an, dx: f.dx, cp: f.cp, cr: f.cr, tipo: f.tipo, rel: f.rel, s: steps() };
         if (!rec.t) return;
         const i = l.findIndex(x => x.id === rec.id); if (i >= 0) l[i] = rec; else l.unshift(rec);
         saveMine(l); st.sel = rec.id; st.f = fresh(rec); chips(); list(); render(); setUrl();
       }
-      doc.append(head, varBox || '', form, acts, acts2);
+      doc.append(head, famBox, form, acts, acts2);
       requestAnimationFrame(grow); chk();
     }
     chips(); list(); render();
