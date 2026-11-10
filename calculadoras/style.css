@@ -621,3 +621,11 @@ button.sl .ico{color:var(--muted)}
 .desc-ax .seg.seg-n{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr))}
 .desc-ax .seg.seg-n button{min-width:0;padding:0 4px}
 @media(max-width:1000px){.wrap:has(.desc.has-sel)>.title,.wrap:has(.desc.has-sel)>.tdesc,.wrap:has(.desc.has-sel) .toprow{display:none}}
+/* descrições: categoria e procedimento em seletores compactos */
+.rx-catsel,.desc-psel{width:100%;height:46px;padding:0 38px 0 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;color:var(--text);font:inherit;font-size:16px;font-weight:600;-webkit-appearance:none;appearance:none;cursor:pointer}
+.desc .rx-cats{display:none}
+.desc-pick{display:flex;align-items:flex-end;gap:10px;margin-bottom:10px}
+.desc-pl{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.desc-pick .desc-back{height:46px;flex:none}
+@media(min-width:1000px){.desc .desc-back{display:none}.desc-pick{display:none}}
+@media(max-width:1000px){.desc-head>h2{display:none}.desc-head .desc-meta{display:block;margin-top:-2px}}

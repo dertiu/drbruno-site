@@ -236,9 +236,10 @@
     const all = () => loadMine().map(m => Object.assign({ mine: true, c: 'my' }, m)).concat(DATA.m);
     const st = { q: '', cat: '', sel: null, f: null };
     if (sub && sub.indexOf('c:') === 0) st.cat = sub.slice(2);
+    else if (sub && sub.indexOf('f:') === 0) st.fam = sub.slice(2);
     else if (sub) st.sel = sub;
     const search = h('input', { type: 'search', class: 'rx-q', placeholder: 'Filtrar: colecistectomia, hérnia, Aryella…', 'aria-label': 'Filtrar descrições', oninput: e => { st.q = e.target.value; list(); } });
-    const catBox = h('div', { class: 'rx-cats' });
+    const catBox = h('select', { class: 'rx-catsel', 'aria-label': 'Área', onchange: e => { st.cat = e.target.value; list(); openFirst(); } });
     const ul = h('ul', { class: 'rx-list' });
     const count = h('p', { class: 'hint desc-n' });
     side.append(h('label', { class: 'gs rx-search' }, u.icon('search'), search), catBox, count, ul);
@@ -248,15 +249,22 @@
 
     function chips() {
       catBox.innerHTML = '';
-      const cs = [['', 'Todas']].concat(loadMine().length ? [['my', 'Meus modelos']] : [], CATS.map(c => [c.id, c.t]));
-      cs.forEach(([v, l]) => catBox.append(h('button', { type: 'button', class: 'rx-cat' + (st.cat === v ? ' on' : ''), 'aria-pressed': st.cat === v ? 'true' : 'false', onclick: () => { st.cat = v; chips(); list(); setUrl(); } }, l)));
+      const cs = [['', 'Todas as áreas']].concat(loadMine().length ? [['my', 'Meus modelos']] : [], CATS.map(c => [c.id, c.t]));
+      cs.forEach(([v, l]) => { const o = h('option', { value: v }, l); if (st.cat === v) o.selected = true; catBox.append(o); });
     }
+    const gTitle = m => m.fm && FAM[m.fm] ? FAM[m.fm].t : m.t;
+    function groups(cat, q) {
+      const parts = q ? u.norm(q.trim()).split(/\s+/).filter(Boolean) : [];
+      const ms = all().filter(m => (!cat || m.c === cat) && (!parts.length || parts.every(p => u.norm(m.t + ' ' + m.a + ' ' + m.cp + ' ' + catName(m.c) + ali(m) + (m.fm && FAM[m.fm] ? ' ' + FAM[m.fm].t : '')).includes(p))));
+      const gs = [], ix = {};
+      ms.forEach(m => { const k = m.mine ? 'my|' + m.id : m.fm ? 'f|' + m.fm : m.c + '|' + m.t; if (!ix[k]) { ix[k] = { k, m, v: [] }; gs.push(ix[k]); } ix[k].v.push(m); });
+      return { gs, ms };
+    }
+    function openGroup(g) { if (g.m.fm && FAM[g.m.fm]) openFam(g.m.fm); else open(g.m.id); }
+    function openFirst() { const g = groups(st.cat, '').gs[0]; if (g) openGroup(g); else { st.sel = null; render(); setUrl(); } }
     function list() {
       ul.innerHTML = '';
-      const q = u.norm(st.q.trim()), parts = q ? q.split(/\s+/) : [];
-      const ms = all().filter(m => (!st.cat || m.c === st.cat) && (!parts.length || parts.every(p => u.norm(m.t + ' ' + m.a + ' ' + m.cp + ' ' + catName(m.c) + ali(m) + (m.fm && FAM[m.fm] ? ' ' + FAM[m.fm].t : '')).includes(p))));
-      const gs = [], ix = {};
-      ms.forEach(m => { const k = m.mine ? 'my|' + m.id : m.fm ? 'f|' + m.fm : m.c + '|' + m.t; if (!ix[k]) { ix[k] = { m, v: [] }; gs.push(ix[k]); } ix[k].v.push(m); });
+      const { gs, ms } = groups(st.cat, st.q);
       count.textContent = gs.length + (gs.length === 1 ? ' procedimento' : ' procedimentos') + ' · ' + ms.length + (ms.length === 1 ? ' modelo' : ' modelos');
       if (!ms.length) { ul.append(h('li', { class: 'rx-empty' }, 'Nenhum modelo encontrado. Tente outro termo ou limpe os filtros.')); return; }
       let last = null;
@@ -265,11 +273,11 @@
         if (!st.cat && m.c !== last) { last = m.c; ul.append(h('li', { class: 'rx-h' }, catName(m.c))); }
         const on = g.v.some(x => x.id === st.sel);
         ul.append(h('li', { class: 'rx-item' + (on ? ' on' : '') },
-          h('button', { type: 'button', class: 'rx-open', onclick: () => { if (on) open(st.sel, st.ax); else if (m.fm && FAM[m.fm]) openFam(m.fm); else open(m.id); if (window.innerWidth < 1000) window.scrollTo(0, 0); } },
+          h('button', { type: 'button', class: 'rx-open', onclick: () => { if (on) open(st.sel, st.ax); else openGroup(g); if (window.innerWidth < 1000) window.scrollTo(0, 0); else doc.scrollIntoView({ block: 'nearest' }); } },
             h('span', { class: 'rx-t' }, m.fm && FAM[m.fm] ? FAM[m.fm].t : m.t), g.v.length > 1 ? h('span', { class: 'desc-a desc-k' }, g.v.length + ' modelos') : m.a && h('span', { class: 'desc-a' }, m.a))));
       });
     }
-    function open(id, ax) { st.sel = id; st.f = null; st.ax = ax || null; list(); render(); setUrl(); }
+    function open(id, ax) { st.sel = id; st.f = null; st.ax = ax || null; st.more = false; try { localStorage.setItem('drb_desc_last', id); } catch (e) { } list(); render(); setUrl(); const on = ul.querySelector('.rx-item.on'); if (on && window.innerWidth >= 1000) on.scrollIntoView({ block: 'nearest' }); }
     function openFam(fm) { const sel = Object.assign({}, FAM[fm].d); const c = cands(fm, sel); const m0 = c.list[0] || DATA.m.find(x => x.fm === fm); open(m0.id, sel); }
     const mark = () => root.classList.toggle('has-sel', !!st.sel);
 
@@ -294,8 +302,13 @@
         st.f.gen = st.f.s;
       }
       const f = st.f;
-      const back = h('button', { type: 'button', class: 'rx-btn desc-back', onclick: () => { st.sel = null; st.f = null; list(); render(); setUrl(); window.scrollTo(0, 0); } }, '‹ Todos os modelos');
-      const head = h('div', { class: 'desc-head' }, back, h('h2', null, F ? F.t : m.t), h('span', { class: 'desc-meta' }, [catName(m.c), m.a && 'Modelo: ' + m.a + (m.nt ? ' (' + m.nt + ')' : '')].filter(Boolean).join(' · ')));
+      const back = h('button', { type: 'button', class: 'rx-btn desc-back', onclick: () => { st.sel = null; st.f = null; list(); render(); setUrl(); window.scrollTo(0, 0); } }, '‹ Lista');
+      const all2 = groups('', '').gs, curK = (all2.find(g => g.v.some(x => x.id === m.id)) || {}).k;
+      const psel = h('select', { class: 'desc-psel', 'aria-label': 'Procedimento', onchange: e => { const g = all2.find(x => x.k === e.target.value); if (g) { if (st.f && st.f.s !== st.f.gen && !confirm('Trocar de procedimento descarta as suas edições. Continuar?')) { e.target.value = curK; return; } openGroup(g); } } });
+      let lastC = null, og = null;
+      all2.forEach(g => { if (g.m.c !== lastC) { lastC = g.m.c; og = h('optgroup', { label: catName(g.m.c) }); psel.append(og); } const o = h('option', { value: g.k }, gTitle(g.m)); if (g.k === curK) o.selected = true; og.append(o); });
+      const pickRow = h('div', { class: 'desc-pick' }, back, h('label', { class: 'desc-pl' }, h('span', { class: 'lbl' }, 'Procedimento'), psel));
+      const head = h('div', { class: 'desc-head' }, pickRow, h('h2', null, F ? F.t : m.t), h('span', { class: 'desc-meta' }, [catName(m.c), m.a && 'Modelo: ' + m.a + (m.nt ? ' (' + m.nt + ')' : '')].filter(Boolean).join(' · ')));
       // seletores da ficha
       let famBox = '';
       if (F) {
@@ -346,8 +359,8 @@
       const warn = h('div');
       const relF = h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Relatório da cirurgia (intercorrências e destino)'), h('textarea', { class: 'desc-rel', rows: 3, oninput: e => { f.rel = e.target.value; chk(); } }, f.rel));
       const form = h('div', { class: 'panel desc-form' },
-        h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox),
-        h('h3', { class: 'sec' }, 'Descrição cirúrgica'), optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Os campos com ___ precisam ser completados (lado, número do dreno, volume…).'), ta, numB, warn);
+        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Os campos com ___ precisam ser completados (lado, número do dreno, volume…).'), ta, numB, warn);
+      const dataP = h('div', { class: 'panel desc-form' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Dados do relatório'), h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox));
       function chk() {
         const n = ((f.s + ' ' + f.cp + ' ' + f.cr + ' ' + f.rel).match(/_{3,}/g) || []).length;
         warn.innerHTML = '';
@@ -381,10 +394,16 @@
         const i = l.findIndex(x => x.id === rec.id); if (i >= 0) l[i] = rec; else l.unshift(rec);
         saveMine(l); st.sel = rec.id; st.f = fresh(rec); chips(); list(); render(); setUrl();
       }
-      doc.append(head, famBox, form, acts, acts2);
+      doc.append(head, famBox, form, dataP, acts, acts2);
       requestAnimationFrame(grow); chk();
     }
-    chips(); list(); render();
+    chips(); list();
+    if (!st.sel && st.fam && FAM[st.fam]) openFam(st.fam);
+    else if (!st.sel) {
+      let last = null; try { last = localStorage.getItem('drb_desc_last'); } catch (e) { }
+      const lm = !st.cat && last && all().find(x => x.id === last);
+      if (lm) open(lm.id); else openFirst();
+    } else render();
   }
 
   const links = [
@@ -394,7 +413,7 @@
     ['procto', 'Proctologia', 'hemorroidectomia, abscesso perianal, cisto pilonidal'], ['pele', 'Pele, partes moles e abscessos', 'debridamento, lipoma, drenagem de abscesso'],
     ['cp', 'Cabeça e pescoço', 'tireoidectomia, submandibular, esvaziamento'], ['torac', 'Torácica e via aérea', 'traqueostomia, drenagem, lobectomia'],
     ['onco', 'Oncologia, ginecologia e urologia', 'histerectomia, nefrectomia, Whipple'], ['proc', 'Procedimentos à beira do leito', 'cateter central, portocath, paracentese, toracocentese']
-  ].map(([c, t, d]) => ({ id: 'desc-' + c, g: 'desc', title: t, desc: 'Descrições: ' + d, kw: 'descrição cirúrgica ' + t + ' ' + d, href: '#/descricoes/c:' + c }));
+  ].map(([c, t, d]) => ({ id: 'desc-' + c, g: 'desc', title: t, desc: 'Descrições: ' + d, kw: 'descrição cirúrgica ' + t + ' ' + d, href: '#/descricoes/' + ({ apend: 'f:apend', vb: 'f:cvl', hing: 'f:hing', parede: 'f:humb' }[c] || 'c:' + c) }));
   // a busca do topo também encontra cada modelo (carrega os dados na primeira vez que a busca é usada)
   D.onSearch = (D.onSearch || []).concat(done => load(err => {
     if (err || !window.DRB_DESC) return;
