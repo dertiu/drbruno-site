@@ -345,19 +345,68 @@ function gcalLink(ev) {
 // eproc do TJSP: não aceita link direto para o processo (o link precisa de assinatura gerada pelo próprio eproc).
 // O app abre a base certa com #pericias=<número> e copia o número. Com o atalho (eproc-atalho.user.js,
 // instalado no Tampermonkey) o eproc preenche a busca rápida sozinho e abre o processo.
-const EPROC_BASES = { '1G': 'https://eproc1g.tjsp.jus.br/eproc/', 'EF': 'https://eproc1g-ef.tjsp.jus.br/eproc/' };
-// base Fazenda Pública (eproc1g-ef): Fazenda Pública, Jefaz, Acidentes do Trabalho (Núcleo 4.0), Execução contra a Fazenda e Previdenciário.
-// As bases Cível e Fazenda Pública são independentes, com login próprio em cada uma.
-function baseEproc(m) {
+// O eproc do TJSP tem uma base (sistema separado, com endereço e cor próprios) para cada competência:
+const EPROC_BASES = {
+  '1G': 'https://eproc1g.tjsp.jus.br/eproc/',        // azul: Cível, JEC, Família, Cejuscs, Registros Públicos, Falência, Empresarial
+  'EF': 'https://eproc1g-ef.tjsp.jus.br/eproc/',     // vermelho: Fazenda Pública, Jefaz, Acidentes do Trabalho (Núcleo 4.0), Previdenciário, Execução Fiscal
+  '2G': 'https://eproc2g.tjsp.jus.br/eproc/',        // verde: 2º grau (recursos no Tribunal)
+  'CRIM': 'https://eproc1g-crim.tjsp.jus.br/eproc/'  // cinza: Criminal e Juizado Especial Criminal
+};
+// valores da coluna SISTEMA; "EPROC" sozinho (de antes da separação por base) continua aceito e a base é deduzida
+const SISTEMAS = [
+  { val: 'ESAJ', rot: 'e-SAJ', curto: 'e-SAJ', cor: 'esaj' },
+  { val: 'EPROC CÍVEL', base: '1G', rot: 'eproc Cível (azul)', curto: 'eproc Cível', cor: 'azul', desc: 'Cível, JEC, Família, Registros Públicos, Falência' },
+  { val: 'EPROC FAZENDA', base: 'EF', rot: 'eproc Fazenda Pública (vermelho)', curto: 'eproc Fazenda', cor: 'vermelho', desc: 'Fazenda Pública, Acidentes do Trabalho (Núcleo 4.0), Previdenciário, Execução Fiscal' },
+  { val: 'EPROC 2º GRAU', base: '2G', rot: 'eproc 2º grau (verde)', curto: 'eproc 2º grau', cor: 'verde', desc: 'recursos no Tribunal' },
+  { val: 'EPROC CRIMINAL', base: 'CRIM', rot: 'eproc Criminal (cinza)', curto: 'eproc Criminal', cor: 'cinza', desc: 'Criminal e Juizado Especial Criminal' }
+];
+// base pelos dados do processo (para "EPROC" sem base e para sugerir no cadastro)
+function baseEprocDeduzida(m) {
   const lugar = chave(m && m['FORUM']) + ' ' + chave(m && m['CIDADE']);
   const contra = chave(m && m['REQUERIDA']);
   if (/FAZENDA|FISCAL|NUCLEO|ACIDENTE|PREVIDENCI|JEFAZ/.test(lugar)) return 'EF';
   if (/INSTITUTO NACIONAL DO SEGURO SOCIAL|\bINSS\b|FAZENDA|MUNICIPIO|PREFEITURA/.test(contra)) return 'EF';
+  if (/CRIMINAL|CRIME|JECRIM|JURI\b/.test(lugar)) return 'CRIM';
   return '1G';
 }
+// lê a coluna SISTEMA: { tipo: 'ESAJ' | 'EPROC' | '', base: '1G' | 'EF' | '2G' | 'CRIM' | '', explicita, info }
+function sistemaDe(m) {
+  const s = chave(m && m['SISTEMA']);
+  if (!s) return { tipo: '', base: '', explicita: false, info: null };
+  if (/E-?SAJ|^SAJ/.test(s)) return { tipo: 'ESAJ', base: '', explicita: true, info: SISTEMAS[0] };
+  if (/E-?PROC/.test(s)) {
+    let base = '';
+    if (/FAZENDA|\bEF\b|VERMELH|ACIDENT|FISCAL|PREVID/.test(s)) base = 'EF';
+    else if (/2\s*[ºO°]?\s*GRAU|\b2G\b|SEGUNDO|VERDE|RECURS/.test(s)) base = '2G';
+    else if (/CRIM|CINZA/.test(s)) base = 'CRIM';
+    else if (/CIVEL|\b1G\b|AZUL/.test(s)) base = '1G';
+    const explicita = !!base;
+    if (!base) base = baseEprocDeduzida(m);
+    return { tipo: 'EPROC', base, explicita, info: SISTEMAS.find(x => x.base === base) };
+  }
+  return { tipo: '', base: '', explicita: false, info: null };
+}
+function ehEproc(m) { return sistemaDe(m).tipo === 'EPROC'; }
+function baseEproc(m) { const s = sistemaDe(m); return s.tipo === 'EPROC' ? s.base : baseEprocDeduzida(m); }
+function valorSistemaBase(base) { const s = SISTEMAS.find(x => x.base === base); return s ? s.val : 'EPROC'; }
 // Núcleo de Justiça 4.0 (Acidentes do Trabalho do Interior e Litoral)
 function ehNucleo(m) { return /NUCLEO|ACIDENTES? DO TRABALHO/.test(chave(m && m['CIDADE']) + ' ' + chave(m && m['FORUM'])); }
-function nucleoEproc(m) { return ehNucleo(m) && chave(m && m['SISTEMA']) === 'EPROC'; }
+function nucleoEproc(m) { return ehNucleo(m) && ehEproc(m); }
+
+/* listas dos campos do formulário de dados (definidas aqui para os testes no Node) */
+// Campos de opção fixa viram lista de escolher (clicou, escolheu). O rótulo explica; o valor é o que vai para a planilha.
+const OPCOES_FIXAS = {
+  SISTEMA: [{ v: '', r: 'Escolha o sistema…' }].concat(SISTEMAS.map(s => ({ v: s.val, r: s.rot }))),
+  STATUS: [{ v: 'AGUARDANDO', r: 'AGUARDANDO · nada peticionado' }, { v: 'ACEITE', r: 'ACEITE · aceite peticionado' }, { v: 'RENUNCIA', r: 'RENUNCIA · renunciei' }],
+  'PROXIMO PASSO': [{ v: '', r: '(vazio)' }].concat(ETAPAS.map(e => ({ v: e.val, r: e.val }))),
+  LAUDO: [{ v: '', r: '(não começou)' }, { v: 'PRODUÇÃO', r: 'PRODUÇÃO · em andamento' }, { v: 'ENTREGUE', r: 'ENTREGUE · protocolado' }],
+  PAGO: [{ v: '', r: '(sem depósito)' }, { v: 'RESERVADO', r: 'RESERVADO · honorários depositados' }, { v: 'MLE', r: 'MLE · levantamento pedido ou expedido' }, { v: 'OFÍCIO', r: 'OFÍCIO' }, { v: 'PARCIAL', r: 'PARCIAL · recebi uma parte' }, { v: 'PAGO', r: 'PAGO · recebido' }]
+};
+// campos com lista tirada da própria planilha, mais a opção de digitar um valor novo
+const CAMPOS_LISTA = { CIDADE: 'Outra cidade (digitar)…', FORUM: 'Outro fórum ou vara (digitar)…', TIPO: 'Outro tipo (digitar)…' };
+const OUTRO = '__outro__';
+const LARGOS = ['REQUERENTE', 'REQUERIDA', 'OBSERVACAO', 'FORUM'];
+const VALORES_FIXOS = new Set([].concat(...Object.keys(OPCOES_FIXAS).map(k => OPCOES_FIXAS[k].map(o => chave(o.v)))).concat(['EPROC', 'INDIRETA', 'RENUNCIEI', 'CONCLUIDO']).filter(Boolean));
 // decisão inicial do Núcleo no eproc: perícia com antecedência mínima de 45 dias
 const ANTECEDENCIA_NUCLEO = 45;
 function dataMinimaNucleo(hoje) { const d = new Date(hoje || zeroHoje()); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ANTECEDENCIA_NUCLEO); return d; }
@@ -762,7 +811,7 @@ if (typeof document === 'undefined') {
     ehNucleo, nucleoEproc, dataMinimaNucleo, guiaEprocPara, GUIA_EPROC_NUCLEO, ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, trilhaProcesso, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
-    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, statusNomeacao, aceitePendente, aceiteJunto, etapasDoc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
+    montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, baseEprocDeduzida, sistemaDe, ehEproc, valorSistemaBase, SISTEMAS, EPROC_BASES, valorEstranho, htmlOpcoes, tipoCampo, OPCOES_FIXAS, statusNomeacao, aceitePendente, aceiteJunto, etapasDoc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
   };
   return;
 }
@@ -1461,13 +1510,14 @@ function renderFicha() {
   const it = acharItem(f.aba, f.linha);
   if (!it) { fecharFicha(); return; }
   const m = it.m, c = it.c, proc = m['PROCESSO'];
+  const sis = sistemaDe(m);
   const valor = valorHonorarios(m['HONORARIOS'], UFESP);
   let h = '<header class="ficha-topo"><div class="linha1"><h2 id="ficha-nome">' + esc(m['REQUERENTE'] || '(sem nome)') + '</h2><button type="button" class="btn icone" data-acao="fechar-ficha" aria-label="Fechar">' + ic('fechar') + '</button></div>' +
     (m['REQUERIDA'] ? '<p class="contra">x ' + esc(m['REQUERIDA']) + '</p>' : '') +
     '<div class="proc"><span>' + esc(formatarCNJ(proc)) + '</span><button type="button" class="btn pequeno" data-acao="copiar" data-txt="' + esc(formatarCNJ(proc)) + '">' + ic('copiar') + 'Copiar nº</button>' +
-    (chave(m['SISTEMA']) === 'ESAJ' && linkEsaj(proc) ? '<a class="btn pequeno" target="_blank" rel="noopener" href="' + esc(linkEsaj(proc)) + '">' + ic('externo') + 'e-SAJ</a>' : '') +
-    (chave(m['SISTEMA']) === 'EPROC' && linkEproc(proc, m) ? '<a class="btn pequeno" target="_blank" rel="noopener" data-acao="abrir-eproc" data-txt="' + esc(formatarCNJ(proc)) + '" href="' + esc(linkEproc(proc, m)) + '" title="Abre o eproc e copia o número para colar na busca">' + ic('externo') + 'eproc</a>' + (document.documentElement.hasAttribute('data-eproc-atalho') ? '' : '<button type="button" class="btn pequeno so-desk" data-acao="ajuda-eproc" title="Como abrir o processo direto no eproc">Abrir direto?</button>') : '') + '</div>' +
-    '<div class="chips">' + [m['SISTEMA'], [m['CIDADE'], m['FORUM']].filter(Boolean).join(' · '), m['TIPO']].filter(Boolean).map(x => '<span class="chip">' + esc(x) + '</span>').join('') +
+    (sis.tipo === 'ESAJ' && linkEsaj(proc) ? '<a class="btn pequeno" target="_blank" rel="noopener" href="' + esc(linkEsaj(proc)) + '">' + ic('externo') + 'e-SAJ</a>' : '') +
+    (sis.tipo === 'EPROC' && linkEproc(proc, m) ? '<a class="btn pequeno eproc-' + esc(sis.info.cor) + '" target="_blank" rel="noopener" data-acao="abrir-eproc" data-base="' + esc(sis.base) + '" data-txt="' + esc(formatarCNJ(proc)) + '" href="' + esc(linkEproc(proc, m)) + '" title="Abre o ' + esc(sis.info.rot) + ' e copia o número para colar na busca">' + ic('externo') + esc(sis.info.curto) + '</a>' + (document.documentElement.hasAttribute('data-eproc-atalho') ? '' : '<button type="button" class="btn pequeno so-desk" data-acao="ajuda-eproc" title="Como abrir o processo direto no eproc">Abrir direto?</button>') : '') + '</div>' +
+    '<div class="chips">' + chipSistema(m) + [[m['CIDADE'], m['FORUM']].filter(Boolean).join(' · '), m['TIPO']].filter(Boolean).map(x => '<span class="chip">' + esc(x) + '</span>').join('') +
     (m['HONORARIOS'] ? '<span class="chip dinheiro">' + esc(m['HONORARIOS']) + (valor && /UFESP/i.test(m['HONORARIOS']) ? ' ≈ ' + fmtBRL(valor) : '') + '</span>' : '') + chipPago(m) +
     (f.aba === 'PERICIAS' && statusNomeacao(m) ? '<span class="chip ' + (statusNomeacao(m) === 'aceito' ? 'ok' : 'alerta') + '" title="Coluna STATUS da planilha">' + (statusNomeacao(m) === 'aceito' ? '✓ ' : '') + ROT_STATUS[statusNomeacao(m)] + '</span>' : '') + '</div></header>';
 
@@ -1511,7 +1561,7 @@ function renderFicha() {
       h += '<p class="vazio">Processo em ' + TITULO_ABA[f.aba] + '.</p><div class="acoes"><button type="button" class="btn primario" data-acao="mover" data-para="PERICIAS">Voltar para Perícias</button></div>';
     }
     if (f.confirma && f.confirma.local !== 'encerrar') h += htmlConfirma(f.confirma);
-    if (f.aba === 'PERICIAS') h += htmlGuiaEproc(m) + htmlTransicaoEproc(m);
+    if (f.aba === 'PERICIAS') h += htmlBaseEproc(m) + htmlGuiaEproc(m) + htmlTransicaoEproc(m);
     h += '<section class="docs" id="docs-bloco"></section>';
     if (f.aba === 'PERICIAS') {
       const aberto = f.confirma && f.confirma.local === 'encerrar';
@@ -1772,63 +1822,126 @@ function acaoRapida(id) {
 }
 
 /* ---------- formulário de dados ---------- */
-const OPCOES = {
-  SISTEMA: ['ESAJ', 'EPROC'],
-  STATUS: ['AGUARDANDO', 'ACEITE', 'RENUNCIA'],
-  PAGO: ['RESERVADO', 'MLE', 'OFÍCIO', 'PARCIAL', 'PAGO'],
-  'PROXIMO PASSO': ETAPAS.map(e => e.val),
-  LAUDO: ['PRODUÇÃO', 'ENTREGUE'],
-  PERICIA: ['INDIRETA']
-};
-const LISTAS = ['SISTEMA', 'STATUS', 'PAGO', 'PROXIMO PASSO', 'LAUDO', 'TIPO', 'PERICIA', 'CIDADE', 'FORUM'];
-const LARGOS = ['REQUERENTE', 'REQUERIDA', 'OBSERVACAO', 'FORUM'];
-function opcoesCampo(aba, norm) {
-  if (LISTAS.indexOf(norm) < 0) return null;
-  const base = (OPCOES[norm] || []).slice();
+function tipoCampo(n) {
+  if (/^(PRAZOS?|INTIMACAO)$/.test(n)) return 'data';
+  if (n === 'PERICIA') return 'pericia';
+  if (OPCOES_FIXAS[n]) return 'fixo';
+  if (CAMPOS_LISTA[n]) return 'lista';
+  if (n === 'OBSERVACAO') return 'area';
+  return 'texto';
+}
+// valor que não faz sentido como cidade, fórum ou tipo (datas, números de processo, valores e status que caíram na coluna errada)
+function valorEstranho(v) { return !!parseData(v) || /\d{7}-?\d{2}|\d{12,}|R\$|UFESP/i.test(v) || VALORES_FIXOS.has(chave(v)); }
+// opções de CIDADE, FORUM e TIPO: valores já usados nas abas, sem repetição (fica a grafia mais usada), em ordem alfabética
+function opcoesLista(norm) {
+  const cont = {};
   ABAS_PLANILHA.forEach(a => {
     const d = state.dados[a];
     if (!d) return;
     const i = d.cabecalho.findIndex(h => chave(h) === norm);
+    const iSis = d.cabecalho.findIndex(h => chave(h) === 'SISTEMA');
     if (i >= 0) d.linhas.forEach(l => {
-      const v = (l.v[i] || '').trim();
-      if (!v || v.length > 60 || (norm === 'PERICIA' && parseData(v))) return;
-      if (base.map(chave).indexOf(chave(v)) < 0) base.push(v);
+      // linhas antigas com colunas deslocadas (ex.: a cidade caiu em SISTEMA) não entram na lista
+      if (iSis >= 0 && String(l.v[iSis] || '').trim() && !sistemaDe({ SISTEMA: l.v[iSis] }).tipo) return;
+      const v = String(l.v[i] || '').trim().replace(/\s+/g, ' ');
+      if (!v || v.length > 60 || valorEstranho(v)) return;
+      if (norm === 'CIDADE' && /\bVARA\b|\bFORO\b|JUIZADO|CIVEL|JUDICIAL/.test(chave(v))) return;
+      const k = chave(v);
+      (cont[k] = cont[k] || {})[v] = (cont[k][v] || 0) + 1;
     });
   });
-  return base.slice(0, 80);
+  return Object.keys(cont).map(k => { const g = cont[k]; return Object.keys(g).sort((x, y) => g[y] - g[x])[0]; })
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+}
+function paraIso(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+// <option>s de uma lista; o valor atual é mantido exatamente como está na planilha (mesmo com grafia diferente)
+function htmlOpcoes(ops, val) {
+  const atual = chave(val);
+  const lista = ops.slice();
+  if (!lista.some(o => chave(o.v) === atual)) lista.splice(val ? lista.length : 0, 0, { v: val, r: val ? val + ' (valor atual)' : '(vazio)' });
+  return lista.map(o => { const sel = chave(o.v) === atual; return '<option value="' + esc(sel ? val : o.v) + '"' + (sel ? ' selected' : '') + '>' + esc(o.r) + '</option>'; }).join('');
 }
 function camposForm(aba, it, padrao) {
   const d = state.dados[aba];
   return d.cabecalho.map((hdr, idx) => {
     const n = chave(hdr);
-    const val = it ? (it.v[idx] || '') : ((padrao || {})[n] || '');
-    const ops = opcoesCampo(aba, n);
+    const val = String(it ? (it.v[idx] || '') : ((padrao || {})[n] || '')).trim();
     const id = 'cp-' + idx;
+    const base = 'id="' + id + '" data-h="' + esc(hdr) + '" data-orig="' + esc(val) + '"';
+    let tipo = tipoCampo(n);
+    // data que não dá para ler (texto livre antigo) continua como texto, para não perder o que está escrito
+    if ((tipo === 'data' || tipo === 'pericia') && val && !parseData(val) && !(tipo === 'pericia' && chave(val) === 'INDIRETA')) tipo = 'texto';
     let ctl;
-    if (n === 'OBSERVACAO') ctl = '<textarea id="' + id + '" data-h="' + esc(hdr) + '" data-orig="' + esc(val) + '">' + esc(val) + '</textarea>';
-    else ctl = '<input id="' + id + '" data-h="' + esc(hdr) + '" data-orig="' + esc(val) + '" value="' + esc(val) + '"' + (ops ? ' list="dl-' + idx + '"' : '') +
-      (/^(PRAZOS?|INTIMACAO)$/.test(n) ? ' placeholder="dd/mm/aaaa" inputmode="numeric"' : '') +
-      (n === 'PERICIA' ? ' placeholder="dd/mm/aaaa ou INDIRETA"' : '') +
-      (n === 'PROCESSO' ? ' inputmode="numeric" placeholder="0000000-00.0000.8.26.0000" data-cnj="1"' : '') + ' autocomplete="off">';
-    if (ops) ctl += '<datalist id="dl-' + idx + '">' + ops.map(o => '<option value="' + esc(o) + '">').join('') + '</datalist>';
-    if (aba === 'PERICIAS' && n === 'STATUS') ctl += '<small class="dica-campo">AGUARDANDO: nada peticionado ainda (nem aceite nem renúncia) · ACEITE: já peticionei aceitando · RENUNCIA: renunciei</small>';
+    if (tipo === 'area') ctl = '<textarea ' + base + ' data-tipo="area">' + esc(val) + '</textarea>';
+    else if (tipo === 'fixo') {
+      let ops = OPCOES_FIXAS[n];
+      const sv = n === 'SISTEMA' && sistemaDe({ SISTEMA: val });
+      if (sv && sv.tipo === 'EPROC' && !sv.explicita) ops = ops.concat([{ v: val, r: val + ' · sem base (escolha uma)' }]);
+      ctl = '<select ' + base + ' data-tipo="fixo">' + htmlOpcoes(ops, val) + '</select>';
+    }
+    else if (tipo === 'lista') {
+      const ops = [{ v: '', r: '(vazio)' }].concat(opcoesLista(n).map(v => ({ v: v, r: v })));
+      ctl = '<select ' + base + ' data-tipo="lista">' + htmlOpcoes(ops, val) + '<option value="' + OUTRO + '">' + esc(CAMPOS_LISTA[n]) + '</option></select>' +
+        '<input class="campo-outro" hidden autocomplete="off" placeholder="Digite e confira" aria-label="' + esc(hdr) + ' (novo valor)">';
+    } else if (tipo === 'data' || tipo === 'pericia') {
+      const ind = tipo === 'pericia' && chave(val) === 'INDIRETA';
+      const dt = parseData(val);
+      ctl = '<input type="date" ' + base + ' data-tipo="' + tipo + '" value="' + (dt ? paraIso(dt) : '') + '"' + (ind ? ' disabled' : '') + '>' +
+        (tipo === 'pericia' ? '<label class="check campo-ind"><input type="checkbox" class="campo-indireta"' + (ind ? ' checked' : '') + '> Perícia indireta (sem data)</label>' : '');
+    } else ctl = '<input type="text" ' + base + ' data-tipo="texto" value="' + esc(val) + '" autocomplete="off"' +
+      (n === 'PROCESSO' ? ' inputmode="numeric" placeholder="0000000-00.0000.8.26.0000" data-cnj="1"' : '') + '>';
+    if (aba === 'PERICIAS' && n === 'SISTEMA') ctl += '<small class="dica-campo">eproc: azul Cível · vermelho Fazenda Pública e acidentes do trabalho · verde 2º grau · cinza Criminal</small>';
     return '<div class="campo' + (LARGOS.indexOf(n) >= 0 ? ' largo' : '') + '"><label for="' + id + '">' + esc(hdr) + '</label>' + ctl + '</div>';
   }).join('');
 }
+// valor do campo no formato da planilha (datas em dd/mm/aaaa, "INDIRETA", valor digitado em "Outro")
+function valorCampo(el) {
+  const t = el.dataset.tipo, campo = el.closest('.campo');
+  if (t === 'lista' && el.value === OUTRO) { const o = campo.querySelector('.campo-outro'); return o ? o.value.trim().replace(/\s+/g, ' ') : ''; }
+  if (t === 'data' || t === 'pericia') {
+    const ind = campo.querySelector('.campo-indireta');
+    if (ind && ind.checked) return 'INDIRETA';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(el.value);
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : '';
+  }
+  return el.value.trim();
+}
+function campoMudou(el) {
+  const v = valorCampo(el), o = (el.dataset.orig || '').trim();
+  if (el.dataset.tipo === 'data' || el.dataset.tipo === 'pericia') {
+    const a = parseData(v), b = parseData(o);
+    if (a && b) return a.getTime() !== b.getTime();
+    return chave(v) !== chave(o);
+  }
+  return v !== o;
+}
+function marcarMudou(campo) { const el = campo && campo.querySelector('[data-h]'); if (el) campo.classList.toggle('mudou', campoMudou(el)); }
 function ligarForm(root) {
-  root.addEventListener('input', e => {
-    const el = e.target.closest('[data-h]');
-    if (el) el.closest('.campo').classList.toggle('mudou', el.value !== el.dataset.orig);
+  const marcar = e => { marcarMudou(e.target.closest('.campo')); };
+  root.addEventListener('input', marcar);
+  root.addEventListener('change', e => {
+    const el = e.target;
+    if (el.matches('select[data-tipo="lista"]')) {
+      const o = el.closest('.campo').querySelector('.campo-outro');
+      o.hidden = el.value !== OUTRO;
+      if (!o.hidden) o.focus();
+    }
+    if (el.matches('.campo-indireta')) {
+      const dt = el.closest('.campo').querySelector('[data-h]');
+      dt.disabled = el.checked;
+      if (el.checked) dt.value = '';
+    }
+    marcar(e);
   });
   root.querySelectorAll('[data-cnj]').forEach(el => el.addEventListener('blur', () => {
-    if (digitos(el.value).length === 20) { el.value = formatarCNJ(el.value); el.closest('.campo').classList.toggle('mudou', el.value !== el.dataset.orig); }
+    if (digitos(el.value).length === 20) { el.value = formatarCNJ(el.value); marcarMudou(el.closest('.campo')); }
   }));
 }
 function lerForm(root, soMudados) {
   const o = {};
   root.querySelectorAll('[data-h]').forEach(el => {
-    const v = el.value.trim();
-    if (soMudados ? v !== el.dataset.orig.trim() : v) o[el.dataset.h] = v;
+    const v = valorCampo(el);
+    if (soMudados ? campoMudou(el) : v) o[el.dataset.h] = v;
   });
   return o;
 }
@@ -1864,8 +1977,25 @@ function htmlGuiaEproc(m) {
     ks.map(k => item(GUIA_EPROC_NUCLEO.find(g => g.k === k))).join('') +
     '<details class="guia-todas"><summary>Outras situações</summary>' + GUIA_EPROC_NUCLEO.filter(g => ks.indexOf(g.k) < 0).map(item).join('') + '</details></details>';
 }
+// etiqueta do sistema na ficha, com a cor da base do eproc
+function chipSistema(m) {
+  const s = sistemaDe(m);
+  if (!s.tipo) return m['SISTEMA'] ? '<span class="chip">' + esc(m['SISTEMA']) + '</span>' : '<span class="chip alerta" title="Coluna SISTEMA vazia">Sistema não informado</span>';
+  return '<span class="chip sis sis-' + esc(s.info.cor) + '" title="' + esc(s.info.rot + (s.info.desc ? ': ' + s.info.desc : '')) + '"><i></i>' + esc(s.info.curto) + (s.tipo === 'EPROC' && !s.explicita ? ' ?' : '') + '</span>';
+}
+// avisos sobre a base do eproc: base não informada (valor antigo "EPROC") ou base diferente da esperada para o Núcleo
+function htmlBaseEproc(m) {
+  const s = sistemaDe(m);
+  if (s.tipo !== 'EPROC') return '';
+  const val = valorSistemaBase(s.base);
+  if (!s.explicita) return '<div class="alerta-box" style="cursor:default"><span>🧭</span><span>A planilha diz só <b>EPROC</b>, sem a base. Pelo tipo do processo, o app está abrindo o <b>' + esc(s.info.rot) + '</b>.' +
+    '<br><button type="button" class="btn pequeno" data-acao="base-eproc" data-val="' + esc(val) + '" style="margin-top:8px">Confirmar ' + esc(s.info.curto) + '</button> <span class="dica">ou escolha outra base no campo SISTEMA da aba Dados</span></span></div>';
+  if (ehNucleo(m) && s.base !== 'EF') return '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>Processos do Núcleo 4.0 (acidentes do trabalho) ficam no <b>eproc Fazenda Pública (vermelho)</b>, mas a planilha marca <b>' + esc(s.info.rot) + '</b>.' +
+    '<br><button type="button" class="btn pequeno" data-acao="base-eproc" data-val="EPROC FAZENDA" style="margin-top:8px">Trocar para eproc Fazenda</button></span></div>';
+  return '';
+}
 function htmlTransicaoEproc(m) {
-  if (!ehNucleo(m) || chave(m['SISTEMA']) !== 'ESAJ') return '';
+  if (!ehNucleo(m) || sistemaDe(m).tipo !== 'ESAJ') return '';
   return '<div class="alerta-box" style="cursor:default"><span>🔄</span><span>O Núcleo 4.0 está passando para o <b>eproc</b> (base Fazenda Pública). Quando este processo aparecer lá, toque em <b>Migrou para o eproc</b>: o botão de abrir no tribunal e o guia de peticionamento mudam junto.' +
     '<br><button type="button" class="btn pequeno" data-acao="migrar-eproc" style="margin-top:8px">Migrou para o eproc</button></span></div>';
 }
@@ -1874,7 +2004,7 @@ function abrirAjudaEproc() {
   const inst = document.documentElement.hasAttribute('data-eproc-atalho');
   $('#modal-titulo').textContent = 'Abrir o processo direto no eproc';
   $('#modal-corpo').innerHTML = (inst ? '<p class="ok-msg">✓ O atalho já está instalado neste navegador. O botão eproc abre direto o processo.</p>' : '') +
-    '<p>O eproc não aceita link direto para um processo. Com um pequeno atalho instalado no Chrome do computador, o botão <b>eproc</b> da ficha abre o eproc já na página do processo (se você estiver logado; se não, abre depois do login).</p>' +
+    '<p>O eproc não aceita link direto para um processo. Com um pequeno atalho instalado no Chrome do computador, o botão do eproc na ficha abre a base certa (Cível, Fazenda Pública, 2º grau ou Criminal) já na página do processo (se você estiver logado; se não, abre depois do login).</p>' +
     '<ol class="passos-ag">' +
     '<li>Instale a extensão <b>Tampermonkey</b> no Chrome: <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">abrir na Chrome Web Store</a>.</li>' +
     '<li>Em <b>chrome://extensions</b>, abra <b>Detalhes</b> do Tampermonkey e ligue <b>Permitir scripts de usuário</b> (e o <b>Modo do desenvolvedor</b>, se o Chrome pedir).</li>' +
@@ -1886,17 +2016,42 @@ function abrirAjudaEproc() {
   if (!modal.open) modal.showModal();
 }
 
+// cadastro: enquanto ninguém escolheu o sistema, sugere o eproc Fazenda Pública (vermelho) para Núcleo 4.0, INSS, Fazenda ou Município
+function sugerirSistemaNovo(root) {
+  const hSis = cabDe('PERICIAS', 'SISTEMA');
+  const sel = hSis && root.querySelector('[data-h="' + hSis + '"]');
+  if (!sel) return;
+  const dica = txt => {
+    const c = sel.closest('.campo');
+    let d = c.querySelector('.dica-auto');
+    if (!txt) { if (d) d.remove(); return; }
+    if (!d) { d = document.createElement('small'); d.className = 'dica-campo dica-auto'; sel.insertAdjacentElement('afterend', d); }
+    d.textContent = txt;
+  };
+  sel.addEventListener('change', () => { sel.dataset.tocado = '1'; dica(''); });
+  root.addEventListener('change', e => {
+    if (e.target === sel || sel.dataset.tocado) return;
+    const dados = lerForm(root, false);
+    const m = linhaMapa(Object.keys(dados), Object.keys(dados).map(k => dados[k]));
+    const sugere = baseEprocDeduzida(m) === 'EF' ? 'EPROC FAZENDA' : '';
+    if (sel.value === sugere) return;
+    sel.value = sugere;
+    dica(sugere ? 'Sugerido pelo processo (Núcleo 4.0, INSS ou Fazenda ficam no eproc vermelho). Confira.' : '');
+  });
+}
 function abrirNovoProcesso() {
   $('#modal-titulo').textContent = 'Novo processo';
-  $('#modal-corpo').innerHTML = '<div class="form-grid" id="novo-form">' + camposForm('PERICIAS', null, { 'STATUS': 'AGUARDANDO', 'PROXIMO PASSO': 'ACEITE', 'SISTEMA': 'EPROC' }) + '</div>' +
+  $('#modal-corpo').innerHTML = '<div class="form-grid" id="novo-form">' + camposForm('PERICIAS', null, { 'STATUS': 'AGUARDANDO', 'PROXIMO PASSO': 'ACEITE', 'SISTEMA': '' }) + '</div>' +
     '<label class="check" style="margin-top:14px"><input type="checkbox" id="novo-pasta" checked> Criar a pasta do periciado no Drive (PERICIAS / CIDADE / Nome)</label>';
   $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="novo-salvar">Cadastrar</button><span class="esp"></span><small style="color:var(--suave);align-self:center">O processo entra na aba PERICIAS</small>';
   ligarForm($('#novo-form'));
+  sugerirSistemaNovo($('#novo-form'));
   $('#novo-salvar').onclick = async ev => {
     const btn = ev.target;
     const dados = lerForm($('#novo-form'), false);
-    const hProc = cabDe('PERICIAS', 'PROCESSO');
+    const hProc = cabDe('PERICIAS', 'PROCESSO'), hSis = cabDe('PERICIAS', 'SISTEMA');
     if (!dados[hProc]) { toast('Informe o número do processo.', { erro: true }); return; }
+    if (hSis && !dados[hSis]) { toast('Escolha o sistema: e-SAJ ou qual eproc.', { erro: true }); const s = $('#novo-form [data-h="' + hSis + '"]'); if (s) s.focus(); return; }
     btn.disabled = true;
     try {
       const req = { aba: 'PERICIAS', dados: dados };
@@ -2224,7 +2379,7 @@ function mostrarReservado(vinc, dados, recarga, avisar) {
   const m = Object.assign({}, vinc.m, { 'PERICIA': dados.data });
   $('#modal-titulo').textContent = 'Horário reservado';
   $('#modal-corpo').innerHTML = '<div class="gerado"><span class="tipo-arq img">📅</span><div><b>' + esc(fmtExtenso(parseData(dados.data)) + ' às ' + dados.hora) + '</b><small>' + esc(dados.nome + ' · ' + (dados.local || '') + ' · status AGENDAR na aba AGENDAMENTOS') + '</small></div></div>' +
-    '<ol class="passos-ag"><li>Gere a petição de agendamento abaixo e confira os trechos em amarelo.</li><li>Protocole no ' + esc(chave(vinc.m['SISTEMA']) === 'EPROC' ? 'eproc' : 'e-SAJ') + '.</li><li>Toque em <b>Já protocolei</b>: o horário passa para OK e o processo para PERÍCIA' + (aceiteJunto(vinc.m) ? ', com status ACEITE (a petição de agendamento também aceita a nomeação)' : '') + '. Dá para fazer isso depois, pela ficha ou pelas Tarefas.</li></ol>' +
+    '<ol class="passos-ag"><li>Gere a petição de agendamento abaixo e confira os trechos em amarelo.</li><li>Protocole no ' + esc(sistemaDe(vinc.m).info ? sistemaDe(vinc.m).info.rot : 'tribunal') + '.</li><li>Toque em <b>Já protocolei</b>: o horário passa para OK e o processo para PERÍCIA' + (aceiteJunto(vinc.m) ? ', com status ACEITE (a petição de agendamento também aceita a nomeação)' : '') + '. Dá para fazer isso depois, pela ficha ou pelas Tarefas.</li></ol>' +
     '<div id="ag-docs"></div>' +
     (temAgenda ? '<label class="check" style="margin-top:12px"><input type="checkbox" id="ag-discord2"' + (avisar ? ' checked' : '') + '> Avisar no #agenda do Discord ao confirmar</label>' : '');
   $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="ag-confirmar">Já protocolei: confirmar agendamento</button><span class="esp"></span><button type="button" class="btn" id="ag-depois">Fazer depois</button>';
@@ -3060,7 +3215,14 @@ document.addEventListener('click', ev => {
     case 'ajuda-eproc': abrirAjudaEproc(); break;
     case 'migrar-eproc': {
       const it = acharItem(state.ficha.aba, state.ficha.linha);
-      pedirConfirmacao(it, 'Processo migrou para o eproc', { 'SISTEMA': 'EPROC' }, 'Migrou para o eproc (base Fazenda Pública)', ['O número do processo continua o mesmo. O botão eproc abre a base Fazenda Pública (eproc1g-ef).']);
+      pedirConfirmacao(it, 'Processo migrou para o eproc', { 'SISTEMA': 'EPROC FAZENDA' }, 'Migrou para o eproc (base Fazenda Pública)', ['O número do processo continua o mesmo. O botão do tribunal passa a abrir o eproc Fazenda Pública (vermelho).']);
+      break;
+    }
+    case 'base-eproc': {
+      const it = acharItem(state.ficha.aba, state.ficha.linha);
+      const s = SISTEMAS.find(x => x.val === ds.val);
+      if (!it || !s) break;
+      pedirConfirmacao(it, 'Base do eproc: ' + s.curto, { 'SISTEMA': s.val }, 'Base do eproc: ' + s.rot, ['Coluna SISTEMA passa a ' + s.val + '. O botão do tribunal abre o ' + s.rot + '.']);
       break;
     }
     case 'filtrar':
