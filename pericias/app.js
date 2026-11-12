@@ -1178,14 +1178,26 @@ const state = {
 };
 
 /* ---------- API ---------- */
+// leituras que não mudam nada na planilha (as demais, se demorarem, podem ter sido gravadas)
+const API_LEITURAS = ['inicial', 'me', 'docs', 'modelos', 'historico', 'gestao', 'listar', 'agenda', 'atividade', 'discordCanais'];
+// ações que copiam ou criam arquivos no Drive podem passar de 1 minuto
+const API_DEMORADAS = ['gerarDoc', 'upload', 'modeloCriar', 'modeloDuplicar', 'pastaCriar', 'discordRotina'];
 async function api(acao, extra) {
   if (!API || API.indexOf('COLE_AQUI') === 0) throw new Error('Falta colar a URL do Apps Script em config.js');
-  let r;
+  const leitura = API_LEITURAS.indexOf(acao) >= 0;
+  const limite = API_DEMORADAS.indexOf(acao) >= 0 ? 300000 : 90000;
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), limite) : null;
+  let r, j;
   try {
-    r = await fetch(API, { method: 'POST', redirect: 'follow', body: JSON.stringify(Object.assign({ acao: acao, token: state.token }, extra || {})) });
-  } catch (e) { throw new Error('Sem conexão com o servidor.'); }
-  let j;
-  try { j = await r.json(); } catch (e) { throw new Error('Resposta inválida do servidor.'); }
+    try {
+      r = await fetch(API, { method: 'POST', redirect: 'follow', signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao, token: state.token }, extra || {})) });
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw new Error('O servidor demorou demais para responder. ' + (leitura ? 'Tente de novo em instantes.' : 'A alteração pode ter sido gravada: toque em Atualizar e confira antes de repetir.'));
+      throw new Error('Sem conexão com o servidor.' + (leitura ? '' : ' Toque em Atualizar e confira se a alteração foi gravada.'));
+    }
+    try { j = await r.json(); } catch (e) { throw new Error(e && e.name === 'AbortError' ? 'O servidor demorou demais para responder. Toque em Atualizar e confira.' : 'Resposta inválida do servidor.'); }
+  } finally { if (timer) clearTimeout(timer); }
   if (j && j.erro === 'SESSAO') { sair(false); throw new Error('Sessão expirada. Entre novamente.'); }
   return j;
 }
@@ -1218,13 +1230,14 @@ $('#form-login').addEventListener('submit', async ev => {
   const btn = $('#lg-btn'), msg = $('#lg-msg');
   msg.textContent = ''; btn.disabled = true; btn.textContent = 'Entrando...';
   try {
-    const j = await api('login', { usuario: $('#lg-user').value, senha: $('#lg-pass').value, token: '' });
+    const j = await api('login', { usuario: $('#lg-user').value, senha: $('#lg-pass').value, token: '', comInicial: true });
     if (!j.ok) { msg.textContent = j.erro || 'Não foi possível entrar.'; return; }
     state.token = j.token; state.user = j.usuario; state.papel = j.papel || 'assistente'; state.gestao = null;
     gravar('pericias_token', j.token);
     $('#lg-pass').value = '';
     mostrarApp();
-    await recarregar(false);
+    if (j.inicial && j.inicial.ok) aplicarInicial(j.inicial); // o servidor já mandou os dados junto com o login
+    else await recarregar(false);
   } catch (e) {
     msg.textContent = e.message;
   } finally {
@@ -1234,36 +1247,18 @@ $('#form-login').addEventListener('submit', async ev => {
 
 /* ---------- CARGA ---------- */
 let carregando = null;
-async function recarregar(silencioso) {
+// recarga leve depois de uma ação: só não traz Concluídos e Renúncias (só mudam ao mover, e mover recarrega tudo)
+const LEVE = { abas: ['PERICIAS'] };
+async function recarregar(silencioso, op) {
   if (carregando) return carregando;
   if (!silencioso) $('#conteudo').innerHTML = '<p class="carregando">Carregando...</p>';
   $('#sync').textContent = 'Atualizando...';
   carregando = (async () => {
     try {
-      const j = await api('inicial');
+      const j = await api('inicial', op && op.abas ? { abas: op.abas } : null);
       if (!j.ok && j.erro === 'Ação desconhecida') throw new Error('O backend no Apps Script está desatualizado. Cole o AppPericias.gs novo e publique uma Nova versão em Implantar > Gerenciar implantações.');
       if (!j.ok) throw new Error(j.erro || 'Erro ao carregar');
-      if (j.usuario && j.usuario !== state.user) state.painel = null; // outro usuário: outro painel
-      state.user = j.usuario || state.user;
-      if (j.prefs && typeof j.prefs === 'object') {
-        state.prefsServidor = true;
-        if (j.prefs.painel && state.painel && (Number(j.prefs.painel.t) || 0) > (Number(state.painel.t) || 0)) state.painel = null; // mudou em outro aparelho
-        state.prefs = j.prefs;
-      } else state.prefsServidor = false; // servidor sem a parte de preferências: o painel fica salvo só no aparelho
-      state.papel = j.papel || 'assistente';
-      ABAS_PLANILHA.forEach(a => { if (j.abas && j.abas[a]) state.dados[a] = j.abas[a]; });
-      state.agenda = j.agenda || [];
-      state.livres = j.livres || [];
-      state.atividade = j.atividade || [];
-      state.canais = j.canais || [];
-      state.tarefas = j.tarefas || [];
-      state.verificados = j.verificados || {};
-      state.usuarios = j.usuarios || [];
-      state.hora = j.hora || '';
-      $('#nav-user').textContent = state.user;
-      $('#sync').textContent = state.hora ? 'Atualizado às ' + state.hora : '';
-      render();
-      atualizarFichaAberta();
+      aplicarInicial(j);
     } catch (e) {
       $('#sync').textContent = '';
       toast(e.message, { erro: true });
@@ -1271,6 +1266,31 @@ async function recarregar(silencioso) {
     } finally { carregando = null; }
   })();
   return carregando;
+}
+
+function aplicarInicial(j) {
+  if (j.usuario && j.usuario !== state.user) state.painel = null; // outro usuário: outro painel
+  state.user = j.usuario || state.user;
+  if (j.prefs && typeof j.prefs === 'object') {
+    state.prefsServidor = true;
+    if (j.prefs.painel && state.painel && (Number(j.prefs.painel.t) || 0) > (Number(state.painel.t) || 0)) state.painel = null; // mudou em outro aparelho
+    state.prefs = j.prefs;
+  } else state.prefsServidor = false; // servidor sem a parte de preferências: o painel fica salvo só no aparelho
+  state.papel = j.papel || 'assistente';
+  ABAS_PLANILHA.forEach(a => { if (j.abas && j.abas[a]) state.dados[a] = j.abas[a]; });
+  state.agenda = j.agenda || [];
+  state.livres = j.livres || [];
+  state.atividade = j.atividade || [];
+  state.canais = j.canais || [];
+  state.tarefas = j.tarefas || [];
+  state.verificados = j.verificados || {};
+  state.usuarios = j.usuarios || [];
+  state.hora = j.hora || '';
+  $('#nav-user').textContent = state.user;
+  $('#sync').textContent = state.hora ? 'Atualizado às ' + state.hora : '';
+  if (j.ms) state.tempos = j.ms; // tempo gasto pelo servidor em cada parte (para diagnóstico)
+  render();
+  atualizarFichaAberta();
 }
 
 /* ---------- DADOS ---------- */
@@ -1730,13 +1750,20 @@ async function gravarHeaders(aba, linha, processo, dados, antes, motivo, op) {
   if (reg) Object.keys(dados).forEach(hdr => { reg.v[d.cabecalho.indexOf(hdr)] = dados[hdr]; });
   render(); atualizarFichaAberta();
   try {
-    const j = await api('salvar', { aba: aba, linha: linha, processoEsperado: processo, dados: dados, motivo: motivo });
+    const esperado = op.esperado || antes || null; // valores que a tela mostrava: o servidor recusa se a planilha mudou depois
+    const j = await api('salvar', { aba: aba, linha: linha, processoEsperado: processo, dados: dados, esperado: esperado, motivo: motivo });
+    if (!j.ok && j.erro === 'CONFLITO_CAMPO') {
+      if (reg && backup) reg.v = backup;
+      toast('Não salvei: ' + (j.campos || []).map(c => c.campo + ' já está "' + (c.atual || 'vazio') + '" na planilha').join('; ') + '. Atualizei os dados: confira e faça de novo se ainda precisar.', { erro: true, tempo: 12000 });
+      await recarregar(true, LEVE);
+      return false;
+    }
     if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || 'Erro ao salvar'));
     const hProc = cabDe(aba, 'PROCESSO');
     const procDepois = Object.prototype.hasOwnProperty.call(dados, hProc) ? dados[hProc] : processo;
-    if (!op.semDesfazer && antes) toast(motivo + ': salvo', { acao: { rot: 'Desfazer', fn: () => gravarHeaders(aba, linha, procDepois, antes, null, 'Desfeito', { semDesfazer: true }) } });
+    if (!op.semDesfazer && antes) toast(motivo + ': salvo', { acao: { rot: 'Desfazer', fn: () => gravarHeaders(aba, linha, procDepois, antes, null, 'Desfeito', { semDesfazer: true, esperado: dados }) } });
     else toast(motivo);
-    recarregar(true);
+    recarregar(true, LEVE);
     return true;
   } catch (e) {
     if (reg && backup) reg.v = backup;
@@ -2080,7 +2107,7 @@ async function confirmarAgendamento(it, sl, avisar, aceite) {
     if (!j.ok) throw new Error(erroApi(j, 'Erro ao confirmar o agendamento'));
     toast('Agendamento confirmado: ' + txtSlot(sl));
     if (avisar) avisarAgendaDiscord(sl, it);
-    await recarregar(true);
+    await recarregar(true, LEVE);
     if (state.ficha) renderFicha();
     return true;
   } catch (e) { toast(e.message, { erro: true }); if (state.ficha) renderFicha(); return false; }
@@ -2229,10 +2256,11 @@ async function salvarDadosFicha() {
   const f = state.ficha, it = acharItem(f.aba, f.linha);
   const dados = lerForm($('#ficha-form'), true);
   if (!Object.keys(dados).length) { toast('Nada mudou.'); return; }
-  const antes = {};
-  Object.keys(dados).forEach(h => { antes[h] = it.v[state.dados[f.aba].cabecalho.indexOf(h)] || ''; });
+  const antes = {}, esperado = {};
+  Object.keys(dados).forEach(h => { antes[h] = it.v[state.dados[f.aba].cabecalho.indexOf(h)] || ''; esperado[h] = antes[h]; });
+  $('#ficha-form').querySelectorAll('[data-h]').forEach(el => { if (Object.prototype.hasOwnProperty.call(dados, el.dataset.h)) esperado[el.dataset.h] = el.dataset.orig || ''; });
   f.aba2 = 'acoes';
-  await gravarHeaders(f.aba, it.linha, it.m['PROCESSO'], dados, antes, 'Dados editados');
+  await gravarHeaders(f.aba, it.linha, it.m['PROCESSO'], dados, antes, 'Dados editados', { esperado: esperado });
 }
 
 /* ---------- novo processo ---------- */
@@ -2347,7 +2375,7 @@ function abrirNovoProcesso() {
         ? api('pastaCriar', { aba: 'PERICIAS', linha: j.linha, processoEsperado: dados[hProc], nome: periciadoDe(m) }).catch(e => ({ ok: false, erro: e.message }))
         : Promise.resolve(null);
       toast('Processo cadastrado');
-      const recarga = recarregar(true);
+      const recarga = recarregar(true, LEVE);
       mostrarCadastrado(j.linha, dados[hProc], m, pastaPronta, recarga, criarPasta);
     } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
   };
@@ -2642,11 +2670,11 @@ function abrirSlot(a, diaPadrao, op) {
       }
       if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? 'A agenda foi alterada. Atualize e tente de novo.' : (j.erro || 'Erro ao salvar'));
       if (avisar && novo && ok) avisarAgendaDiscord(dados, vinc || ligado);
-      if (vinc && !ok) { mostrarReservado(vinc, dados, recarregar(true), !!avisar); return; }
+      if (vinc && !ok) { mostrarReservado(vinc, dados, recarregar(true, LEVE), !!avisar); return; }
       modal.close();
       if (vinc) fecharFicha();
       toast(vinc ? 'Perícia agendada' : 'Agenda atualizada');
-      await recarregar(true);
+      await recarregar(true, LEVE);
     } catch (e) { toast(e.message, { erro: true }); btn.disabled = false; }
   };
   if (!modal.open) modal.showModal();
@@ -3539,7 +3567,7 @@ document.addEventListener('click', ev => {
         if (!j.ok) throw new Error(j.erro || 'Erro ao apagar');
         state.agenda = j.itens || state.agenda; state.livres = j.livres || [];
         render(); toast('Horário livre apagado');
-      }).catch(e => { el.disabled = false; toast(e.message, { erro: true }); recarregar(true); });
+      }).catch(e => { el.disabled = false; toast(e.message, { erro: true }); recarregar(true, LEVE); });
       break;
     }
     case 't-feita': el.disabled = true; mudarTarefa('tarefaStatus', { id: ds.id, feita: true }, 'Tarefa concluída'); break;
