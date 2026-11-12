@@ -9,20 +9,22 @@
   <script>try { document.documentElement.dataset.tema = localStorage.getItem('pericias_tema') === 'claro' ? 'claro' : 'escuro'; } catch (e) { document.documentElement.dataset.tema = 'escuro'; }</script>
   <title>Perícias | Dr. Bruno Thomás Michels</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="../logo.png">
-  <link rel="apple-touch-icon" href="../logo.png">
+  <link rel="icon" href="logo-192.png">
+  <link rel="apple-touch-icon" href="logo-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+  <!-- fontes sem travar o primeiro desenho da tela -->
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Lato:wght@400;700;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Lato:wght@400;700;900&display=swap" rel="stylesheet"></noscript>
   <!-- ao publicar mudanças, aumente o número de "v" nos 3 arquivos abaixo para o navegador baixar a versão nova -->
-  <link rel="stylesheet" href="app.css?v=23">
+  <link rel="stylesheet" href="app.css?v=24">
 </head>
 <body>
 
 <!-- LOGIN -->
 <main id="tela-login" class="login" hidden>
   <form id="form-login" class="login-card" autocomplete="on">
-    <img src="../logo.png" alt="Logo" class="login-logo">
+    <img src="logo-128.webp" alt="Logo" class="login-logo" width="58" height="56">
     <h1>Perícias</h1>
     <p class="login-sub">Dr. Bruno Thomás Michels</p>
     <label for="lg-user">Usuário</label>
@@ -37,7 +39,7 @@
 <!-- APP -->
 <div id="tela-app" class="app" hidden>
   <nav class="nav" aria-label="Seções">
-    <div class="marca"><img src="../logo.png" alt=""><div><b>Perícias</b><small>Dr. Bruno Michels</small></div></div>
+    <div class="marca"><img src="logo-128.webp" alt="" width="38" height="38"><div><b>Perícias</b><small>Dr. Bruno Michels</small></div></div>
     <div id="nav-itens" class="nav-itens"></div>
     <div id="nav-mais" class="nav-mais" hidden></div>
     <button type="button" class="btn-tema" id="btn-tema" data-acao="tema"></button>
@@ -76,7 +78,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="config.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
