@@ -413,7 +413,7 @@ function dataMinimaNucleo(hoje) { const d = new Date(hoje || zeroHoje()); d.setH
 
 // Manual de Orientações Iniciais aos Peritos do Núcleo (eproc, base Fazenda Pública, v1.0, nov/2026): evento e tipo de cada documento
 const GUIA_EPROC_NUCLEO = [
-  { k: 'aceite-agendamento', quando: 'Aceite + agendamento', evento: 'Comunicação do Início e Local dos Trabalhos Perito', docs: ['Perito aceitação do encargo', 'Petição Designação data perícia (Comunicação de Designação de Perícia, modelo do Anexo II)'], prazo: 'intimação da nomeação (decisão inicial)', nota: 'Data com pelo menos 45 dias de antecedência. Aceite e comunicação em dois arquivos separados, no mesmo peticionamento.' },
+  { k: 'aceite-agendamento', quando: 'Aceite + agendamento', evento: 'Comunicação do Início e Local dos Trabalhos Perito', docs: ['Petição Designação data perícia (Comunicação de Designação de Perícia, modelo oficial)'], prazo: 'intimação da nomeação (decisão inicial)', nota: 'No Núcleo a comunicação de designação já vale como aceite do encargo: não precisa de documento de aceite separado. Data com pelo menos 45 dias de antecedência.' },
   { k: 'aceite-deposito', quando: 'Aceite, aguardando o depósito', evento: 'Petição - aceitação do encargo de perito', docs: ['Perito aceitação do encargo'], prazo: 'intimação da nomeação' },
   { k: 'laudo', quando: 'Laudo + Formulário de MLE', evento: 'Laudo Pericial - Perito', docs: ['Laudo Pericial - Perito', 'Pedido de Levantamento de Honorários Perito (Formulário de MLE)'], prazo: 'intimação para apresentação do laudo', nota: 'Laudo em 30 dias. Laudo e formulário em dois arquivos separados, no mesmo peticionamento.' },
   { k: 'esclarecimentos', quando: 'Esclarecimentos', evento: 'Manifestação de Esclarecimento pelo Perito - Perito', docs: ['Manifestação de Esclarecimento pelo Perito - Perito'] },
@@ -595,7 +595,7 @@ function resumoRegra(md) {
 // modelos sugeridos para o processo: primeiro os que têm regra configurada, depois os reconhecidos pelo nome
 function sugerirModelos(modelos, m) {
   const vis = modelosVisiveis(modelos);
-  // no eproc do Núcleo, aceite e agendamento vão em arquivos separados: o modelo que junta os dois sai das sugestões
+  // no eproc do Núcleo o documento é a Comunicação de Designação (vale como aceite): o modelo antigo de aceite com agendamento sai das sugestões
   const vis2 = nucleoEproc(m) ? vis.filter(md => !/ACEITE COM AGENDAMENTO/.test(chave(md.nome))) : vis;
   if (vis2 !== vis) return sugerirModelosVis(vis2, m);
   return sugerirModelosVis(vis, m);
@@ -617,8 +617,8 @@ function sugerirPorNome(modelos, m) {
     PAGAMENTO: ['MLE', 'HONORARIOS', 'FORMULARIO'], RENUNCIAR: ['RENUNCIA']
   };
   const nucEproc = nucleoEproc(m);
-  if (nucEproc) { mapa.ACEITE = ['ACEITE ENCARGO', 'COMUNICACAO DESIGNACAO', 'ACEITE']; mapa.RESERVA = mapa.AGENDAMENTO = ['COMUNICACAO DESIGNACAO', 'AGENDAMENTO']; mapa.LAUDO = ['LAUDO', 'FORMULARIO MLE']; }
-  const chaves = (aceitePendente(m) && e !== 'ACEITE' ? (nucEproc ? ['ACEITE ENCARGO', 'COMUNICACAO DESIGNACAO'] : ['ACEITE']) : []).concat(mapa[e] || []);
+  if (nucEproc) { mapa.ACEITE = ['COMUNICACAO DESIGNACAO', 'ACEITE ENCARGO', 'ACEITE']; mapa.RESERVA = mapa.AGENDAMENTO = ['COMUNICACAO DESIGNACAO', 'AGENDAMENTO']; mapa.LAUDO = ['LAUDO', 'FORMULARIO MLE']; }
+  const chaves = (aceitePendente(m) && e !== 'ACEITE' ? (nucEproc ? ['COMUNICACAO DESIGNACAO'] : ['ACEITE']) : []).concat(mapa[e] || []);
   return modelos.map(md => {
     const t = chave(md.nome).replace(/[^A-Z0-9 ]/g, ' ');
     let s = 0;
