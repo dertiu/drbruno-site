@@ -804,6 +804,270 @@ function processosPeloNome(nome, itens) {
     .sort((a, b) => (parseData(a.m['PERICIA']) || 9e15) - (parseData(b.m['PERICIA']) || 9e15));
 }
 
+/* catálogo do painel personalizável (definido aqui para os testes no Node; o desenho fica em PAINEL, mais abaixo) */
+const TAM_BLOCO = { p: { rot: 'Pequeno (1/3)', cls: 'c4' }, m: { rot: 'Médio (1/2)', cls: 'c6' }, g: { rot: 'Grande (2/3)', cls: 'c8' }, t: { rot: 'Linha inteira', cls: 'c12' } };
+const GRUPOS_BLOCO = [['kpi', 'Indicadores do topo'], ['lista', 'Listas do dia a dia'], ['grafico', 'Gráficos e classificações'], ['fin', 'Financeiro (só o perito)']];
+const CORES_SIS = { esaj: 'var(--gold)', azul: '#1d7fbf', vermelho: '#b3203f', verde: '#14916a', cinza: '#8b919b' };
+const PALETA = ['var(--g-perito)', 'var(--g-assist)', 'var(--g-aviso)', 'var(--g-critico)', 'var(--g-destaque)', 'var(--g-neutro)', 'var(--g-est2)', 'var(--g-serie)'];
+const TRILHA_CURTA = ['Aceite', 'Reserva', 'Agend.', 'Perícia', 'Laudo', 'Pagto.', 'Concl.'];
+function plN(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
+function kpiHtml(o) {
+  return '<button type="button" class="kpi" style="--k:' + o.k + '" ' + (o.attrs || '') + '><span class="ic-kpi">' + ic(o.ic) + '</span><span class="rot">' + esc(o.rot) + '</span><span class="val">' + o.val + '</span>' +
+    (o.sub ? '<span class="sub">' + o.sub + '</span>' : '') + (o.extra || '') + '</button>';
+}
+function linhaProc(it, dir, ponto) {
+  return '<button type="button" class="linha-item" data-acao="ficha" data-aba="PERICIAS" data-linha="' + it.linha + '"><span class="ponto ' + (ponto || 'ok') + '"></span><span class="meio"><b>' + esc(it.m['REQUERENTE'] || '(sem nome)') + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO'])) + '</small></span>' + (dir ? '<span class="dir">' + dir + '</span>' : '') + '</button>';
+}
+function semDados(txt) { return '<p class="vazio">' + esc(txt) + '</p>'; }
+function linkBloco(rot, attrs) { return '<button type="button" class="link" ' + attrs + '>' + esc(rot) + '</button>'; }
+
+// tudo o que os blocos usam, calculado uma vez por desenho do painel
+function ctxPainel() {
+  const lista = ativos(), hoje = zeroHoje();
+  const por = q => lista.filter(i => i.c.quem === q);
+  const comPrazo = lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && prazoDe(i.m)).sort((a, b) => prazoDe(a.m) - prazoDe(b.m));
+  const agenda = state.agenda.map(a => Object.assign({ d: parseData(a.data) }, a)).filter(a => a.d);
+  const agFut = agenda.filter(a => diasAte(a.d) > 0).sort((a, b) => a.d - b.d || String(a.hora).localeCompare(String(b.hora)));
+  return {
+    lista: lista, hoje: hoje, perito: por('perito'), assist: por('assistente'), acomp: por('acompanhar'), comPrazo: comPrazo,
+    vencidos: comPrazo.filter(i => diasAte(prazoDe(i.m)) < 0),
+    prox7: comPrazo.filter(i => { const n = diasAte(prazoDe(i.m)); return n >= 0 && n <= 7; }),
+    prazosHoje: comPrazo.filter(i => diasAte(prazoDe(i.m)) === 0),
+    agenda: agenda, agFut: agFut, ag14: agFut.filter(a => diasAte(a.d) <= 14),
+    agHoje: agenda.filter(a => mesmoDia(a.d, hoje)).sort((a, b) => String(a.hora).localeCompare(String(b.hora))),
+    laudos: laudosPendentes(lista),
+    mle: lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)'),
+    conf: situacaoConferencia(lista, state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE),
+    tarefas: montarTarefas(lista, state.tarefas, state.user, state.papel, 'minhas', state.usuarios)
+  };
+}
+
+// catálogo dos blocos: kpi = indicador do topo; os demais são cartões do corpo
+// op: opções do bloco [{ k, rot, vals: [[valor, rótulo]], padrao }]; papel 'perito' = só o perito pode incluir (valores em R$)
+const BLOCOS = [
+  { id: 'k-ativos', tipo: 'kpi', titulo: 'Processos ativos', desc: 'Total e com quem está cada um (perito, assistente, aguardando)', render: c => kpiHtml({ k: 'var(--kpi-neutro)', ic: 'processos', rot: 'Processos ativos', val: c.lista.length, attrs: 'data-acao="filtrar" data-quem=""',
+      extra: '<div class="kpi-graf">' + segmentos([{ rot: 'Com o perito', val: c.perito.length, cor: 'var(--g-perito)' }, { rot: 'Com o assistente', val: c.assist.length, cor: 'var(--g-assist)' }, { rot: 'Aguardando Juízo ou pagamento', val: c.acomp.length, cor: 'var(--g-neutro)' }], { semLista: true, semFoco: true, titulo: 'Processos por responsável' }) +
+        '<div class="kpi-leg"><span><i style="background:var(--g-perito)"></i>' + c.perito.length + ' perito</span><span><i style="background:var(--g-assist)"></i>' + c.assist.length + ' assistente</span><span><i style="background:var(--g-neutro)"></i>' + c.acomp.length + ' aguardando</span></div></div>' }) },
+  { id: 'k-prazos', tipo: 'kpi', titulo: 'Prazos em 7 dias', desc: 'Prazos da semana, com os vencidos e um gráfico dia a dia', render: c => {
+      const dias = [];
+      for (let i = 0; i < 7; i++) { const d = somaDias(c.hoje, i); dias.push({ n: c.comPrazo.filter(it => mesmoDia(prazoDe(it.m), d)).length, rot: i === 0 ? 'hoje' : DIAS_SEM[d.getDay()] + ' ' + fmtCurto(d), cls: i === 0 ? 'agora' : '' }); }
+      return kpiHtml({ k: c.vencidos.length ? 'var(--vencido)' : 'var(--alerta)', ic: 'calendario', rot: 'Prazos em 7 dias', val: c.prox7.length, attrs: 'data-acao="ir" data-view="calendario"', sub: c.vencidos.length ? '<b style="color:var(--vencido)">' + plN(c.vencidos.length, 'vencido', 'vencidos') + '</b>' : 'nenhum vencido', extra: miniColunas(dias) });
+    } },
+  { id: 'k-pericias', tipo: 'kpi', titulo: 'Perícias em 14 dias', desc: 'Perícias marcadas nas próximas duas semanas e nas próximas 6 semanas', render: c => {
+      const sem = porSemana(c.agenda.map(a => a.d), c.hoje, 6).map((w, i) => ({ n: w.n, rot: 'semana de ' + fmtCurto(w.ini), cls: i === 0 ? 'agora' : '' }));
+      return kpiHtml({ k: 'var(--pericia)', ic: 'agenda', rot: 'Perícias em 14 dias', val: c.ag14.length, attrs: 'data-acao="ir" data-view="agenda"', sub: (c.agHoje.length ? c.agHoje.length + ' hoje' : c.ag14.length ? 'próxima ' + fmtCurto(c.ag14[0].d) : 'nada agendado') + ' · próximas 6 semanas', extra: miniColunas(sem) });
+    } },
+  { id: 'k-laudos', tipo: 'kpi', titulo: 'Laudos a fazer', desc: 'Processos na etapa de laudo, com os que têm perícia há mais de 20 dias', render: c => {
+      const atras = c.laudos.filter(x => x.dias != null && x.dias > 20);
+      return kpiHtml({ k: atras.length ? 'var(--critico)' : 'var(--pericia)', ic: 'documentos', rot: 'Laudos a fazer', val: c.laudos.length, attrs: 'data-acao="filtrar" data-etapa="LAUDO"', sub: atras.length ? '<b style="color:var(--vencido)">' + atras.length + ' com perícia há mais de 20 dias</b>' : 'nenhum atrasado' });
+    } },
+  { id: 'k-mle', tipo: 'kpi', titulo: 'MLE a peticionar', desc: 'Pagamentos liberados aguardando o pedido de levantamento', render: c => {
+      const ag = c.lista.filter(i => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(chave(i.m['PAGO'])) >= 0).length;
+      return kpiHtml({ k: 'var(--assist)', ic: 'financeiro', rot: 'MLE a peticionar', val: c.mle.length, attrs: 'data-acao="filtrar" data-etapa="PAGAMENTO"', sub: ag + ' aguardando pagamento' });
+    } },
+  { id: 'k-hoje', tipo: 'kpi', titulo: 'Perícias hoje', desc: 'Quantas perícias hoje e o próximo horário', render: c => kpiHtml({ k: 'var(--pericia)', ic: 'agenda', rot: 'Perícias hoje', val: c.agHoje.length, attrs: 'data-acao="ir" data-view="agenda"', sub: c.agHoje.length ? 'primeira às ' + esc(c.agHoje[0].hora) : c.agFut.length ? 'próxima ' + fmtCurto(c.agFut[0].d) + ' às ' + esc(c.agFut[0].hora) : 'nada agendado' }) },
+  { id: 'k-aceites', tipo: 'kpi', titulo: 'Aceites a peticionar', desc: 'Nomeações com STATUS AGUARDANDO (nada peticionado ainda)', render: c => {
+      const n = c.lista.filter(i => aceitePendente(i.m)).length;
+      return kpiHtml({ k: n ? 'var(--alerta)' : 'var(--assist)', ic: 'documentos', rot: 'Aceites a peticionar', val: n, attrs: 'data-acao="filtrar" data-etapa="ACEITE"', sub: n ? 'nomeações sem aceite nem renúncia' : 'todas respondidas' });
+    } },
+  { id: 'k-parados', tipo: 'kpi', titulo: 'Parados aguardando decisão', desc: 'Processos com PRÓXIMO PASSO = DECISÃO', render: c => {
+      const n = c.lista.filter(i => etapaDe(i.m) === 'DECISAO').length;
+      return kpiHtml({ k: 'var(--kpi-neutro)', ic: 'processos', rot: 'Aguardando decisão', val: n, attrs: 'data-acao="filtrar" data-etapa="DECISAO"', sub: 'parados esperando o Juízo' });
+    } },
+  { id: 'k-semreserva', tipo: 'kpi', titulo: 'Sem honorários reservados', desc: 'Em agendamento ou perícia sem depósito dos honorários', render: c => {
+      const n = c.lista.filter(i => semReserva(i.m)).length;
+      return kpiHtml({ k: n ? 'var(--alerta)' : 'var(--assist)', ic: 'financeiro', rot: 'Sem reserva', val: n, attrs: 'data-acao="filtrar" data-etapa="AGENDAMENTO"', sub: n ? 'não agendar antes do depósito' : 'tudo com depósito' });
+    } },
+  { id: 'k-conferir', tipo: 'kpi', titulo: 'Conferir nos autos', desc: 'Processos aguardando que passaram da meta de conferência semanal', render: c => kpiHtml({ k: c.conf.vencidos ? 'var(--critico)' : 'var(--alerta)', ic: 'tarefas', rot: 'Conferir nos autos', val: c.conf.vencidos + c.conf.semana, attrs: 'data-acao="ir" data-view="tarefas"', sub: c.conf.vencidos ? '<b style="color:var(--vencido)">' + c.conf.vencidos + ' no limite</b>' : 'nenhum no limite' }) },
+  { id: 'k-livres', tipo: 'kpi', titulo: 'Horários livres', desc: 'Horários livres na agenda nos próximos 30 dias', render: c => {
+      const lv = livresFuturos(state.livres).filter(a => diasAte(a.d) <= 30);
+      return kpiHtml({ k: 'var(--assist)', ic: 'agenda', rot: 'Horários livres (30 dias)', val: lv.length, attrs: 'data-acao="ir" data-view="agenda"', sub: lv.length ? 'próximo ' + fmtCurto(lv[0].d) + ' às ' + esc(lv[0].hora) : 'cadastre na Agenda' });
+    } },
+  { id: 'k-tarefas', tipo: 'kpi', titulo: 'Minhas tarefas', desc: 'Suas tarefas, com as atrasadas e as de hoje', render: c => {
+      const urg = c.tarefas.filter(t => ['atrasadas', 'hoje'].indexOf(grupoPrazo(t.prazo)) >= 0).length;
+      return kpiHtml({ k: urg ? 'var(--critico)' : 'var(--pericia)', ic: 'tarefas', rot: 'Minhas tarefas', val: c.tarefas.length, attrs: 'data-acao="ir" data-view="tarefas"', sub: urg ? '<b style="color:var(--vencido)">' + urg + ' atrasadas ou para hoje</b>' : 'nada atrasado' });
+    } },
+  { id: 'k-nucleo', tipo: 'kpi', titulo: 'Núcleo ainda no e-SAJ', desc: 'Processos do Núcleo 4.0 que ainda não migraram para o eproc', render: c => {
+      const nuc = c.lista.filter(i => ehNucleo(i.m)), esaj = nuc.filter(i => sistemaDe(i.m).tipo === 'ESAJ').length;
+      return kpiHtml({ k: 'var(--kpi-neutro)', ic: 'processos', rot: 'Núcleo no e-SAJ', val: esaj, attrs: 'data-acao="filtrar" data-quem=""', sub: (nuc.length - esaj) + ' já no eproc Fazenda' });
+    } },
+  { id: 'k-receber', tipo: 'kpi', papel: 'perito', titulo: 'A receber (R$)', desc: 'Total de honorários a receber dos processos ativos', render: c => {
+      const its = itensFinanceiros().filter(i => i.est), tot = its.reduce((s, i) => s + i.valor, 0);
+      return kpiHtml({ k: 'var(--assist)', ic: 'financeiro', rot: 'A receber', val: fmtBRLcurto(tot), attrs: 'data-acao="ir" data-view="gestao"', sub: plN(its.length, 'processo', 'processos') });
+    } },
+
+  // listas
+  { id: 'hoje', grupo: 'lista', titulo: 'Hoje e próximas perícias', desc: 'Perícias e prazos de hoje e as próximas perícias', tam: 'm',
+    op: [{ k: 'n', rot: 'Próximas', vals: [[6, '6'], [10, '10'], [15, '15']], padrao: 6 }], render: (c, o) => {
+      let h = '';
+      if (!c.agHoje.length && !c.prazosHoje.length) h += semDados('Sem perícias nem prazos para hoje.');
+      if (c.agHoje.length) h += '<div class="lista-linhas">' + c.agHoje.map(slotLinha).join('') + '</div>';
+      if (c.prazosHoje.length) h += '<div class="lista-linhas" style="margin-top:8px">' + c.prazosHoje.map(linhaPrazo).join('') + '</div>';
+      if (c.ag14.length) h += '<h3 class="sub-bloco">Próximas perícias</h3><div class="lista-linhas">' + c.ag14.slice(0, o.n).map(a => '<button type="button" class="linha-item" data-acao="slot" data-linha="' + a.linha + '"><span class="hora">' + fmtCurto(a.d) + '</span><span class="meio"><b>' + esc(a.hora + '  ' + a.nome) + '</b><small>' + esc([a.tipo, a.local].filter(Boolean).join(' · ')) + '</small></span></button>').join('') +
+        (c.ag14.length > o.n ? linkBloco('Ver todas (' + c.ag14.length + ')', 'data-acao="ir" data-view="agenda"') : '') + '</div>';
+      return { html: h };
+    } },
+  { id: 'prazos', grupo: 'lista', titulo: 'Prazos', desc: 'Prazos em ordem, com o semáforo de urgência', tam: 'm',
+    op: [{ k: 'dias', rot: 'Janela', vals: [[7, '7 dias'], [15, '15 dias'], [30, '30 dias']], padrao: 15 }, { k: 'n', rot: 'Itens', vals: [[6, '6'], [9, '9'], [15, '15']], padrao: 9 }], render: (c, o) => {
+      const pz = c.comPrazo.filter(i => diasAte(prazoDe(i.m)) <= o.dias);
+      return { topo: '<span class="legenda" style="margin:0"><span><i style="background:var(--vencido)"></i>vencido</span><span><i style="background:var(--critico)"></i>até 2 dias</span><span><i style="background:var(--alerta)"></i>até 5</span><span><i style="background:var(--atencao)"></i>até 10</span></span>',
+        html: (pz.length ? '<div class="lista-linhas">' + pz.slice(0, o.n).map(linhaPrazo).join('') + '</div>' : semDados('Nenhum prazo nos próximos ' + o.dias + ' dias.')) + (pz.length > o.n || c.comPrazo.length > pz.length ? linkBloco('Ver no calendário', 'data-acao="ir" data-view="calendario" style="margin-top:8px"') : '') };
+    } },
+  { id: 'atencao', grupo: 'lista', titulo: 'Atenção', desc: 'Alertas: vencidos, sem reserva, perícia passada, agenda sem OK, MLE, conferência e tarefas sem prazo', tam: 'm', render: c => {
+      const A = [];
+      const semRes = c.lista.filter(i => semReserva(i.m));
+      if (c.vencidos.length) A.push('<button type="button" class="alerta-box vermelho" data-acao="ir" data-view="calendario"><span>🔴</span><span><b>' + c.vencidos.length + '</b> prazo(s) vencido(s). Confira e atualize a data ou a etapa.</span></button>');
+      if (semRes.length) A.push('<button type="button" class="alerta-box" data-acao="filtrar" data-etapa="AGENDAMENTO"><span>⚠️</span><span><b>' + semRes.length + '</b> com agendamento ou perícia sem honorários reservados. Não agendar antes do depósito.</span></button>');
+      const passada = c.lista.filter(i => etapaDe(i.m) === 'PERICIA' && parseData(i.m['PERICIA']) && diasAte(parseData(i.m['PERICIA'])) < 0);
+      if (passada.length) A.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PERICIA"><span>🩺</span><span><b>' + passada.length + '</b> perícia(s) com data já passada e etapa ainda em PERÍCIA. Atualize para laudo ou não comparecimento.</span></button>');
+      const aConf = c.agenda.filter(a => diasAte(a.d) >= 0 && chave(a.status) !== 'OK');
+      if (aConf.length) A.push('<button type="button" class="alerta-box" data-acao="ir" data-view="agenda"><span>📅</span><span><b>' + aConf.length + '</b> horário(s) reservado(s) ainda sem status OK: falta peticionar o agendamento e confirmar.</span></button>');
+      if (c.mle.length) A.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PAGAMENTO"><span>💰</span><span><b>' + c.mle.length + '</b> pagamento(s) liberado(s) aguardando o MLE.</span></button>');
+      if (c.conf.vencidos) A.push('<button type="button" class="alerta-box" data-acao="ir" data-view="tarefas"><span>🔎</span><span><b>' + c.conf.vencidos + '</b> processo(s) aguardando sem conferir nos autos há ' + CONFERIR_LIMITE + ' dias ou mais (ou nunca conferidos pelo app).</span></button>');
+      const semPrazo = c.lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && !prazoDe(i.m)).length;
+      if (semPrazo) A.push('<button type="button" class="alerta-box azul" data-acao="ir" data-view="processos"><span>🗓️</span><span><b>' + semPrazo + '</b> tarefa(s) do perito ou do assistente sem prazo cadastrado.</span></button>');
+      return { html: A.length ? A.join('') : semDados('Tudo em ordem.') };
+    } },
+  { id: 'tarefas', grupo: 'lista', titulo: 'Minhas tarefas', desc: 'Suas próximas tarefas (do fluxo e as criadas à mão), por prazo', tam: 'm',
+    op: [{ k: 'n', rot: 'Itens', vals: [[6, '6'], [10, '10'], [15, '15']], padrao: 6 }], render: (c, o) => ({ topo: linkBloco('Abrir', 'data-acao="ir" data-view="tarefas"'),
+      html: c.tarefas.length ? '<div class="lista-linhas">' + c.tarefas.slice(0, o.n).map(t => {
+        const n = t.prazo ? diasAte(t.prazo) : null, pz = t.prazo ? (n < 0 ? 'venceu ' + fmtCurto(t.prazo) : n === 0 ? 'hoje' : fmtCurto(t.prazo)) : 'sem prazo';
+        const sub = t.it ? (t.it.m['REQUERENTE'] || '') + ' · ' + formatarCNJ(t.it.m['PROCESSO']) : 'tarefa criada' + (t.t && t.t.de ? ' por ' + t.t.de : '');
+        const at = t.it ? 'data-acao="ficha" data-aba="PERICIAS" data-linha="' + t.it.linha + '"' : 'data-acao="ir" data-view="tarefas"';
+        return '<button type="button" class="linha-item" ' + at + '><span class="ponto ' + (n == null ? 'ok' : nivelPrazo(n)) + '"></span><span class="meio"><b>' + esc(t.titulo) + '</b><small>' + esc(sub) + '</small></span><span class="dir">' + esc(pz) + '</span></button>';
+      }).join('') + '</div>' : semDados('Nenhuma tarefa sua agora.') }) },
+  { id: 'aceites', grupo: 'lista', titulo: 'Aceites a peticionar', desc: 'Nomeações ainda sem aceite nem renúncia (STATUS AGUARDANDO)', tam: 'm', render: c => {
+      const l = c.lista.filter(i => aceitePendente(i.m)).sort((a, b) => (prazoDe(a.m) || 9e15) - (prazoDe(b.m) || 9e15));
+      return { html: l.length ? '<div class="lista-linhas">' + l.slice(0, 10).map(it => { const pz = prazoDe(it.m); return linhaProc(it, pz ? 'prazo ' + fmtCurto(pz) : '', pz ? nivelPrazo(diasAte(pz)) : 'alerta'); }).join('') + '</div>' : semDados('Nenhuma nomeação esperando aceite.') };
+    } },
+  { id: 'laudos', grupo: 'lista', titulo: 'Laudos a fazer', desc: 'Processos na etapa de laudo, dos mais antigos aos mais novos, com os dias desde a perícia', tam: 'm', render: c => ({ topo: linkBloco('Ver todos', 'data-acao="filtrar" data-etapa="LAUDO"'),
+      html: c.laudos.length ? '<div class="lista-linhas">' + c.laudos.slice(0, 10).map(x => linhaProc(x.it, x.dias == null ? 'sem data' : x.dias + ' dias', x.dias == null ? 'ok' : x.dias > 30 ? 'vencido' : x.dias > 20 ? 'critico' : x.dias > 10 ? 'atencao' : 'ok')).join('') + '</div>' : semDados('Nenhum laudo pendente.') }) },
+  { id: 'livres', grupo: 'lista', titulo: 'Próximos horários livres', desc: 'Horários livres cadastrados na Agenda', tam: 'p', render: c => {
+      const lv = livresFuturos(state.livres);
+      return { topo: linkBloco('Agenda', 'data-acao="ir" data-view="agenda"'), html: lv.length ? '<div class="lista-linhas">' + lv.slice(0, 8).map(a => '<div class="linha-item" style="cursor:default"><span class="hora">' + fmtCurto(a.d) + '</span><span class="meio"><b>' + esc(DIAS_SEM[a.d.getDay()] + ' às ' + a.hora) + '</b><small>' + esc(a.local || '') + '</small></span></div>').join('') + '</div>' : semDados('Nenhum horário livre cadastrado.') };
+    } },
+  { id: 'atividade', grupo: 'lista', titulo: 'Atividade recente no app', desc: 'O que foi feito pelo app: quem, quando e o quê', tam: 'm',
+    op: [{ k: 'n', rot: 'Itens', vals: [[5, '5'], [7, '7'], [12, '12']], padrao: 7 }], render: (c, o) => ({ html: state.atividade.length ? '<div class="lista-linhas">' + state.atividade.slice(0, o.n).map(a =>
+      '<div class="linha-item" style="cursor:default"><span class="ponto ' + (/Discord/.test(a.acao) ? 'pericia' : 'ok') + '"></span><span class="meio"><b>' + esc(a.acao) + (a.processo ? ' · ' + esc(formatarCNJ(a.processo)) : '') + '</b><small>' + esc(a.data + ' · ' + a.usuario + (a.detalhe ? ' · ' + a.detalhe : '')) + '</small></span></div>').join('') + '</div>'
+      : semDados('As alterações feitas pelo app aparecem aqui (quem fez, quando e o quê).') }) },
+
+  // gráficos e classificações
+  { id: 'fluxo', grupo: 'grafico', titulo: 'Fluxo dos processos', desc: 'Quantos processos em cada etapa, na ordem do trabalho', tam: 'm', render: c => {
+      const et = ETAPAS.concat([{ k: 'OUTROS', rot: 'Outros' }, { k: 'SEM', rot: 'Sem etapa' }]).map(e => ({ e: e, n: c.lista.filter(i => etapaDe(i.m) === e.k).length })).filter(x => x.n);
+      return { topo: linkBloco('Ver quadro', 'data-acao="ir" data-view="processos"'), sub: 'Toque numa etapa para ver a lista.', html: barras(et.map(x => ({ rot: x.e.rot, val: x.n, dica: plN(x.n, 'processo', 'processos'), attrs: 'data-acao="filtrar" data-etapa="' + x.e.k + '"' }))) };
+    } },
+  { id: 'trilha', grupo: 'grafico', titulo: 'Linha do tempo: onde estão e onde pararam', desc: 'Processos por etapa da linha do tempo (Aceite a Pagamento), separando os que andam dos parados aguardando decisão', tam: 'm', render: c => {
+      const cont = TRILHA.slice(0, 6).map(r => ({ rot: r, partes: { anda: 0, parado: 0 } }));
+      c.lista.forEach(i => { const tr = trilhaProcesso(i.m); if (tr.atual >= 0 && tr.atual < 6) cont[tr.atual].partes[tr.travado ? 'parado' : 'anda']++; });
+      return { sub: 'Etapa atual de cada processo pela planilha. Parado = PRÓXIMO PASSO em DECISÃO.', html: '<span class="legenda"><span><i style="background:var(--g-serie)"></i>andando</span><span><i style="background:var(--g-aviso)"></i>parado aguardando decisão</span></span>' +
+        colunasPilha(cont.map((x, i) => ({ rot: TRILHA_CURTA[i], partes: x.partes, dicaR: x.rot })), [{ k: 'anda', rot: 'andando', cor: 'var(--g-serie)' }, { k: 'parado', rot: 'parados', cor: 'var(--g-aviso)' }], { titulo: 'Linha do tempo', altura: 150, unidade: 'processos' }) };
+    } },
+  { id: 'parados', grupo: 'grafico', titulo: 'Parados aguardando decisão', desc: 'Em que etapa estão os processos esperando o Juízo (nomeação, honorários, perícia, laudo, pagamento)', tam: 'm', render: c => {
+      const l = c.lista.filter(i => etapaDe(i.m) === 'DECISAO');
+      const top = contarTop(l, i => { const tr = trilhaProcesso(i.m); return 'Parado em ' + (TRILHA[tr.atual] || 'outra etapa'); }, 7, 'Outros');
+      return { sub: plN(l.length, 'processo parado', 'processos parados') + ' esperando decisão judicial.', html: segmentos(top.map((x, i) => ({ rot: x.k, val: x.n, cor: PALETA[i % PALETA.length], attrs: 'data-acao="filtrar" data-etapa="DECISAO"' })), { titulo: 'Parados por etapa' }) };
+    } },
+  { id: 'responsavel', grupo: 'grafico', titulo: 'Com quem está', desc: 'Divisão dos processos ativos entre perito, assistente e aguardando', tam: 'p', render: c => ({ html: segmentos([
+      { rot: 'Com o perito', val: c.perito.length, cor: 'var(--g-perito)', attrs: 'data-acao="filtrar" data-quem="perito"' },
+      { rot: 'Com o assistente', val: c.assist.length, cor: 'var(--g-assist)', attrs: 'data-acao="filtrar" data-quem="assistente"' },
+      { rot: 'Aguardando Juízo ou pagamento', val: c.acomp.length, cor: 'var(--g-neutro)', attrs: 'data-acao="filtrar" data-quem="acompanhar"' }], { titulo: 'Com quem está' }) }) },
+  { id: 'conferencia', grupo: 'grafico', titulo: 'Conferência nos autos', desc: 'Processos aguardando: em dia, conferir esta semana e no limite', tam: 'm', render: c => ({ topo: linkBloco('Abrir', 'data-acao="ir" data-view="tarefas"'),
+      sub: 'Processos aguardando decisão, depósito ou pagamento (' + c.conf.total + '). Meta: conferir toda semana, sem passar de ' + CONFERIR_LIMITE + ' dias.',
+      html: segmentos([
+        { rot: '✓ Em dia', desc: 'conferidos nos últimos ' + CONFERIR_DIAS + ' dias', val: c.conf.recentes.length, cor: 'var(--g-bom)', attrs: 'data-acao="ir" data-view="tarefas"' },
+        { rot: '! Conferir esta semana', desc: 'de ' + CONFERIR_DIAS + ' a ' + (CONFERIR_LIMITE - 1) + ' dias sem conferir', val: c.conf.semana, cor: 'var(--g-aviso)', attrs: 'data-acao="ir" data-view="tarefas"' },
+        { rot: '× No limite', desc: CONFERIR_LIMITE + ' dias ou mais, ou nunca conferidos', val: c.conf.vencidos, cor: 'var(--g-critico)', attrs: 'data-acao="ir" data-view="tarefas"' }], { titulo: 'Conferência nos autos' }) }) },
+  { id: 'pericias-mes', grupo: 'grafico', titulo: 'Perícias por mês', desc: 'Perícias realizadas por mês e as já agendadas nos próximos meses', tam: 'm',
+    op: [{ k: 'meses', rot: 'Para trás', vals: [[6, '6 meses'], [12, '12 meses']], padrao: 6 }], render: (c, o) => {
+      const ini = new Date(c.hoje.getFullYear(), c.hoje.getMonth() - o.meses, 1);
+      const meses = porMes(itens('PERICIAS').concat(itens('CONCLUSOS')).map(i => i.m), ini, o.meses + 3);
+      const tot = meses.filter(x => new Date(x.ano, x.mes + 1, 1) <= c.hoje).reduce((s, x) => s + x.n, 0);
+      return { topo: '<span class="legenda" style="margin:0"><span><i style="background:var(--g-serie)"></i>realizadas</span><span><i style="background:var(--g-destaque)"></i>mês atual</span><span><i style="background:var(--g-futuro)"></i>agendadas</span></span>',
+        sub: tot + ' perícias nos últimos ' + o.meses + ' meses (pela data da perícia na planilha, ativos e concluídos)',
+        html: colunas(meses.map(x => {
+          const atual = x.ano === c.hoje.getFullYear() && x.mes === c.hoje.getMonth(), futuro = new Date(x.ano, x.mes, 1) > c.hoje;
+          return { rot: MESES[x.mes].slice(0, 3), val: x.n, cls: atual ? 'atual' : futuro ? 'futuro' : '', rotulo: atual, dica: plN(x.n, 'perícia', 'perícias'), dicaR: MESES[x.mes] + ' de ' + x.ano + (futuro ? ' (agendadas)' : atual ? ' (mês atual)' : '') };
+        }), { titulo: 'Perícias por mês', altura: 160 }) };
+    } },
+  { id: 'agenda-semanas', grupo: 'grafico', titulo: 'Perícias por semana', desc: 'Perícias agendadas em cada uma das próximas semanas', tam: 'm',
+    op: [{ k: 'sem', rot: 'Semanas', vals: [[6, '6'], [8, '8'], [12, '12']], padrao: 8 }], render: (c, o) => {
+      const sem = porSemana(c.agenda.map(a => a.d), c.hoje, o.sem);
+      return { topo: linkBloco('Agenda', 'data-acao="ir" data-view="agenda"'), html: colunas(sem.map((w, i) => ({ rot: fmtCurto(w.ini), val: w.n, cls: i === 0 ? 'atual' : '', rotulo: true, dica: plN(w.n, 'perícia', 'perícias'), dicaR: 'semana de ' + fmtCurto(w.ini) })), { titulo: 'Perícias por semana', altura: 140 }) };
+    } },
+  { id: 'prazos-semanas', grupo: 'grafico', titulo: 'Prazos por semana', desc: 'Quantos prazos vencem em cada semana, com os já vencidos à parte', tam: 'm',
+    op: [{ k: 'sem', rot: 'Semanas', vals: [[6, '6'], [8, '8'], [12, '12']], padrao: 8 }], render: (c, o) => {
+      const sem = porSemana(c.comPrazo.map(i => prazoDe(i.m)).filter(d => diasAte(d) >= 0), c.hoje, o.sem);
+      const d = [{ rot: 'Venc.', val: c.vencidos.length, cls: 'futuro', rotulo: true, dica: plN(c.vencidos.length, 'prazo vencido', 'prazos vencidos'), dicaR: 'já vencidos' }]
+        .concat(sem.map((w, i) => ({ rot: fmtCurto(w.ini), val: w.n, cls: i === 0 ? 'atual' : '', rotulo: true, dica: plN(w.n, 'prazo', 'prazos'), dicaR: 'semana de ' + fmtCurto(w.ini) })));
+      return { topo: linkBloco('Calendário', 'data-acao="ir" data-view="calendario"'), html: colunas(d, { titulo: 'Prazos por semana', altura: 140 }) };
+    } },
+  { id: 'tipo', grupo: 'grafico', titulo: 'Processos por tipo', desc: 'Auxílio-acidente, interdição, pós-bariátrica, homecare, erro médico...', tam: 'm',
+    op: [{ k: 'n', rot: 'Mostrar', vals: [[6, '6 maiores'], [10, '10 maiores']], padrao: 6 }], render: (c, o) => ({ html: barras(contarTop(c.lista, i => i.m['TIPO'] || 'Sem tipo', o.n, 'Outros tipos').map(x => ({ rot: x.k, val: x.n, dica: plN(x.n, 'processo', 'processos'), attrs: x.outros ? '' : 'data-acao="filtrar" data-tipo="' + esc(x.k) + '"' }))) }) },
+  { id: 'comarca', grupo: 'grafico', titulo: 'Processos por comarca', desc: 'Onde estão os processos ativos (o Núcleo 4.0 conta junto)', tam: 'm',
+    op: [{ k: 'n', rot: 'Mostrar', vals: [[7, '7 maiores'], [12, '12 maiores']], padrao: 7 }], render: (c, o) => ({ html: barras(contarTop(c.lista, i => /NUCLEO/.test(chave(i.m['CIDADE'])) ? 'Núcleo 4.0 (acidentário)' : i.m['CIDADE'], o.n, 'Outras comarcas').map(x => ({ rot: x.k, val: x.n, dica: plN(x.n, 'processo', 'processos') }))) }) },
+  { id: 'sistema', grupo: 'grafico', titulo: 'Processos por sistema', desc: 'e-SAJ e as bases do eproc (Cível, Fazenda Pública, 2º grau, Criminal)', tam: 'm', render: c => {
+      const g = {};
+      c.lista.forEach(i => { const s = sistemaDe(i.m); const k = s.info ? s.info.curto : 'Sem sistema'; g[k] = g[k] || { n: 0, cor: s.info ? CORES_SIS[s.info.cor] : 'var(--g-neutro)', desc: s.info && s.info.desc }; g[k].n++; });
+      const ordem = SISTEMAS.map(s => s.curto).concat(['Sem sistema']);
+      return { html: segmentos(ordem.filter(k => g[k]).map(k => ({ rot: k, val: g[k].n, cor: g[k].cor, desc: g[k].desc || '' })), { titulo: 'Processos por sistema' }) };
+    } },
+  { id: 'nucleo', grupo: 'grafico', titulo: 'Núcleo 4.0: migração para o eproc', desc: 'Processos do Núcleo ainda no e-SAJ e já no eproc Fazenda Pública', tam: 'p', render: c => {
+      const nuc = c.lista.filter(i => ehNucleo(i.m)), ep = nuc.filter(i => ehEproc(i.m)).length;
+      return { sub: plN(nuc.length, 'processo ativo', 'processos ativos') + ' do Núcleo. Quando um aparecer no eproc, toque em "Migrou para o eproc" na ficha.', html: segmentos([{ rot: 'Ainda no e-SAJ', val: nuc.length - ep, cor: CORES_SIS.esaj }, { rot: 'No eproc Fazenda', val: ep, cor: CORES_SIS.vermelho }], { titulo: 'Núcleo 4.0' }) };
+    } },
+  { id: 'status', grupo: 'grafico', titulo: 'Status da nomeação', desc: 'Aceite peticionado ou ainda aguardando (coluna STATUS)', tam: 'p', render: c => {
+      const ac = c.lista.filter(i => statusNomeacao(i.m) === 'aceito').length, pe = c.lista.filter(i => aceitePendente(i.m)).length;
+      return { html: segmentos([{ rot: 'Aceite peticionado', val: ac, cor: 'var(--g-bom)' }, { rot: 'Aguardando (nada peticionado)', val: pe, cor: 'var(--g-aviso)', attrs: 'data-acao="filtrar" data-etapa="ACEITE"' }, { rot: 'Outro ou vazio', val: c.lista.length - ac - pe, cor: 'var(--g-neutro)' }], { titulo: 'Status da nomeação' }) };
+    } },
+  { id: 'pagamento', grupo: 'grafico', titulo: 'Situação dos honorários', desc: 'Sem depósito, reservado, MLE, ofício, parcial ou pago (quantidade, sem valores)', tam: 'm', render: c => {
+      const ord = [['', 'Sem depósito', 'var(--g-critico)'], ['RESERVADO', 'Reservado (depositado)', 'var(--g-est3)'], ['MLE', 'MLE pedido ou expedido', 'var(--g-est1)'], ['OFICIO', 'Ofício', 'var(--g-est2)'], ['PARCIAL', 'Parcial', 'var(--g-aviso)'], ['PAGO', 'Pago', 'var(--g-bom)']];
+      return { html: segmentos(ord.map(o => ({ rot: o[1], val: c.lista.filter(i => chave(i.m['PAGO']) === o[0]).length, cor: o[2] })).concat([{ rot: 'Outro valor', val: c.lista.filter(i => ord.every(o => chave(i.m['PAGO']) !== o[0])).length, cor: 'var(--g-neutro)' }]).filter(x => x.val), { titulo: 'Situação dos honorários' }) };
+    } },
+  { id: 'idade-laudos', grupo: 'grafico', titulo: 'Laudos: tempo desde a perícia', desc: 'Laudos a fazer separados por dias desde a perícia', tam: 'p', render: c => {
+      const f = (a, b) => c.laudos.filter(x => x.dias != null && x.dias >= a && x.dias <= b).length;
+      return { html: barras([{ rot: 'até 10 dias', val: f(0, 10), cor: 'var(--g-bom)' }, { rot: '11 a 20 dias', val: f(11, 20), cor: 'var(--g-aviso)' }, { rot: '21 a 30 dias', val: f(21, 30), cor: 'var(--g-critico)' }, { rot: 'mais de 30', val: f(31, 1e6), cor: 'var(--vencido)' }, { rot: 'sem data', val: c.laudos.filter(x => x.dias == null).length, cor: 'var(--g-neutro)' }].map(x => Object.assign(x, { dica: plN(x.val, 'laudo', 'laudos'), attrs: 'data-acao="filtrar" data-etapa="LAUDO"' }))) };
+    } },
+
+  // financeiro (só o perito)
+  { id: 'receber', grupo: 'fin', papel: 'perito', titulo: 'A receber por estágio (R$)', desc: 'Projeção de recebimento dos honorários, do mais perto ao mais distante do caixa', tam: 'm', render: () => {
+      const its = itensFinanceiros().filter(i => i.est), tot = its.reduce((s, i) => s + i.valor, 0);
+      return { topo: linkBloco('Financeiro', 'data-acao="ir" data-view="gestao"'), sub: fmtBRL(tot) + ' em ' + plN(its.length, 'processo', 'processos') + ' (UFESP a ' + fmtBRL(UFESP) + ').',
+        html: segmentos(ESTAGIOS_RECEB.map(e => { const l = its.filter(i => i.est === e.k), s = l.reduce((a, i) => a + i.valor, 0); return { rot: e.rot, desc: e.desc + ' · ' + plN(l.length, 'processo', 'processos'), val: s, txt: fmtBRLcurto(s), cor: e.cor }; }), { titulo: 'A receber por estágio' }) };
+    } },
+  { id: 'receber-tipo', grupo: 'fin', papel: 'perito', titulo: 'A receber por tipo (R$)', desc: 'Honorários a receber somados por tipo de perícia', tam: 'm', render: () => {
+      const its = itensFinanceiros().filter(i => i.est && i.valor), g = {};
+      its.forEach(i => { const k = i.m['TIPO'] || 'Sem tipo'; g[k] = (g[k] || 0) + i.valor; });
+      const l = Object.keys(g).map(k => ({ rot: k, val: g[k] })).sort((a, b) => b.val - a.val).slice(0, 8);
+      return { topo: linkBloco('Financeiro', 'data-acao="ir" data-view="gestao"'), html: barras(l.map(x => ({ rot: x.rot, val: Math.round(x.val), txt: fmtBRLcurto(x.val), dica: fmtBRL(x.val) }))) };
+    } }
+];
+BLOCOS.forEach(b => { if (!b.grupo) b.grupo = b.tipo === 'kpi' ? 'kpi' : 'lista'; if (!b.tipo) b.tipo = 'cartao'; });
+const BLOCO = {};
+BLOCOS.forEach(b => { BLOCO[b.id] = b; });
+function blocoPermitido(b, papel) { return !!b && (!b.papel || b.papel === papel); }
+
+// layout inicial (parecido com o painel de antes)
+function painelPadrao(papel) {
+  return {
+    v: 1, t: 0,
+    kpis: ['k-ativos', 'k-prazos', 'k-pericias', papel === 'perito' ? 'k-laudos' : 'k-mle'],
+    cartoes: ['hoje', 'prazos', 'atencao', 'fluxo', 'conferencia', 'pericias-mes', 'tipo', 'comarca', 'sistema', 'atividade'].map(id => ({ id: id, tam: BLOCO[id].tam, op: {} }))
+  };
+}
+// confere o que veio salvo: tira blocos que não existem mais ou que o perfil não pode ver, repetidos, tamanhos e opções inválidos
+function normalizarPainel(p, papel) {
+  if (!p || typeof p !== 'object' || !Array.isArray(p.kpis) || !Array.isArray(p.cartoes)) return painelPadrao(papel);
+  const vistos = {};
+  const kpis = p.kpis.filter(id => { const b = BLOCO[id]; if (!b || b.tipo !== 'kpi' || !blocoPermitido(b, papel) || vistos[id]) return false; return (vistos[id] = true); });
+  const cartoes = p.cartoes.filter(x => x && BLOCO[x.id] && BLOCO[x.id].tipo === 'cartao' && blocoPermitido(BLOCO[x.id], papel) && !vistos[x.id] && (vistos[x.id] = true)).map(x => {
+    const b = BLOCO[x.id], op = {};
+    (b.op || []).forEach(o => { const v = x.op && x.op[o.k]; op[o.k] = o.vals.some(par => par[0] === v) ? v : o.padrao; });
+    return { id: x.id, tam: TAM_BLOCO[x.tam] ? x.tam : b.tam, op: op };
+  });
+  return { v: 1, t: Number(p.t) || 0, kpis: kpis, cartoes: cartoes };
+}
+function opcoesBloco(b, x) { const op = {}; (b.op || []).forEach(o => { op[o.k] = x && x.op && x.op[o.k] != null ? x.op[o.k] : o.padrao; }); return op; }
+
 if (typeof document === 'undefined') {
   if (typeof module !== 'undefined') module.exports = {
     principalAcao, slotDoProcesso, horariosIntervalo, livresFuturos, grupoPrazo, montarTarefas, situacaoConferencia, prazoConferencia, txtConferencia, grupoModelo, processosParaModelo, filtroOk, modeloServe, resumoRegra,
@@ -811,6 +1075,7 @@ if (typeof document === 'undefined') {
     ehNucleo, nucleoEproc, dataMinimaNucleo, guiaEprocPara, GUIA_EPROC_NUCLEO, ehIntegra, tipoArquivo, urlPrevia, fmtTamanho, sugerirModelos, linkPdf, CAMPOS_DOC, modelosVisiveis,
     chave, esc, digitos, formatarCNJ, parseData, zeroHoje, diasAte, linhaMapa, classificar, semReserva, somaMinutos, isoParaBr, brParaIso,
     numBR, valorHonorarios, fmtBRL, fmtBRLcurto, etapaDe, posTrilha, trilhaProcesso, nivelPrazo, acoesRapidas, nomeCurto, periciadoDe, tipoAgendaDe,
+    painelPadrao, normalizarPainel, BLOCOS, TAM_BLOCO, opcoesBloco,
     montarEventos, porMes, escalaBonita, porSemana, contarTop, gcalLink, linkEsaj, linkEproc, baseEproc, baseEprocDeduzida, sistemaDe, ehEproc, valorSistemaBase, SISTEMAS, EPROC_BASES, valorEstranho, htmlOpcoes, tipoCampo, OPCOES_FIXAS, statusNomeacao, aceitePendente, aceiteJunto, etapasDoc, mdDiscord, gerarTarefas, gerarPauta, gerarPrazos, gerarFinanceiro, gerarFilaAgendamento, txtDias
   };
   return;
@@ -847,7 +1112,8 @@ const ICONES = {
   documentos: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
   mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  lua: '<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z"/>'
+  lua: '<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z"/>',
+  ajustes: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'
 };
 function ic(nome) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONES[nome] || '') + '</svg>'; }
 
@@ -977,7 +1243,13 @@ async function recarregar(silencioso) {
       const j = await api('inicial');
       if (!j.ok && j.erro === 'Ação desconhecida') throw new Error('O backend no Apps Script está desatualizado. Cole o AppPericias.gs novo e publique uma Nova versão em Implantar > Gerenciar implantações.');
       if (!j.ok) throw new Error(j.erro || 'Erro ao carregar');
+      if (j.usuario && j.usuario !== state.user) state.painel = null; // outro usuário: outro painel
       state.user = j.usuario || state.user;
+      if (j.prefs && typeof j.prefs === 'object') {
+        state.prefsServidor = true;
+        if (j.prefs.painel && state.painel && (Number(j.prefs.painel.t) || 0) > (Number(state.painel.t) || 0)) state.painel = null; // mudou em outro aparelho
+        state.prefs = j.prefs;
+      } else state.prefsServidor = false; // servidor sem a parte de preferências: o painel fica salvo só no aparelho
       state.papel = j.papel || 'assistente';
       ABAS_PLANILHA.forEach(a => { if (j.abas && j.abas[a]) state.dados[a] = j.abas[a]; });
       state.agenda = j.agenda || [];
@@ -1173,7 +1445,7 @@ function colunasPilha(dados, series, opt) {
   return '<div class="gcol" style="--h:' + (opt.altura || 130) + 'px" role="img" aria-label="' + esc(opt.titulo || '') + '">' +
     '<div class="gcol-eixo">' + ticks.map(t => '<span style="bottom:' + pct(t) + '%">' + t + '</span>').join('') + '</div>' +
     '<div class="gcol-plot">' + ticks.slice(1).map(t => '<i class="gcol-grade" style="bottom:' + pct(t) + '%"></i>').join('') +
-    dados.map(d => '<div class="gcol-item" tabindex="0"' + dicaAttr(tot(d) + ' ações', (d.dicaR || d.rot) + ' · ' + series.map(x => x.rot + ' ' + (d.partes[x.k] || 0)).join(', ')) + '>' +
+    dados.map(d => '<div class="gcol-item" tabindex="0"' + dicaAttr(tot(d) + ' ' + (opt.unidade || 'ações'), (d.dicaR || d.rot) + ' · ' + series.map(x => x.rot + ' ' + (d.partes[x.k] || 0)).join(', ')) + '>' +
       '<span class="gcol-pilha" style="height:' + pct(tot(d)) + '%">' + series.filter(x => d.partes[x.k]).map(x => '<span style="flex:' + d.partes[x.k] + ' 1 0;background:' + x.cor + '"></span>').join('') + '</span></div>').join('') + '</div>' +
     '<div class="gcol-rots">' + dados.map(d => '<span>' + esc(d.rot) + '</span>').join('') + '</div></div>';
 }
@@ -1227,123 +1499,130 @@ document.addEventListener('focusin', e => { const el = e.target.closest && e.tar
 document.addEventListener('focusout', () => { dicaGraf.hidden = true; });
 window.addEventListener('scroll', () => { dicaGraf.hidden = true; }, true);
 
-/* ================= PAINEL ================= */
+/* ================= PAINEL (personalizável: cada usuário escolhe blocos, ordem, tamanho e opções) ================= */
+// onde fica salvo: no servidor (vale em qualquer aparelho do usuário) e neste aparelho (para abrir rápido e se o servidor ainda não guardar)
+function chavePainel() { return 'pericias_painel_' + (state.user || ''); }
+function painelAtual() {
+  if (state.painel) return state.painel;
+  let loc = null;
+  try { loc = JSON.parse(ler(chavePainel(), 'null')); } catch (e) {}
+  const srv = state.prefs && state.prefs.painel;
+  const escolhido = [srv, loc].filter(x => x && x.kpis).sort((a, b) => (Number(b.t) || 0) - (Number(a.t) || 0))[0];
+  state.painel = normalizarPainel(escolhido || null, state.papel);
+  return state.painel;
+}
+let timerPainel = null;
+function salvarPainel(p) {
+  p.t = Date.now();
+  state.painel = normalizarPainel(p, state.papel);
+  state.painel.t = p.t;
+  gravar(chavePainel(), JSON.stringify(state.painel));
+  clearTimeout(timerPainel);
+  if (state.prefsServidor === false) return;
+  timerPainel = setTimeout(() => {
+    const prefs = Object.assign({}, state.prefs || {}, { painel: state.painel });
+    api('prefsSalvar', { prefs: prefs }).then(j => {
+      if (j && j.ok) { state.prefs = prefs; state.prefsServidor = true; }
+      else if (j && j.erro === 'Ação desconhecida') { state.prefsServidor = false; if (state.view === 'painel') render(); }
+    }).catch(() => {});
+  }, 700);
+}
+
 function renderPainel() {
-  const lista = ativos();
-  const hoje = zeroHoje();
-  const por = q => lista.filter(i => i.c.quem === q);
-  const perito = por('perito'), assist = por('assistente'), acomp = por('acompanhar');
-  const comPrazo = lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && prazoDe(i.m)).sort((a, b) => prazoDe(a.m) - prazoDe(b.m));
-  const vencidos = comPrazo.filter(i => diasAte(prazoDe(i.m)) < 0);
-  const prox7 = comPrazo.filter(i => { const n = diasAte(prazoDe(i.m)); return n >= 0 && n <= 7; });
-  const agenda = state.agenda.map(a => Object.assign({ d: parseData(a.data) }, a)).filter(a => a.d);
-  const agHoje = agenda.filter(a => mesmoDia(a.d, hoje)).sort((a, b) => a.hora.localeCompare(b.hora));
-  const ag14 = agenda.filter(a => { const n = diasAte(a.d); return n > 0 && n <= 14; }).sort((a, b) => a.d - b.d || a.hora.localeCompare(b.hora));
-  const prazosHoje = comPrazo.filter(i => diasAte(prazoDe(i.m)) === 0);
-  const pl = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
-
+  const c = ctxPainel(), P = painelAtual(), ed = !!state.painelEdit;
   const hr = new Date().getHours();
-  const resumo = [agHoje.length ? pl(agHoje.length, 'perícia hoje', 'perícias hoje') : 'nenhuma perícia hoje', prox7.length ? pl(prox7.length, 'prazo nos próximos 7 dias', 'prazos nos próximos 7 dias') : 'nenhum prazo nos próximos 7 dias'];
-  let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(state.user) + '</h2><p>' + esc(fmtExtenso(hoje)) + ' · ' + esc(resumo.join(' e ')) + '</p></div></div>';
+  const resumo = [c.agHoje.length ? plN(c.agHoje.length, 'perícia hoje', 'perícias hoje') : 'nenhuma perícia hoje', c.prox7.length ? plN(c.prox7.length, 'prazo nos próximos 7 dias', 'prazos nos próximos 7 dias') : 'nenhum prazo nos próximos 7 dias'];
+  let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(state.user) + '</h2><p>' + esc(fmtExtenso(c.hoje)) + ' · ' + esc(resumo.join(' e ')) + '</p></div>' +
+    (ed ? '' : '<div class="acoes"><button type="button" class="btn" data-acao="painel-editar">' + ic('ajustes') + 'Personalizar</button></div>') + '</div>';
+  if (ed) h += '<div class="painel-edicao" role="region" aria-label="Personalizar o painel"><div><b>Personalizando o seu painel</b><span>Setas mudam a ordem, a lista escolhe o tamanho e as opções de cada bloco, ✕ tira o bloco. ' +
+    (state.prefsServidor === false ? 'Por enquanto fica salvo só neste aparelho.' : 'Fica salvo no seu usuário e vale nos seus aparelhos.') + '</span></div>' +
+    '<div class="acoes"><button type="button" class="btn primario" data-acao="painel-add">+ Adicionar blocos</button><button type="button" class="btn" data-acao="painel-padrao">Restaurar padrão</button><button type="button" class="btn" data-acao="painel-ok">Concluir</button></div></div>';
 
-  // indicadores do topo (sem valores em dinheiro: os totais ficam só no Financeiro)
-  const diasPrazo = [];
-  for (let i = 0; i < 7; i++) { const d = somaDias(hoje, i); diasPrazo.push({ n: comPrazo.filter(it => mesmoDia(prazoDe(it.m), d)).length, rot: i === 0 ? 'hoje' : DIAS_SEM[d.getDay()] + ' ' + fmtCurto(d), cls: i === 0 ? 'agora' : '' }); }
-  const semanas = porSemana(agenda.map(a => a.d), hoje, 6).map((w, i) => ({ n: w.n, rot: 'semana de ' + fmtCurto(w.ini), cls: i === 0 ? 'agora' : '' }));
-  const laudos = laudosPendentes(lista), laudosAtras = laudos.filter(x => x.dias != null && x.dias > 20);
-  const mleN = lista.filter(i => i.c.acao === 'Peticionar o pagamento (MLE)').length;
-  const aguardPag = lista.filter(i => ['MLE', 'OFICIO', 'PARCIAL'].indexOf(chave(i.m['PAGO'])) >= 0).length;
-  h += '<section class="kpis">' +
-    '<button type="button" class="kpi" style="--k:var(--kpi-neutro)" data-acao="filtrar" data-quem=""><span class="ic-kpi">' + ic('processos') + '</span><span class="rot">Processos ativos</span><span class="val">' + lista.length + '</span>' +
-      '<div class="kpi-graf">' + segmentos([{ rot: 'Com o perito', val: perito.length, cor: 'var(--g-perito)' }, { rot: 'Com o assistente', val: assist.length, cor: 'var(--g-assist)' }, { rot: 'Aguardando Juízo ou pagamento', val: acomp.length, cor: 'var(--g-neutro)' }], { semLista: true, semFoco: true, titulo: 'Processos por responsável' }) +
-      '<div class="kpi-leg"><span><i style="background:var(--g-perito)"></i>' + perito.length + ' perito</span><span><i style="background:var(--g-assist)"></i>' + assist.length + ' assistente</span><span><i style="background:var(--g-neutro)"></i>' + acomp.length + ' aguardando</span></div></div></button>' +
-    '<button type="button" class="kpi" style="--k:' + (vencidos.length ? 'var(--vencido)' : 'var(--alerta)') + '" data-acao="ir" data-view="calendario"><span class="ic-kpi">' + ic('calendario') + '</span><span class="rot">Prazos em 7 dias</span><span class="val">' + prox7.length + '</span><span class="sub">' + (vencidos.length ? '<b style="color:var(--vencido)">' + pl(vencidos.length, 'vencido', 'vencidos') + '</b>' : 'nenhum vencido') + '</span>' + miniColunas(diasPrazo) + '</button>' +
-    '<button type="button" class="kpi" style="--k:var(--pericia)" data-acao="ir" data-view="agenda"><span class="ic-kpi">' + ic('agenda') + '</span><span class="rot">Perícias em 14 dias</span><span class="val">' + ag14.length + '</span><span class="sub">' + (agHoje.length ? agHoje.length + ' hoje' : ag14.length ? 'próxima ' + fmtCurto(ag14[0].d) : 'nada agendado') + ' · próximas 6 semanas</span>' + miniColunas(semanas) + '</button>' +
-    (state.papel === 'perito'
-      ? '<button type="button" class="kpi" style="--k:' + (laudosAtras.length ? 'var(--critico)' : 'var(--pericia)') + '" data-acao="filtrar" data-etapa="LAUDO"><span class="ic-kpi">' + ic('documentos') + '</span><span class="rot">Laudos a fazer</span><span class="val">' + laudos.length + '</span><span class="sub">' + (laudosAtras.length ? '<b style="color:var(--vencido)">' + laudosAtras.length + ' com perícia há mais de 20 dias</b>' : 'nenhum atrasado') + '</span></button>'
-      : '<button type="button" class="kpi" style="--k:var(--assist)" data-acao="ir" data-view="pagamentos"><span class="ic-kpi">' + ic('financeiro') + '</span><span class="rot">MLE a peticionar</span><span class="val">' + mleN + '</span><span class="sub">' + aguardPag + ' aguardando pagamento</span></button>') +
-    '</section>';
-
-  h += '<div class="grid alto-livre">';
-  // hoje
-  h += '<section class="cartao c5"><h2>Hoje</h2>';
-  if (!agHoje.length && !prazosHoje.length) h += '<p class="vazio">Sem perícias nem prazos para hoje.</p>';
-  if (agHoje.length) h += '<div class="lista-linhas">' + agHoje.map(slotLinha).join('') + '</div>';
-  if (prazosHoje.length) h += '<div class="lista-linhas" style="margin-top:8px">' + prazosHoje.map(linhaPrazo).join('') + '</div>';
-  if (ag14.length) {
-    h += '<h2 style="margin-top:16px">Próximas perícias</h2><div class="lista-linhas">' +
-      ag14.slice(0, 6).map(a => '<button type="button" class="linha-item" data-acao="slot" data-linha="' + a.linha + '"><span class="hora">' + fmtCurto(a.d) + '</span><span class="meio"><b>' + esc(a.hora + '  ' + a.nome) + '</b><small>' + esc([a.tipo, a.local].filter(Boolean).join(' · ')) + '</small></span></button>').join('') +
-      (ag14.length > 6 ? '<button type="button" class="link" data-acao="ir" data-view="agenda" style="margin-top:6px">Ver todas (' + ag14.length + ')</button>' : '') + '</div>';
+  const erro = (b, e) => '<p class="vazio">Não consegui montar "' + esc(b.titulo) + '": ' + esc(e.message) + '</p>';
+  // indicadores
+  if (P.kpis.length) {
+    h += '<section class="kpis' + (ed ? ' editando' : '') + '" style="--kcols:' + Math.min(4, P.kpis.length) + '">' + P.kpis.map((id, i) => {
+      const b = BLOCO[id];
+      let inner;
+      try { inner = b.render(c); } catch (e) { inner = erro(b, e); }
+      return ed ? '<div class="bloco bloco-kpi" data-bloco="' + id + '">' + inner + '<div class="bloco-ferr"><button type="button" class="btn icone" data-acao="painel-mover" data-lista="kpis" data-i="' + i + '" data-d="-1" aria-label="Mover ' + esc(b.titulo) + ' para antes"' + (i === 0 ? ' disabled' : '') + '>←</button>' +
+        '<button type="button" class="btn icone" data-acao="painel-mover" data-lista="kpis" data-i="' + i + '" data-d="1" aria-label="Mover ' + esc(b.titulo) + ' para depois"' + (i === P.kpis.length - 1 ? ' disabled' : '') + '>→</button>' +
+        '<button type="button" class="btn icone perigo" data-acao="painel-tirar" data-lista="kpis" data-i="' + i + '" aria-label="Tirar ' + esc(b.titulo) + '">✕</button></div></div>' : inner;
+    }).join('') + '</section>';
   }
-  h += '</section>';
-
-  // prazos (semáforo) e atenção, empilhados ao lado de "Hoje"
-  h += '<div class="c7 pilha"><section class="cartao"><div class="cartao-topo"><h2>Prazos</h2><span class="legenda" style="margin:0"><span><i style="background:var(--vencido)"></i>vencido</span><span><i style="background:var(--critico)"></i>até 2 dias</span><span><i style="background:var(--alerta)"></i>até 5</span><span><i style="background:var(--atencao)"></i>até 10</span></span></div>';
-  const pzLista = comPrazo.filter(i => diasAte(prazoDe(i.m)) <= 15).slice(0, 9);
-  h += pzLista.length ? '<div class="lista-linhas">' + pzLista.map(linhaPrazo).join('') + '</div>' : '<p class="vazio">Nenhum prazo nos próximos 15 dias.</p>';
-  if (comPrazo.length > pzLista.length) h += '<button type="button" class="link" data-acao="ir" data-view="calendario" style="margin-top:8px">Ver no calendário</button>';
-  h += '</section>';
-
-  // atenção
-  h += '<section class="cartao"><h2>Atenção</h2>';
-  const alertas = [];
-  const semRes = lista.filter(i => semReserva(i.m));
-  if (vencidos.length) alertas.push('<button type="button" class="alerta-box vermelho" data-acao="ir" data-view="calendario"><span>🔴</span><span><b>' + vencidos.length + '</b> prazo(s) vencido(s). Confira e atualize a data ou a etapa.</span></button>');
-  if (semRes.length) alertas.push('<button type="button" class="alerta-box" data-acao="filtrar" data-etapa="AGENDAMENTO"><span>⚠️</span><span><b>' + semRes.length + '</b> com agendamento ou perícia sem honorários reservados. Não agendar antes do depósito.</span></button>');
-  const periciaPassada = lista.filter(i => etapaDe(i.m) === 'PERICIA' && parseData(i.m['PERICIA']) && diasAte(parseData(i.m['PERICIA'])) < 0);
-  if (periciaPassada.length) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PERICIA"><span>🩺</span><span><b>' + periciaPassada.length + '</b> perícia(s) com data já passada e etapa ainda em PERÍCIA. Atualize para laudo ou não comparecimento.</span></button>');
-  const aConfirmar = agenda.filter(a => diasAte(a.d) >= 0 && chave(a.status) !== 'OK');
-  if (aConfirmar.length) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="agenda"><span>📅</span><span><b>' + aConfirmar.length + '</b> horário(s) reservado(s) ainda sem status OK: falta peticionar o agendamento e confirmar.</span></button>');
-  if (mleN) alertas.push('<button type="button" class="alerta-box azul" data-acao="filtrar" data-etapa="PAGAMENTO"><span>💰</span><span><b>' + mleN + '</b> pagamento(s) liberado(s) aguardando o MLE.</span></button>');
-  const scP = situacaoConferencia(lista, state.verificados, CONFERIR_DIAS, CONFERIR_LIMITE);
-  if (scP.vencidos) alertas.push('<button type="button" class="alerta-box" data-acao="ir" data-view="tarefas"><span>🔎</span><span><b>' + scP.vencidos + '</b> processo(s) aguardando sem conferir nos autos há ' + CONFERIR_LIMITE + ' dias ou mais (ou nunca conferidos pelo app).</span></button>');
-  const semPrazo = lista.filter(i => i.c.quem && i.c.quem !== 'acompanhar' && !prazoDe(i.m)).length;
-  if (semPrazo) alertas.push('<button type="button" class="alerta-box azul" data-acao="ir" data-view="processos"><span>🗓️</span><span><b>' + semPrazo + '</b> tarefa(s) do perito ou do assistente sem prazo cadastrado.</span></button>');
-  h += alertas.length ? alertas.join('') : '<p class="vazio">Tudo em ordem.</p>';
-  h += '</section></div>';
-
-  // fluxo por etapa (na ordem do trabalho)
-  const etapas = ETAPAS.concat([{ k: 'OUTROS', rot: 'Outros' }, { k: 'SEM', rot: 'Sem etapa' }])
-    .map(e => ({ e: e, n: lista.filter(i => etapaDe(i.m) === e.k).length })).filter(x => x.n);
-  h += '<section class="cartao c7"><div class="cartao-topo"><h2>Fluxo dos processos</h2><button type="button" class="link" data-acao="ir" data-view="processos">Ver quadro</button></div><p class="cartao-sub">Quantos processos estão em cada etapa, na ordem do trabalho. Toque para ver a lista.</p>' +
-    barras(etapas.map(x => ({ rot: x.e.rot, val: x.n, dica: pl(x.n, 'processo', 'processos'), attrs: 'data-acao="filtrar" data-etapa="' + x.e.k + '"' }))) + '</section>';
-
-  // conferência nos autos
-  h += '<section class="cartao c5"><div class="cartao-topo"><h2>Conferência nos autos</h2><button type="button" class="link" data-acao="ir" data-view="tarefas">Abrir</button></div><p class="cartao-sub">Processos aguardando decisão, depósito ou pagamento (' + scP.total + '). Meta: conferir toda semana, sem passar de ' + CONFERIR_LIMITE + ' dias.</p>' +
-    segmentos([
-      { rot: '✓ Em dia', desc: 'conferidos nos últimos ' + CONFERIR_DIAS + ' dias', val: scP.recentes.length, cor: 'var(--g-bom)', attrs: 'data-acao="ir" data-view="tarefas"' },
-      { rot: '! Conferir esta semana', desc: 'de ' + CONFERIR_DIAS + ' a ' + (CONFERIR_LIMITE - 1) + ' dias sem conferir', val: scP.semana, cor: 'var(--g-aviso)', attrs: 'data-acao="ir" data-view="tarefas"' },
-      { rot: '× No limite', desc: CONFERIR_LIMITE + ' dias ou mais, ou nunca conferidos', val: scP.vencidos, cor: 'var(--g-critico)', attrs: 'data-acao="ir" data-view="tarefas"' }
-    ], { titulo: 'Conferência nos autos' }) + '</section>';
-
-  // perícias por mês: 6 meses para trás, o atual e 2 para frente
-  const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1);
-  const meses = porMes(itens('PERICIAS').concat(itens('CONCLUSOS')).map(i => i.m), ini, 9);
-  const totPassado = meses.filter(x => new Date(x.ano, x.mes + 1, 1) <= hoje).reduce((s, x) => s + x.n, 0);
-  h += '<section class="cartao c7"><div class="cartao-topo"><h2>Perícias por mês</h2><span class="legenda" style="margin:0"><span><i style="background:var(--g-serie)"></i>realizadas</span><span><i style="background:var(--g-destaque)"></i>mês atual</span><span><i style="background:var(--g-futuro)"></i>agendadas</span></span></div>' +
-    '<p class="cartao-sub">' + totPassado + ' perícias nos últimos 6 meses (pela data da perícia na planilha, ativos e concluídos)</p>' +
-    colunas(meses.map(x => {
-      const atual = x.ano === hoje.getFullYear() && x.mes === hoje.getMonth();
-      const futuro = new Date(x.ano, x.mes, 1) > hoje;
-      return { rot: MESES[x.mes].slice(0, 3), val: x.n, cls: atual ? 'atual' : futuro ? 'futuro' : '', rotulo: atual, dica: pl(x.n, 'perícia', 'perícias'), dicaR: MESES[x.mes] + ' de ' + x.ano + (futuro ? ' (agendadas)' : atual ? ' (mês atual)' : '') };
-    }), { titulo: 'Perícias por mês', altura: 160 }) + '</section>';
-
-  // por tipo
-  const tl = contarTop(lista, i => i.m['TIPO'] || 'Sem tipo', 6, 'Outros tipos').map(x => ({ rot: x.k, val: x.n, dica: pl(x.n, 'processo', 'processos'), attrs: x.outros ? '' : 'data-acao="filtrar" data-tipo="' + esc(x.k) + '"' }));
-  h += '<section class="cartao c5"><h2>Processos ativos por tipo</h2>' + barras(tl) + '</section>';
-
-  // por comarca
-  const cl = contarTop(lista, i => /NUCLEO/.test(chave(i.m['CIDADE'])) ? 'Núcleo 4.0 (acidentário)' : i.m['CIDADE'], 7, 'Outras comarcas').map(x => ({ rot: x.k, val: x.n, dica: pl(x.n, 'processo', 'processos') }));
-  h += '<section class="cartao c6"><h2>Processos ativos por comarca</h2>' + barras(cl) + '</section>';
-
-  // atividade recente
-  h += '<section class="cartao c6"><h2>Atividade recente no app</h2>';
-  h += state.atividade.length ? '<div class="lista-linhas">' + state.atividade.slice(0, 7).map(a =>
-    '<div class="linha-item" style="cursor:default"><span class="ponto ' + (/Discord/.test(a.acao) ? 'pericia' : 'ok') + '"></span><span class="meio"><b>' + esc(a.acao) + (a.processo ? ' · ' + esc(formatarCNJ(a.processo)) : '') + '</b><small>' + esc(a.data + ' · ' + a.usuario + (a.detalhe ? ' · ' + a.detalhe : '')) + '</small></span></div>').join('') + '</div>'
-    : '<p class="vazio">As alterações feitas pelo app aparecem aqui (quem fez, quando e o quê).</p>';
-  h += '</section></div>';
+  // cartões
+  h += '<div class="grid alto-livre painel-grade' + (ed ? ' editando' : '') + '">';
+  P.cartoes.forEach((x, i) => {
+    const b = BLOCO[x.id], op = opcoesBloco(b, x);
+    let r;
+    try { r = b.render(c, op) || {}; } catch (e) { r = { html: erro(b, e) }; }
+    h += '<section class="cartao bloco ' + TAM_BLOCO[x.tam].cls + '" data-bloco="' + x.id + '">';
+    if (ed) h += '<div class="bloco-ferr">' +
+      '<button type="button" class="btn icone" data-acao="painel-mover" data-lista="cartoes" data-i="' + i + '" data-d="-1" aria-label="Subir ' + esc(b.titulo) + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+      '<button type="button" class="btn icone" data-acao="painel-mover" data-lista="cartoes" data-i="' + i + '" data-d="1" aria-label="Descer ' + esc(b.titulo) + '"' + (i === P.cartoes.length - 1 ? ' disabled' : '') + '>↓</button>' +
+      '<select data-painel="tam" data-i="' + i + '" aria-label="Tamanho de ' + esc(b.titulo) + '">' + Object.keys(TAM_BLOCO).map(k => '<option value="' + k + '"' + (k === x.tam ? ' selected' : '') + '>' + TAM_BLOCO[k].rot + '</option>').join('') + '</select>' +
+      (b.op || []).map(o => '<select data-painel="op" data-i="' + i + '" data-k="' + o.k + '" aria-label="' + esc(o.rot + ' de ' + b.titulo) + '">' + o.vals.map(par => '<option value="' + par[0] + '"' + (par[0] === op[o.k] ? ' selected' : '') + '>' + esc(o.rot + ': ' + par[1]) + '</option>').join('') + '</select>').join('') +
+      '<button type="button" class="btn icone perigo" data-acao="painel-tirar" data-lista="cartoes" data-i="' + i + '" aria-label="Tirar ' + esc(b.titulo) + '">✕</button></div>';
+    h += '<div class="bloco-corpo"><div class="cartao-topo"><h2>' + esc(b.titulo) + '</h2>' + (r.topo || '') + '</div>' + (r.sub ? '<p class="cartao-sub">' + esc(r.sub) + '</p>' : '') + (r.html || '') + '</div></section>';
+  });
+  if (!P.cartoes.length && !P.kpis.length) h += '<section class="cartao c12"><p class="vazio">Seu painel está vazio. Toque em <b>Personalizar</b> e depois em <b>Adicionar blocos</b>.</p></section>';
+  h += '</div>';
+  if (ed) h += '<button type="button" class="btn primario painel-concluir" data-acao="painel-ok">✓ Concluir</button>';
   $('#conteudo').innerHTML = h;
 }
+
+// catálogo para incluir e tirar blocos
+function abrirCatalogoPainel() {
+  const P = painelAtual();
+  const no = id => P.kpis.indexOf(id) >= 0 || P.cartoes.some(x => x.id === id);
+  $('#modal-titulo').textContent = 'Blocos do painel';
+  $('#modal-corpo').innerHTML = '<p class="dica" style="margin-top:0">Marque o que quer ver no seu painel. Os indicadores ficam na faixa de cima; os demais entram no fim do painel e depois dá para mudar a ordem e o tamanho.</p>' +
+    GRUPOS_BLOCO.map(g => {
+      const bs = BLOCOS.filter(b => b.grupo === g[0] && blocoPermitido(b, state.papel));
+      if (!bs.length) return '';
+      return '<h3 class="cat-grupo">' + esc(g[1]) + '</h3><div class="cat-lista">' + bs.map(b => '<label class="cat-item"><input type="checkbox" data-painel-bloco="' + b.id + '"' + (no(b.id) ? ' checked' : '') + '><span><b>' + esc(b.titulo) + '</b><small>' + esc(b.desc) + '</small></span></label>').join('') + '</div>';
+    }).join('');
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" id="cat-ok">Pronto</button>';
+  $('#cat-ok').onclick = () => modal.close();
+  $('#modal-corpo').onchange = e => {
+    const el = e.target.closest('[data-painel-bloco]');
+    if (!el) return;
+    const id = el.dataset.painelBloco, b = BLOCO[id], p = JSON.parse(JSON.stringify(painelAtual()));
+    if (b.tipo === 'kpi') p.kpis = el.checked ? p.kpis.filter(k => k !== id).concat([id]) : p.kpis.filter(k => k !== id);
+    else p.cartoes = el.checked ? p.cartoes.filter(x => x.id !== id).concat([{ id: id, tam: b.tam, op: {} }]) : p.cartoes.filter(x => x.id !== id);
+    salvarPainel(p);
+    render();
+  };
+  if (!modal.open) modal.showModal();
+}
+function acaoPainel(a, ds) {
+  const p = JSON.parse(JSON.stringify(painelAtual()));
+  if (a === 'painel-editar') { state.painelEdit = true; render(); return; }
+  if (a === 'painel-ok') { state.painelEdit = false; render(); toast('Painel salvo'); return; }
+  if (a === 'painel-add') { abrirCatalogoPainel(); return; }
+  if (a === 'painel-padrao') {
+    const antes = p;
+    salvarPainel(painelPadrao(state.papel)); render();
+    toast('Painel padrão restaurado', { acao: { rot: 'Desfazer', fn: () => { salvarPainel(antes); render(); } }, tempo: 8000 });
+    return;
+  }
+  const L = p[ds.lista], i = Number(ds.i);
+  if (!L || !(i >= 0 && i < L.length)) return;
+  if (a === 'painel-mover') { const j = i + Number(ds.d); if (j < 0 || j >= L.length) return; const x = L[i]; L[i] = L[j]; L[j] = x; }
+  if (a === 'painel-tirar') L.splice(i, 1);
+  salvarPainel(p);
+  render();
+}
+document.addEventListener('change', e => {
+  const el = e.target.closest && e.target.closest('select[data-painel]');
+  if (!el) return;
+  const p = JSON.parse(JSON.stringify(painelAtual())), x = p.cartoes[Number(el.dataset.i)];
+  if (!x) return;
+  if (el.dataset.painel === 'tam') x.tam = el.value;
+  else { x.op = x.op || {}; x.op[el.dataset.k] = Number(el.value); }
+  salvarPainel(p);
+  render();
+});
 
 function slotLinha(a) {
   const ok = chave(a.status) === 'OK';
@@ -3173,6 +3452,7 @@ document.addEventListener('click', ev => {
   switch (a) {
     case 'ir': ir(ds.view); break;
     case 'ficha': abrirFicha(ds.aba || 'PERICIAS', ds.linha); break;
+    case 'painel-editar': case 'painel-ok': case 'painel-add': case 'painel-padrao': case 'painel-mover': case 'painel-tirar': acaoPainel(a, ds); break;
     case 'fechar-ficha': fecharFicha(); break;
     case 'ficha-aba': state.ficha.aba2 = ds.k; state.ficha.confirma = null; if (ds.k === 'hist') state.ficha.hist = null; renderFicha(); break;
     case 'rapida': acaoRapida(ds.id); break;

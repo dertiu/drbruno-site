@@ -42,7 +42,16 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 
 ## O que o app faz
 
-- **Painel**: indicadores do dia (processos ativos por responsável, prazos dos próximos 7 dias, perícias das próximas semanas, laudos a fazer ou MLE a peticionar), hoje e próximas perícias, prazos com semáforo, avisos e gráficos (fluxo por etapa, conferência nos autos, perícias por mês, processos por tipo e por comarca). O Painel não mostra valores em dinheiro; os totais ficam só no Financeiro.
+- **Painel (personalizável)**: cada usuário monta o seu. Em **Personalizar**:
+  - **Adicionar blocos** abre o catálogo para marcar e desmarcar o que aparece. São 14 indicadores para a faixa de cima e 25 cartões, em quatro grupos:
+    - **Indicadores do topo**: processos ativos, prazos em 7 dias, perícias em 14 dias, laudos a fazer, MLE a peticionar, perícias hoje, aceites a peticionar, aguardando decisão, sem reserva, conferir nos autos, horários livres, minhas tarefas, Núcleo ainda no e-SAJ e, só para o perito, a receber em R$.
+    - **Listas do dia a dia**: hoje e próximas perícias, prazos com semáforo, atenção, minhas tarefas, aceites a peticionar, laudos a fazer, próximos horários livres, atividade recente.
+    - **Gráficos e classificações**: fluxo por etapa, linha do tempo (andando e parados), parados aguardando decisão por etapa, com quem está, conferência nos autos, perícias por mês, perícias por semana, prazos por semana, por tipo, por comarca, por sistema (e-SAJ e bases do eproc), migração do Núcleo para o eproc, status da nomeação, situação dos honorários, laudos por tempo desde a perícia.
+    - **Financeiro (só o perito)**: a receber por estágio e a receber por tipo, em R$.
+  - Em cada bloco: setas para mudar a ordem, tamanho (1/3, 1/2, 2/3 ou linha inteira), opções (quantos itens, janela de dias, meses, semanas) e ✕ para tirar.
+  - **Restaurar padrão** volta ao painel inicial do perfil, com Desfazer.
+  - Fica salvo no usuário (Propriedades do Script, `PREF_<usuário>`) e vale em todos os aparelhos; enquanto o servidor não tiver essa parte, fica salvo só no aparelho.
+  - O assistente não vê nem consegue incluir blocos em R$, mesmo que venham salvos. Os blocos padrão não mostram dinheiro; os totais continuam no Financeiro.
 - **Processos**: lista com filtros ou **quadro por etapa** (arrastar o cartão muda o PRÓXIMO PASSO).
 - **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
   - **Abrir o processo no tribunal**: processos do e-SAJ têm o botão **e-SAJ**, que abre a consulta já no processo. Processos do eproc têm o botão com o nome da base (**eproc Cível**, **eproc Fazenda**, **eproc 2º grau** ou **eproc Criminal**), que abre a base certa do eproc e copia o número (ver "Sistema do processo" abaixo). O eproc não aceita link direto para um processo (o link precisa de uma assinatura gerada pelo próprio eproc), então para abrir direto na página do processo é preciso o **atalho do eproc** no Chrome do computador:
