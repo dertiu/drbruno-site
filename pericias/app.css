@@ -676,3 +676,19 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
 .guia-todas>summary{cursor:pointer;font-size:.84rem;color:var(--texto2);margin-top:6px}
 .aviso-45{font-size:.82rem;color:var(--texto2);margin:8px 0 0}
 .aviso-45.erro{color:var(--critico,#d9534f);font-weight:700}
+
+/* sistema do processo: e-SAJ e as quatro bases do eproc (cores do próprio eproc do TJSP) */
+.sis-esaj{--sis:var(--gold)}
+.sis-azul,.eproc-azul{--sis:#1d7fbf}
+.sis-vermelho,.eproc-vermelho{--sis:#b3203f}
+.sis-verde,.eproc-verde{--sis:#14916a}
+.sis-cinza,.eproc-cinza{--sis:#8b919b}
+.chip.sis i{width:9px;height:9px;border-radius:50%;background:var(--sis);flex:none}
+.btn[class*="eproc-"]{border-left:4px solid var(--sis)}
+
+/* formulário de dados: listas de escolher, valor novo em "Outro" e perícia indireta */
+.campo select{cursor:pointer}
+.campo .campo-outro{margin-top:6px}
+.campo label.check.campo-ind{margin-top:6px;font-size:.84rem;font-weight:600;text-transform:none;letter-spacing:0;color:var(--texto2)}
+.campo input[type=date]:disabled{opacity:.45}
+.dica-auto{color:var(--c-alerta)}

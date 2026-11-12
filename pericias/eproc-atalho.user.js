@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Perícias: abrir processo no eproc
 // @namespace    https://brunomichels.com.br/pericias
-// @version      1.1
-// @description  O botão "eproc" do app Perícias abre direto a página do processo no eproc do TJSP (com login já feito).
+// @version      1.2
+// @description  O botão "eproc" do app Perícias abre direto a página do processo no eproc do TJSP (com login já feito), em qualquer base: Cível, Fazenda Pública, 2º grau e Criminal.
 // @match        https://eproc1g.tjsp.jus.br/eproc/*
 // @match        https://eproc1g-ef.tjsp.jus.br/eproc/*
 // @match        https://eproc2g.tjsp.jus.br/eproc/*
+// @match        https://eproc1g-crim.tjsp.jus.br/eproc/*
 // @match        https://sso.tjsp.jus.br/*
 // @match        https://brunomichels.com.br/pericias/*
 // @match        https://www.brunomichels.com.br/pericias/*
@@ -32,7 +33,10 @@
   // 2) Guarda o número vindo do app (#pericias=NNNNNNNNNNNNNNNNNNNN), inclusive na tela de login
   const m = location.hash.match(/pericias=(\d{20})/);
   if (m) {
-    GM_setValue('pericias_proc', JSON.stringify({ n: m[1], t: Date.now() }));
+    // guarda também a base do eproc de destino (na tela de login ela vem no endereço, em eproc_client_id)
+    let base = host;
+    if (host === 'sso.tjsp.jus.br') { const q = new URLSearchParams(location.search); base = q.get('eproc_client_id') || q.get('client_id') || ''; }
+    GM_setValue('pericias_proc', JSON.stringify({ n: m[1], t: Date.now(), h: base }));
     history.replaceState(null, '', location.href.replace(/#.*$/, ''));
   }
   if (host === 'sso.tjsp.jus.br') return; // depois do login o eproc continua daqui
@@ -40,6 +44,7 @@
   let pedido = null;
   try { pedido = JSON.parse(GM_getValue('pericias_proc', 'null')); } catch (e) {}
   if (!pedido || !pedido.n || Date.now() - pedido.t > VALIDADE) return;
+  if (pedido.h && pedido.h !== host) return; // o pedido é para outra base do eproc: espera ela abrir
 
   // 3) Aviso "Usuário logado como ... Utilize o botão Sair do Sistema": a página guarda o texto
   //    num <textarea id="txaInfraValidacao"> e chama alert() 300 ms depois. Trocando o id do

@@ -45,12 +45,18 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Painel**: indicadores do dia (processos ativos por responsável, prazos dos próximos 7 dias, perícias das próximas semanas, laudos a fazer ou MLE a peticionar), hoje e próximas perícias, prazos com semáforo, avisos e gráficos (fluxo por etapa, conferência nos autos, perícias por mês, processos por tipo e por comarca). O Painel não mostra valores em dinheiro; os totais ficam só no Financeiro.
 - **Processos**: lista com filtros ou **quadro por etapa** (arrastar o cartão muda o PRÓXIMO PASSO).
 - **Ficha do processo**: linha do tempo das etapas, próxima ação, botões de atalho do fluxo (com confirmação mostrando o que muda e opção de desfazer), edição de todos os campos, histórico, copiar número, abrir no e-SAJ, enviar ao Discord.
-  - **Abrir o processo no tribunal**: processos do e-SAJ têm o botão **e-SAJ**, que abre a consulta já no processo. Processos do eproc têm o botão **eproc**, que abre o eproc (base Cível, ou a de Execução Fiscal e Fazenda Pública quando o fórum tem "Fazenda" ou "Fiscal") e copia o número. O eproc não aceita link direto para um processo (o link precisa de uma assinatura gerada pelo próprio eproc), então para abrir direto na página do processo é preciso o **atalho do eproc** no Chrome do computador:
+  - **Abrir o processo no tribunal**: processos do e-SAJ têm o botão **e-SAJ**, que abre a consulta já no processo. Processos do eproc têm o botão com o nome da base (**eproc Cível**, **eproc Fazenda**, **eproc 2º grau** ou **eproc Criminal**), que abre a base certa do eproc e copia o número (ver "Sistema do processo" abaixo). O eproc não aceita link direto para um processo (o link precisa de uma assinatura gerada pelo próprio eproc), então para abrir direto na página do processo é preciso o **atalho do eproc** no Chrome do computador:
     1. Instalar a extensão Tampermonkey no Chrome e, em chrome://extensions > Detalhes, ligar "Permitir scripts de usuário".
     2. Abrir `https://brunomichels.com.br/pericias/eproc-atalho.user.js` (ou o link na ajuda "Abrir direto?" da ficha) e confirmar Instalar.
     3. Pronto: o botão eproc leva o número no endereço (`#pericias=...`), o atalho preenche a busca rápida do topo do eproc e abre o processo. Se o login tiver expirado, abre logo depois de entrar (vale por 10 minutos). Quando você já está logado, o atalho também dispensa o aviso "Usuário logado como... Utilize o botão Sair do Sistema" (só quando a abertura vem do app). Para atualizar o atalho, abra o link do passo 2 de novo e clique em Atualizar. No celular não há extensões; lá vale o número copiado.
   - **Linha do tempo** (Aceite, Reserva, Agendamento, Perícia, Laudo, Pagamento, Concluído): cada etapa fica verde pelo que a planilha mostra (STATUS ACEITE, PAGO com reserva, data ou INDIRETA na PERÍCIA, LAUDO em produção ou entregue, PAGO). "Decisão" não é etapa: quando o próximo passo é DECISÃO, a etapa em que o processo está fica listrada com ⏸ e aparece "Parado em ...: aguardando decisão judicial" (por exemplo, parado na Reserva aguardando decisão sobre honorários, ou na Perícia depois de um não comparecimento). Os botões de ação acompanham: parado na Reserva mostra "Honorários reservados" e "Honorários fixados: aguardar depósito"; parado na Perícia mostra "Remarcar a perícia"; "Pagamento liberado" e "Honorários recebidos" só aparecem depois do laudo ou com pagamento já em andamento.
   - Na aba **Dados**, o rodapé mostra **Salvar alterações** e **Descartar**. Nas outras abas, o rodapé tem só Discord e Tarefa.
+  - **Campos da aba Dados** (e do cadastro de processo novo):
+    - Opção fixa, é só clicar e escolher (sem digitar e sem sugestões soltas): SISTEMA, STATUS, LAUDO, PAGO e PRÓXIMO PASSO. Cada opção traz uma explicação curta (ex.: "RESERVADO · honorários depositados").
+    - CIDADE, FORUM e TIPO: lista com os valores já usados na planilha (sem repetição e sem datas, números de processo ou valores que caíram na coluna errada) e, no fim, **Outra… (digitar)** para um valor novo.
+    - PRAZOS e PERICIA: calendário. Em PERICIA, a caixa **Perícia indireta (sem data)** grava INDIRETA.
+    - REQUERENTE, REQUERIDA, HONORARIOS e PROCESSO continuam texto livre; OBSERVAÇÃO continua caixa de texto.
+    - Um valor que não está na lista (ex.: linha antiga com colunas deslocadas) aparece como "(valor atual)" e só muda se você escolher outro. Abrir a aba e salvar sem mexer não grava nada.
   - **Encerrar o processo** (Concluídos ou Renúncias) fica no fim da aba **Ações**, dentro da seção recolhida "Encerrar este processo". É preciso abrir a seção, escolher a opção e confirmar no quadro vermelho ("Sim, mover para Concluídos" / "Sim, registrar renúncia"). Logo depois aparece **Desfazer**, que devolve o processo para Perícias com todos os dados originais (prazo, próximo passo etc.). Depois disso, ele pode ser trazido de volta pelo Arquivo.
 - **Calendário**: perícias e prazos do mês, com link para o Google Agenda.
 - **Agenda**: horários por dia (marcados e livres) e fila de processos para agendar. Veja "Agendamento" abaixo.
@@ -59,12 +65,30 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
+## Sistema do processo (coluna SISTEMA)
+
+O eproc do TJSP tem uma base separada para cada competência, cada uma com endereço e cor próprios:
+
+| Valor na planilha | Base | Cor | Endereço | Para quê |
+|---|---|---|---|---|
+| `ESAJ` | e-SAJ | | esaj.tjsp.jus.br | processos que ainda não migraram |
+| `EPROC CÍVEL` | Cível (1º grau) | azul | eproc1g.tjsp.jus.br/eproc | Cível, JEC, Família, Cejuscs, Registros Públicos, Falência, Empresarial |
+| `EPROC FAZENDA` | Execução Fiscal e Fazenda Pública (1º grau) | vermelho | eproc1g-ef.tjsp.jus.br/eproc | Fazenda Pública, Jefaz, Acidentes do Trabalho (Núcleo 4.0, auxílio-acidente), Previdenciário, Execução contra a Fazenda |
+| `EPROC 2º GRAU` | 2º grau | verde | eproc2g.tjsp.jus.br/eproc | recursos no Tribunal |
+| `EPROC CRIMINAL` | Criminal e Juizado Especial | cinza | eproc1g-crim.tjsp.jus.br/eproc | Criminal |
+
+- A ficha mostra a etiqueta com a cor da base e o botão do tribunal abre essa base.
+- `EPROC` sozinho (valor de antes da separação) continua funcionando: o app deduz a base (Núcleo, INSS, Fazenda, Município ou Prefeitura vão para a vermelha; o resto para a azul), marca a etiqueta com "?" e mostra o botão **Confirmar** para gravar a base.
+- Processo do Núcleo marcado numa base que não é a vermelha mostra um aviso com o botão **Trocar para eproc Fazenda**.
+- No cadastro, SISTEMA é obrigatório. Enquanto ninguém escolheu, o app sugere `EPROC FAZENDA` para Núcleo, INSS ou Fazenda (com a dica "Sugerido pelo processo. Confira.").
+- O atalho do eproc (v1.2) funciona nas quatro bases e guarda para qual base é o pedido: um processo da base vermelha não é buscado por engano na azul.
+
 ## Núcleo 4.0 no eproc (base Fazenda Pública)
 
 Desde novembro de 2026 os processos do Núcleo de Justiça 4.0 (Acidentes do Trabalho do Interior e Litoral) tramitam no eproc, na base **Fazenda Pública** (`eproc1g-ef.tjsp.jus.br/eproc`), que é separada da base Cível e exige perfil e login próprios. Referência: Manual de Orientações Iniciais aos Peritos do Núcleo, v1.0, 5/11/2026.
 
-- **Abrir no tribunal**: processos do Núcleo, contra o INSS (acidentários e previdenciários), contra Fazenda, Município ou Prefeitura abrem a base Fazenda Pública. Os demais abrem a base Cível. O atalho do eproc funciona nas duas.
-- **Migração**: processo do Núcleo ainda marcado como ESAJ mostra o aviso "O Núcleo 4.0 está passando para o eproc" com o botão **Migrou para o eproc**, que muda a coluna SISTEMA para EPROC (o número do processo continua o mesmo). Novo processo já vem com SISTEMA = EPROC.
+- **Abrir no tribunal**: processos do Núcleo ficam no `EPROC FAZENDA` (vermelho). Ver "Sistema do processo" acima.
+- **Migração**: processo do Núcleo ainda marcado como ESAJ mostra o aviso "O Núcleo 4.0 está passando para o eproc" com o botão **Migrou para o eproc**, que muda a coluna SISTEMA para `EPROC FAZENDA` (o número do processo continua o mesmo).
 - **Como peticionar no eproc (Núcleo 4.0)**: na aba Ações da ficha, um quadro mostra o evento, o tipo de cada documento e o prazo a fechar para a etapa atual, com as outras situações logo abaixo:
   - Aceite + agendamento: evento "Comunicação do Início e Local dos Trabalhos Perito"; documento 1 "Perito aceitação do encargo"; documento 2 "Petição Designação data perícia" (Comunicação de Designação de Perícia, modelo do Anexo II).
   - Aceite aguardando depósito: evento "Petição - aceitação do encargo de perito".
@@ -94,7 +118,7 @@ No app:
 - **Aceite peticionado** fica disponível sempre que o status é AGUARDANDO. Se o próximo passo for ACEITE, o processo também avança para Reserva ou Agendamento; se já estiver em outra etapa, só o status muda para ACEITE.
 - **Agendamento peticionado** (e marcar a agenda já como OK) também passa o status para ACEITE, porque a petição de agendamento aceita a nomeação. Na confirmação há uma caixa para desmarcar, se for o caso.
 - Com AGUARDANDO, os modelos de aceite entram nas sugestões de documento, mesmo que o próximo passo seja outro.
-- Na aba Dados, o campo STATUS tem a explicação curta dos três valores.
+- Na aba Dados, a lista do STATUS explica cada valor ("AGUARDANDO · nada peticionado", "ACEITE · aceite peticionado", "RENUNCIA · renunciei").
 
 ## Agendamento
 
