@@ -7,7 +7,7 @@
       { id: 'med', c: '#e9b766', title: 'Medicações e infusões' },
       { id: 'rx', c: '#e6a3c4', title: 'Receitas prontas' },
       { id: 'cir', c: '#ee9474', title: 'Cirurgia e trauma' },
-      { id: 'desc', c: '#e8c48a', title: 'Descrições cirúrgicas' },
+      { id: 'desc', c: '#e8c48a', title: 'Descrições cirúrgicas' }, { id: 'aih', c: '#a8c8e8', title: 'SIGTAP e AIH' },
       { id: 'pront', c: '#d9b8a0', title: 'Prontuário e textos prontos' },
       { id: 'ped', c: '#71cbe3', title: 'Pediatria e emergência' },
       { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos' },
