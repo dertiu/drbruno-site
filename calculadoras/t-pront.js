@@ -741,8 +741,8 @@ MANTIDAS AS SEGUINTES MEDIDAS: ___ (EX.: MEDICAÇÕES EM CURSO, HEMODERIVADOS CO
 CONDUTA: MANUTENÇÃO DE MEDIDAS CLÍNICAS PROPORCIONAIS, COM FOCO EM CONFORTO, EVITANDO INTERVENÇÕES CONSIDERADAS FÚTEIS OU DESPROPORCIONAIS, CONFORME O MELHOR INTERESSE DO(A) PACIENTE E EM ALINHAMENTO COM O(A) FAMILIAR RESPONSÁVEL.`]
   ].map(([id, c, t, a, x]) => ({ id, c, t, a, x }));
 
-  const hasSex = x => /\{[^{}|]*\|[^{}]*\}/.test(x);
-  const applySex = (x, f) => x.replace(/\{([^{}|]*)\|([^{}]*)\}/g, (_, m, w) => f ? w : m);
+  const hasSex = x => /\{[^{}|]*\|[^{}]*\}/.test(x) || D.sexText.has(x);
+  const applySex = (x, f) => D.sexText.apply(x.replace(/\{([^{}|]*)\|([^{}]*)\}/g, (_, m, w) => f ? w : m), f);
   const catName = id => id === 'my' ? 'Meus modelos' : (CATS.find(c => c[0] === id) || [])[1] || '';
 
   const tool = {
@@ -806,14 +806,11 @@ CONDUTA: MANUTENÇÃO DE MEDIDAS CLÍNICAS PROPORCIONAIS, COM FOCO EM CONFORTO, 
           } }, l)));
         const upB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox' }), 'Copiar em letras maiúsculas');
         const warn = h('div');
-        function chk() {
-          const n = (st.txt.match(/_{3,}/g) || []).length;
-          warn.innerHTML = '';
-          if (n) warn.append(h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, n === 1 ? 'Falta completar 1 campo marcado com ___.' : 'Faltam completar ' + n + ' campos marcados com ___.')));
-        }
+        const fillP = D.fillPanel({ get: () => st.txt, set: t => { st.txt = t; ta.value = t; grow(); } });
+        function chk() { fillP.refresh(); }
         const out = () => { const t = st.txt.replace(/[ \t]+\n/g, '\n').trim(); return upB.firstChild.checked ? t.toLocaleUpperCase('pt-BR') : t; };
         const form = h('div', { class: 'panel desc-form' }, sx ? h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Paciente'), seg) : '',
-          h('p', { class: 'hint' }, 'Edite à vontade. Os campos com ___ precisam ser completados.'), ta, upB, warn);
+          fillP, h('p', { class: 'hint' }, 'Edite à vontade.'), ta, upB, warn);
         const cb = h('button', { type: 'button', class: 'copy rx-copy' }, u.icon('copy'), 'Copiar texto');
         cb.onclick = () => {
           const t = out(); const done = () => { cb.lastChild.textContent = 'Copiado'; setTimeout(() => { cb.lastChild.textContent = 'Copiar texto'; }, 1600); };

@@ -57,6 +57,25 @@
     return { kg: u.num(p.kg), age: isFinite(a) ? (un === 'a' ? a : un === 'm' ? a / 12 : a / 365.25) : NaN };
   };
   const val = (x, c) => fill(x, c);
+  // lacunas ___ escritas no próprio modelo (fora das marcações {…}) podem ser preenchidas pelo usuário
+  const BL = {};
+  const prot = x => { const t = []; return { s: String(x || '').replace(/\{[^}]*\}/g, m => { t.push(m); return '\u0000' + (t.length - 1) + '\u0000'; }), back: y => y.replace(/\u0000(\d+)\u0000/g, (m, i) => t[i]) }; };
+  const vB = (x, c, key) => { const p = prot(x); let k = 0; return fill(p.back(p.s.replace(/_{3,}/g, m => { const v = BL[key + ':' + (k++)]; return v ? v.toLocaleUpperCase('pt-BR') : m; })), c); };
+  function rich(x, c, key, h) {
+    const p = prot(x), parts = p.s.split(/_{3,}/);
+    if (parts.length < 2) return [fill(x, c)];
+    const out = [];
+    parts.forEach((seg, k) => {
+      out.push(fill(p.back(seg), c));
+      if (k < parts.length - 1) {
+        const id = key + ':' + k, nx = parts[k + 1] || '';
+        const num = /^\s*(seringas|dias|cp|comprimidos|ml|frascos?|caixas?|unidades|ampolas?|vezes|horas)/i.test(nx);
+        out.push(h('input', { class: 'rx-blank-in', value: BL[id] || '', placeholder: '___', inputmode: num ? 'decimal' : 'text', size: num ? 3 : 10, 'aria-label': 'Completar campo',
+          oninput: e => { BL[id] = e.target.value.trim(); }, onclick: e => e.preventDefault(), onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const all = [...document.querySelectorAll('.rx-blank-in')], i = all.indexOf(e.target); if (all[i + 1]) all[i + 1].focus(); else e.target.blur(); } } }));
+      }
+    });
+    return out;
+  }
   const line = (n, q) => { const w = 54, d = Math.max(4, w - n.length - (q ? q.length : 0) - 2); return n + ' ' + '-'.repeat(d) + (q ? ' ' + q : ''); };
 
   function compose(sel, inc, c) {
@@ -65,9 +84,9 @@
       const r = R.find(x => x.id === rid); if (!r) return;
       r.it.forEach((it, i) => {
         const key = rid + ':' + i; if (!inc(key, it)) return;
-        const nm = val(it.n, c), sig = nm + '|' + val(it.p, c); if (seen.has(sig)) return; seen.add(sig);
+        const nm = vB(it.n, c, key + ':n'), sig = val(it.n, c) + '|' + val(it.p, c); if (seen.has(sig)) return; seen.add(sig);
         let g = groups.find(x => x.v === it.v); if (!g) { g = { v: it.v, items: [] }; groups.push(g); }
-        g.items.push({ n: nm, q: val(it.q, c), p: val(it.p, c), key, it, rid });
+        g.items.push({ n: nm, q: vB(it.q, c, key + ':q'), p: vB(it.p, c, key + ':p'), key, it, rid });
       });
       (r.ori || []).forEach(o => o.split(/(?<=\.)\s+/).forEach(f => { f = f.trim(); if (f && !ori.includes(f)) ori.push(f); }));
     });
@@ -113,7 +132,7 @@
         return R.filter(r => (!st.pop || (st.pop === 'c' ? r.ped : !r.ped)) && (!c || r.c === c) &&
           (!parts.length || parts.every(p => u.norm(r.t + ' ' + r.kw + ' ' + (r.ped ? 'criança pediatria' : 'adulto')).includes(p))));
       };
-      const openRx = id => { st.sel = [id]; st.edit = null; st.inc = {}; try { localStorage.setItem('drb_rx_last', id); } catch (e) { } list(); render(); setUrl(); };
+      const openRx = id => { Object.keys(BL).forEach(k => delete BL[k]); st.sel = [id]; st.edit = null; st.inc = {}; try { localStorage.setItem('drb_rx_last', id); } catch (e) { } list(); render(); setUrl(); };
       const openFirst = () => { const r = visible('')[0]; if (r) openRx(r.id); else { st.sel = []; render(); setUrl(); } };
       const catT = id => (CATS.find(c => c[0] === id) || [])[1] || '';
       function list() {
@@ -191,8 +210,8 @@
                 const cb = h('input', { type: 'checkbox', 'aria-label': 'Incluir ' + val(x.it.n, c2), onchange: e => { st.inc[x.key] = e.target.checked; paper(); } }); cb.checked = on;
                 pp.append(h('label', { class: 'rx-it' + (on ? '' : ' off') }, cb,
                   h('span', { class: 'rx-num' }, on ? n + '.' : ''),
-                  h('span', { class: 'rx-body' }, h('span', { class: 'rx-n' }, val(x.it.n, c2), h('span', { class: 'rx-qt' }, val(x.it.q, c2)), x.it.opt && h('span', { class: 'rx-opt' }, 'opção')),
-                    h('span', { class: 'rx-p' }, val(x.it.p, c2)))));
+                  h('span', { class: 'rx-body' }, h('span', { class: 'rx-n' }, ...rich(x.it.n, c2, x.key + ':n', h), h('span', { class: 'rx-qt' }, ...rich(x.it.q, c2, x.key + ':q', h)), x.it.opt && h('span', { class: 'rx-opt' }, 'opção')),
+                    h('span', { class: 'rx-p' }, ...rich(x.it.p, c2, x.key + ':p', h)))));
               });
             });
             if (comp.ori.length) pp.append(h('div', { class: 'rx-ori' }, h('b', null, 'ORIENTAÇÕES: '), comp.ori.join(' ')));

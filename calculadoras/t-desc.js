@@ -362,14 +362,16 @@
       const numB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.num = e.target.checked; } }), 'Numerar os passos ao copiar');
       numB.firstChild.checked = f.num;
       const warn = h('div');
+      const fillP = D.fillPanel({ get: () => f.s, set: t => { f.s = t; ta.value = t; grow(); chk(true); } });
       const relF = h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Relatório da cirurgia (intercorrências e destino)'), h('textarea', { class: 'desc-rel', rows: 3, oninput: e => { f.rel = e.target.value; chk(); } }, f.rel));
       const form = h('div', { class: 'panel desc-form' },
-        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Os campos com ___ precisam ser completados (lado, número do dreno, volume…).'), ta, numB, warn);
+        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), fillP, optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Edite à vontade.'), ta, numB, warn);
       const dataP = h('div', { class: 'panel desc-form' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Dados do relatório'), h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox));
-      function chk() {
-        const n = ((f.s + ' ' + f.cp + ' ' + f.cr + ' ' + f.rel).match(/_{3,}/g) || []).length;
+      function chk(now) {
+        if (now === true) fillP.now(); else fillP.refresh();
+        const n = ((f.cp + ' ' + f.cr + ' ' + f.rel).match(/_{3,}/g) || []).length;
         warn.innerHTML = '';
-        if (n) warn.append(h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, n === 1 ? 'Falta completar 1 campo marcado com ___.' : 'Faltam completar ' + n + ' campos marcados com ___.')));
+        if (n) warn.append(h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, n === 1 ? 'Falta completar 1 campo ___ nos dados do relatório.' : 'Faltam completar ' + n + ' campos ___ nos dados do relatório.')));
       }
       const steps = () => f.s.split('\n').map(tidy).filter(Boolean);
       const body = () => steps().map((x, i) => (f.num ? (i + 1) + '. ' : '') + x).join('\n');
