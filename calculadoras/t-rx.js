@@ -153,7 +153,7 @@
         const back = h('button', { type: 'button', class: 'rx-btn rx-back', onclick: () => { st.sel = []; list(); render(); setUrl(); window.scrollTo(0, 0); } }, '‹ Lista');
         doc.append(h('div', { class: 'desc-pick rx-pick' }, back, h('label', { class: 'desc-pl' }, h('span', { class: 'lbl' }, 'Receita'), mkSel('desc-psel', 'Receita', '', id => openRx(id)))));
         // cabeçalho com receitas selecionadas
-        doc.append(h('div', { class: 'rx-sel' }, rs.map(r => h('span', { class: 'rx-chip' }, r.t,
+        doc.append(h('div', { class: 'rx-sel' }, rs.map(r => h('span', { class: 'rx-chip' + (rs.length === 1 ? ' solo' : '') }, r.t,
           st.sel.length > 1 && h('button', { type: 'button', 'aria-label': 'Remover ' + r.t, onclick: () => { st.sel = st.sel.filter(x => x !== r.id); st.edit = null; list(); render(); setUrl(); } }, '×'))),
           mkSel('rx-addsel', 'Somar outra receita', '+ Somar outra receita', id => { if (!st.sel.includes(id)) st.sel = st.sel.concat(id); st.edit = null; list(); render(); setUrl(); })));
         if (needKg || needAge) {
