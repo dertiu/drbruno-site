@@ -629,3 +629,10 @@ button.sl .ico{color:var(--muted)}
 .desc-pick .desc-back{height:46px;flex:none}
 @media(min-width:1000px){.desc .desc-back{display:none}.desc-pick{display:none}}
 @media(max-width:1000px){.desc-head>h2{display:none}.desc-head .desc-meta{display:block;margin-top:-2px}}
+/* receitas: abre direto, seletores compactos */
+.rx-back{display:none;height:46px;flex:none}
+.rx-addsel{height:38px;max-width:100%;padding:0 30px 0 12px;border:1px dashed var(--line2);border-radius:999px;background:var(--surface);color:var(--muted);font:inherit;font-size:14.5px;font-weight:600;cursor:pointer}
+.rx-sel{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+@media(max-width:1000px){.rx.has-sel>.rx-l{display:none}.rx-pick .rx-back{display:inline-flex;align-items:center}.wrap:has(.rx.has-sel)>.title,.wrap:has(.rx.has-sel)>.tdesc,.wrap:has(.rx.has-sel) .toprow{display:none}}
+@media(min-width:1000px){.rx-pick{display:none}}
+@media(max-width:1000px){.rx-chip.solo{display:none}}
