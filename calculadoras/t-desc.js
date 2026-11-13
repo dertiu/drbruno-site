@@ -101,7 +101,7 @@
   }
   const dropIf = (lines, keep, rx) => lines.filter((l, i) => i === keep || !rx.test(l));
   const addOnce = (lines, rx, o) => rx.test(lines.join('\n')) ? lines : insertOpt(lines, o);
-  const APF = l => /ap[eê]ndice/i.test(l) && /(identificad|edemac|hiperem|inflam|aument|necros|perfur|fase|grau|compat|supurad|calibre|bloqueio)/i.test(l);
+  const APF = l => /ap[eê]ndice/i.test(l) && /(identificad|edemac|hiperem|inflam|aument|necros|perfur|fase|grau|compat|supurad|calibre|bloqueio|apendicite)/i.test(l);
   const DESCR = /purulent|\bpus\b|abscesso|bloqueio|necros|perfura|fezes em cavidade|l[ií]quido (livre|claro)|desserosid|fibrina (em|aderida)|presen[cç]a de fibrina/i;
   const ACTION = /^\s*(drenagem|lavagem|colet|passagem|coloca|posiciona|aspira|realizad|isolamento|ligadura|sec[cç]|dissec|retirad|envi|identifica[dç][ao]s? (áreas|[aá]rea) de perfura[cç][aã]o em ceco)/i;
   const LOWRM = /drenagem de abscesso|lavagem|cultura|colet(ad|a)[oa]? (de )?l[ií]quido|\bdrenos?\b|penrose|sulctor|suctor/i;
@@ -126,7 +126,7 @@
     const low = vl ? ['1', '2'].indexOf(v) >= 0 : ['1', '2'].indexOf(v) >= 0;
     let ls = f.s.split('\n').filter(x => tidy(x));
     const k = setFinding(ls, APF, (vl ? GV : GF)[v]);
-    ls = ls.filter((l, i) => i === k || !(DESCR.test(l) && !ACTION.test(l)));
+    ls = ls.map((l, i) => i !== k && DESCR.test(l) && !ACTION.test(l) && /^\s*invent[áa]rio/i.test(l) ? 'Inventário da cavidade' : l).filter((l, i) => i === k || !(DESCR.test(l) && !ACTION.test(l)));
     const k2 = ls.indexOf((vl ? GV : GF)[v]) >= 0 ? ls.indexOf((vl ? GV : GF)[v]) : ls.findIndex(l => l.indexOf((vl ? GV : GF)[v]) >= 0);
     if (low) ls = dropIf(ls, k2, LOWRM);
     if (hi) { ls = addOnce(ls, /lavagem/i, O.lavagem); if (!/cultura/i.test(ls.join(' '))) { const j = ls.findIndex(l => l.indexOf((vl ? GV : GF)[v]) >= 0); ls.splice(j + 1, 0, O.cultura.x); } }
@@ -161,7 +161,7 @@
       { k: 'q', l: 'Achado', o: [['elet', 'Sem inflamação', 'colelitíase, paredes finas'], ['aguda', 'Colecistite aguda', 'paredes espessadas e edemaciadas'], ['gang', 'Gangrenosa', 'necrose de parede'], ['dif', 'Escleroatrófica', 'aderências firmes, dissecção difícil']], tf: cvlTf },
       { k: 'dr', l: 'Dreno', o: [['sem', 'Sem dreno'], ['com', 'Com dreno']], tf: (f, v) => drTf(f, v, 'vb') }] },
     hing: { t: 'Herniorrafia inguinal', d: { ld: 'D', sx: 'H', rec: 'pri', dr: 'sem' }, ax: [
-      { k: 'ld', l: 'Lado', o: [['D', 'Direita'], ['E', 'Esquerda'], ['B', 'Bilateral']], can: (a, b) => a !== 'B' && b !== 'B', tf: (f, v, mv) => { if (mv && mv !== v) ['dx', 'cp', 'cr', 's'].forEach(k => { f[k] = swapSide(f[k]); }); } },
+      { k: 'ld', l: 'Lado', o: [['D', 'Direita'], ['E', 'Esquerda'], ['B', 'Bilateral']], can: (a, b) => a !== 'B' && b !== 'B', tf: (f, v, mv) => { if (mv && mv !== v) ['dx', 'cp', 'cr', 's'].forEach(k => { f[k] = swapSide(f[k]); }); else if (!mv) { const w = v === 'D' ? 'direita' : 'esquerda'; f.s = f.s.replace(/___\s*\(\s*(direita|esquerda|indireta)[^)]*\)/gi, m => /^___\s*\(\s*(direita|esquerda)\s*\//i.test(m) ? w : m).replace(/(regi[aã]o inguinal|inguinotomia) ___/gi, '$1 ' + w); } } },
       { k: 'sx', l: 'Paciente', o: SEXO },
       { k: 'rec', l: 'Hérnia', o: [['pri', 'Primária'], ['rec', 'Recidivada']] },
       { k: 'dr', l: 'Dreno', o: [['sem', 'Sem dreno'], ['com', 'Com dreno']], tf: (f, v) => drTf(f, v, 'hing') }] },
@@ -205,6 +205,8 @@
   }
   const DEST = [['RECO', 'a RECO'], ['RPA', 'a RPA'], ['UTI', 'a UTI'], ['Enfermaria', 'a enfermaria']];
 
+  const UP = t => String(t || '').toLocaleUpperCase('pt-BR');
+  const same = (a, b) => UP(tidy(a)) === UP(tidy(b));
   const tidy = s => String(s || '').replace(/\s+/g, ' ').trim();
 
   function load(cb) {
@@ -282,7 +284,8 @@
     const mark = () => root.classList.toggle('has-sel', !!st.sel);
 
     function fresh(m) {
-      return { an: m.an || '', dx: m.dx || '', cp: m.cp || m.t, cr: m.cr || m.cp || m.t, tipo: m.tipo || tipoDe(m), rel: m.rel || 'Procedimento sem intercorrências.', s: (m.s || []).join('\n'), num: true, ld: m.ld || '', on: {}, base: (m.s || []).join(' ') };
+      const up = (m.s || []).length > 2 && (m.s || []).join(' ').replace(/[^A-Za-zÀ-ú]/g, '').replace(/[^a-zà-ú]/g, '').length < 0.05 * (m.s || []).join('').length;
+      return { up, an: m.an || '', dx: m.dx || '', cp: m.cp || m.t, cr: m.cr || m.cp || m.t, tipo: m.tipo || tipoDe(m), rel: m.rel || 'Procedimento sem intercorrências.', s: (m.s || []).join('\n'), num: true, ld: m.ld || '', on: {}, base: (m.s || []).join(' ') };
     }
     function render() {
       doc.innerHTML = '';
@@ -298,7 +301,8 @@
       if (F && !st.ax) { st.ax = Object.assign({}, F.d); F.ax.forEach(a => { const v = (m.x || {})[a.k]; if (v) st.ax[a.k] = v; }); }
       if (!st.f) {
         st.f = fresh(m); st.f.ad = [];
-        if (F) F.ax.forEach(a => { const mv = (m.x || {})[a.k] || ''; if (mv !== st.ax[a.k] && a.tf) { a.tf(st.f, st.ax[a.k], mv); st.f.ad.push(a.l.split(' (')[0].toLowerCase()); } });
+        if (F) F.ax.forEach(a => { const mv = (m.x || {})[a.k] || ''; if (mv !== st.ax[a.k] && a.tf) { a.tf(st.f, st.ax[a.k], mv); if (!(a.k === 'ld' && !mv)) st.f.ad.push(a.l.split(' (')[0].toLowerCase()); } });
+        if (st.f.up) st.f.s = UP(st.f.s);
         st.f.gen = st.f.s;
       }
       const f = st.f;
@@ -349,10 +353,11 @@
       const optBox = ops.length && h('div', { class: 'desc-opts' }, h('span', { class: 'lbl' }, 'Marque o que foi feito ou encontrado para incluir na descrição'),
         h('div', { class: 'desc-optl' }, ops.map(o => { const c = h('input', { type: 'checkbox', onchange: e => {
           let ls = f.s.split('\n');
-          if (e.target.checked) { ls = insertOpt(ls.filter(x => tidy(x)), o); f.on[o.id] = 1; } else { ls = ls.filter(x => tidy(x) !== o.x); delete f.on[o.id]; }
+          const ox = f.up ? UP(o.x) : o.x;
+          if (e.target.checked) { ls = insertOpt(ls.filter(x => tidy(x)), Object.assign({}, o, { x: ox })); f.on[o.id] = 1; } else { ls = ls.filter(x => !same(x, o.x)); delete f.on[o.id]; }
           f.s = ls.join('\n'); ta.value = f.s; grow(); chk();
-          if (e.target.checked) { const p = f.s.indexOf(o.x); try { ta.setSelectionRange(p, p + o.x.length); } catch (x) { } }
-        } }); c.checked = f.s.split('\n').some(x => tidy(x) === o.x); return h('label', { class: 'desc-opt', title: o.x }, c, h('span', null, o.l)); })));
+          if (e.target.checked) { const p = f.s.indexOf(ox); try { ta.setSelectionRange(p, p + ox.length); } catch (x) { } }
+        } }); c.checked = f.s.split('\n').some(x => same(x, o.x)); return h('label', { class: 'desc-opt', title: o.x }, c, h('span', null, o.l)); })));
       const destBox = h('div', { class: 'desc-dest' }, h('span', { class: 'hint' }, 'Destino:'), DEST.map(([l, x]) => h('button', { type: 'button', class: 'rx-cat', onclick: () => { f.rel = 'Procedimento sem intercorrências, paciente encaminhado para ' + x + ' aos cuidados da equipe anestésica.'; relF.querySelector('textarea').value = f.rel; chk(); } }, l)));
       const numB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.num = e.target.checked; } }), 'Numerar os passos ao copiar');
       numB.firstChild.checked = f.num;
@@ -412,7 +417,9 @@
     ['abd', 'Laparotomia e intestino', 'lise de bridas, enterectomia, peritoneostomia'], ['colon', 'Cólon, reto e estomias', 'colectomias, Hartmann, retossigmoidectomia'],
     ['procto', 'Proctologia', 'hemorroidectomia, abscesso perianal, cisto pilonidal'], ['pele', 'Pele, partes moles e abscessos', 'debridamento, lipoma, drenagem de abscesso'],
     ['cp', 'Cabeça e pescoço', 'tireoidectomia, submandibular, esvaziamento'], ['torac', 'Torácica e via aérea', 'traqueostomia, drenagem, lobectomia'],
-    ['onco', 'Oncologia, ginecologia e urologia', 'histerectomia, nefrectomia, Whipple'], ['proc', 'Procedimentos à beira do leito', 'cateter central, portocath, paracentese, toracocentese']
+    ['onco', 'Oncologia e ginecologia', 'histerectomia, Whipple, exenteração'], ['proc', 'Procedimentos à beira do leito', 'cateter central, PAI, portocath, paracentese, gastrostomia'],
+    ['uro', 'Urologia', 'duplo J, ureterolitotripsia, vasectomia, torção testicular, prostatectomia'], ['vasc', 'Vascular e amputações', 'amputações, pé diabético, safenectomia, pseudoaneurisma'],
+    ['ped', 'Cirurgia pediátrica', 'piloromiotomia, cateter 4 Fr, drenagem torácica'], ['plast', 'Plástica e face', 'osteossíntese de órbita'], ['tx', 'Transplante e captação', 'captação de fígado']
   ].map(([c, t, d]) => ({ id: 'desc-' + c, g: 'desc', title: t, desc: 'Descrições: ' + d, kw: 'descrição cirúrgica ' + t + ' ' + d, href: '#/descricoes/' + ({ apend: 'f:apend', vb: 'f:cvl', hing: 'f:hing', parede: 'f:humb' }[c] || 'c:' + c) }));
   // a busca do topo também encontra cada modelo (carrega os dados na primeira vez que a busca é usada)
   D.onSearch = (D.onSearch || []).concat(done => load(err => {

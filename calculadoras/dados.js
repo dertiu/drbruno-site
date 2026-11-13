@@ -1,9 +1,14 @@
 /* Dados editáveis pelo painel do editor (admin.html). Não editar à mão se for usar o painel. */
 window.DRB_DATA = {
  "versao": 1,
- "atualizado": "2026-11-08",
+ "atualizado": "2026-11-13",
  "aviso": "",
  "cats": [
+  {
+   "id": "sc",
+   "t": "Santa Casa: cirurgia e PS",
+   "d": "Receitas do serviço: pós-operatório, antibióticos, gastro, proctologia, curativos, anticoagulação"
+  },
   {
    "id": "olho",
    "t": "Olhos",
@@ -46,6 +51,983 @@ window.DRB_DATA = {
   }
  ],
  "receitas": [
+  {
+   "id": "sc-sintomaticos-pos-operatorio-cg",
+   "t": "Sintomáticos pós-operatório (CG)",
+   "c": "sc",
+   "kw": "sintomaticos pos-operatorio (cg) dipirona 1 g bromoprida 10 mg simeticona 75 mg/ml gotas omeprazol 20 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "BROMOPRIDA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "SIMETICONA 75 MG/ML GOTAS",
+     "q": "1 FRASCO",
+     "p": "TOMAR 40 GOTAS DE 8/8 HORAS SE GASES OU DISTENSÃO ABDOMINAL."
+    },
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP PELA MANHÃ EM JEJUM POR 7 DIAS."
+    }
+   ]
+  },
+  {
+   "id": "sc-dipirona-cetoprofeno",
+   "t": "Dipirona + cetoprofeno",
+   "c": "sc",
+   "kw": "dipirona + cetoprofeno dipirona 1 g cetoprofeno 100 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "CETOPROFENO 100 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 5 DIAS."
+    }
+   ]
+  },
+  {
+   "id": "sc-dipirona-paracetamol-codeina",
+   "t": "Dipirona + paracetamol/codeína",
+   "c": "sc",
+   "kw": "dipirona + paracetamol/codeina dipirona 1 g paracetamol 500 mg + codeina 30 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "PARACETAMOL 500 MG + CODEÍNA 30 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE DOR FORTE."
+    }
+   ],
+   "nota": "Use um opioide por vez (não associar com tramadol)."
+  },
+  {
+   "id": "sc-dipirona-aine-tramadol",
+   "t": "Dipirona + AINE + tramadol",
+   "c": "sc",
+   "kw": "dipirona + aine + tramadol dipirona 1 g cetoprofeno 100 mg tramadol 50 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "CETOPROFENO 100 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "TRAMADOL 50 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE DOR FORTE."
+    }
+   ]
+  },
+  {
+   "id": "sc-dipirona-cetorolaco-sl",
+   "t": "Dipirona + cetorolaco SL",
+   "c": "sc",
+   "kw": "dipirona + cetorolaco sl dipirona 1 g cetorolaco de trometamol 10 mg sublingual paracetamol 500 mg + codeina 30 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "CETOROLACO DE TROMETAMOL 10 MG SUBLINGUAL",
+     "q": "1 CAIXA",
+     "p": "COLOCAR 1 CP EMBAIXO DA LÍNGUA DE 8/8 HORAS POR ATÉ 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "PARACETAMOL 500 MG + CODEÍNA 30 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE DOR FORTE."
+    }
+   ]
+  },
+  {
+   "id": "sc-nauseas-e-vomitos",
+   "t": "Náuseas e vômitos",
+   "c": "sc",
+   "kw": "nauseas e vomitos ondansetrona 8 mg meclizina 25 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "ONDANSETRONA 8 MG",
+     "q": "10 CP",
+     "p": "DISSOLVER 1 CP EMBAIXO DA LÍNGUA DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "MECLIZINA 25 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU TONTURA, INTERCALANDO COM A ONDANSETRONA SE NECESSÁRIO."
+    }
+   ]
+  },
+  {
+   "id": "sc-cefalexina-sintomaticos",
+   "t": "Cefalexina + sintomáticos",
+   "c": "sc",
+   "kw": "cefalexina + sintomaticos cefalexina 500 mg dipirona 1 g bromoprida 10 mg omeprazol 20 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "CEFALEXINA 500 MG",
+     "q": "28 CP",
+     "p": "TOMAR 1 CP DE 6/6 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "BROMOPRIDA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP PELA MANHÃ EM JEJUM POR 7 DIAS."
+    }
+   ]
+  },
+  {
+   "id": "sc-cefadroxila-sintomaticos",
+   "t": "Cefadroxila + sintomáticos",
+   "c": "sc",
+   "kw": "cefadroxila + sintomaticos cefadroxila 500 mg dipirona 1 g bromoprida 10 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "CEFADROXILA 500 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "BROMOPRIDA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    }
+   ]
+  },
+  {
+   "id": "sc-amoxicilina-clavulanato-sintomaticos",
+   "t": "Amoxicilina + clavulanato + sintomáticos",
+   "c": "sc",
+   "kw": "amoxicilina + clavulanato + sintomaticos amoxicilina 875 mg + clavulanato 125 mg dipirona 1 g bromoprida 10 mg simeticona 75 mg/ml gotas santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "AMOXICILINA 875 MG + CLAVULANATO 125 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 7 DIAS, APÓS AS REFEIÇÕES."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "BROMOPRIDA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "SIMETICONA 75 MG/ML GOTAS",
+     "q": "1 FRASCO",
+     "p": "TOMAR 40 GOTAS DE 8/8 HORAS SE GASES OU DISTENSÃO ABDOMINAL."
+    }
+   ]
+  },
+  {
+   "id": "sc-ciprofloxacino-metronidazol-sintomaticos",
+   "t": "Ciprofloxacino + metronidazol + sintomáticos",
+   "c": "sc",
+   "kw": "ciprofloxacino + metronidazol + sintomaticos ciprofloxacino 500 mg metronidazol 250 mg dipirona 1 g bromoprida 10 mg simeticona 75 mg/ml gotas omeprazol 20 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "CIPROFLOXACINO 500 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "METRONIDAZOL 250 MG",
+     "q": "42 CP",
+     "p": "TOMAR 2 CP DE 8/8 HORAS POR 7 DIAS. NÃO INGERIR BEBIDA ALCOÓLICA DURANTE O USO E ATÉ 3 DIAS APÓS O TÉRMINO."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "BROMOPRIDA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "SIMETICONA 75 MG/ML GOTAS",
+     "q": "1 FRASCO",
+     "p": "TOMAR 40 GOTAS DE 8/8 HORAS SE GASES OU DISTENSÃO ABDOMINAL."
+    },
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP PELA MANHÃ EM JEJUM POR 7 DIAS."
+    }
+   ]
+  },
+  {
+   "id": "sc-ciprofloxacino-sintomaticos",
+   "t": "Ciprofloxacino + sintomáticos",
+   "c": "sc",
+   "kw": "ciprofloxacino + sintomaticos ciprofloxacino 500 mg dipirona 1 g ondansetrona 8 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "CIPROFLOXACINO 500 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "ONDANSETRONA 8 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    }
+   ]
+  },
+  {
+   "id": "sc-levofloxacino-sintomaticos",
+   "t": "Levofloxacino + sintomáticos",
+   "c": "sc",
+   "kw": "levofloxacino + sintomaticos levofloxacino 750 mg dipirona 1 g ondansetrona 8 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "LEVOFLOXACINO 750 MG",
+     "q": "7 CP",
+     "p": "TOMAR 1 CP UMA VEZ AO DIA POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "ONDANSETRONA 8 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    }
+   ]
+  },
+  {
+   "id": "sc-pe-diabetico-ciprofloxacino-clindamicina-14-dias",
+   "t": "Pé diabético (ciprofloxacino + clindamicina 14 dias)",
+   "c": "sc",
+   "kw": "pe diabetico (ciprofloxacino + clindamicina 14 dias) ciprofloxacino 500 mg clindamicina 300 mg dipirona 1 g colagenase + cloranfenicol pomada santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "CIPROFLOXACINO 500 MG",
+     "q": "28 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 14 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "CLINDAMICINA 300 MG",
+     "q": "84 CP",
+     "p": "TOMAR 2 CP DE 8/8 HORAS POR 14 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "TOP",
+     "n": "COLAGENASE + CLORANFENICOL POMADA",
+     "q": "1 TUBO",
+     "p": "APLICAR NA LESÃO 1 VEZ AO DIA, APÓS LIMPEZA, E OCLUIR COM GAZE E FAIXA."
+    }
+   ]
+  },
+  {
+   "id": "sc-gastroenterite-aguda-adulto",
+   "t": "Gastroenterite aguda (adulto)",
+   "c": "sc",
+   "kw": "gastroenterite aguda (adulto) sais de reidratacao oral ondansetrona 8 mg racecadotrila 100 mg saccharomyces boulardii 200 mg dipirona 1 g escopolamina (butilbrometo) 10 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "SAIS DE REIDRATAÇÃO ORAL",
+     "q": "10 ENVELOPES",
+     "p": "DILUIR 1 ENVELOPE EM 1 LITRO DE ÁGUA FILTRADA. TOMAR 1 COPO (200 ML) APÓS CADA EVACUAÇÃO LÍQUIDA OU VÔMITO, ALÉM DOS LÍQUIDOS HABITUAIS."
+    },
+    {
+     "v": "ORAL",
+     "n": "ONDANSETRONA 8 MG",
+     "q": "1 CAIXA",
+     "p": "DISSOLVER 1 CP EMBAIXO DA LÍNGUA DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "RACECADOTRILA 100 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS ATÉ MELHORA DA DIARREIA (MÁXIMO 7 DIAS)."
+    },
+    {
+     "v": "ORAL",
+     "n": "SACCHAROMYCES BOULARDII 200 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "ESCOPOLAMINA (BUTILBROMETO) 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE CÓLICA ABDOMINAL."
+    }
+   ]
+  },
+  {
+   "id": "sc-drge",
+   "t": "DRGE",
+   "c": "sc",
+   "kw": "drge pantoprazol 40 mg domperidona 10 mg dipirona 1 g santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "PANTOPRAZOL 40 MG",
+     "q": "60 CP",
+     "p": "TOMAR 1 CP EM JEJUM, 30 MINUTOS ANTES DO CAFÉ DA MANHÃ, POR 8 SEMANAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DOMPERIDONA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP 30 MINUTOS ANTES DO ALMOÇO E DO JANTAR POR ATÉ 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR."
+    }
+   ],
+   "nota": "Domperidona por até 7 dias, pelo risco de arritmia (prolongamento do QT)."
+  },
+  {
+   "id": "sc-ulcera-gastrite",
+   "t": "Úlcera / gastrite",
+   "c": "sc",
+   "kw": "ulcera / gastrite pantoprazol 40 mg sucralfato 1 g domperidona 10 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "PANTOPRAZOL 40 MG",
+     "q": "USO CONTÍNUO",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 30 DIAS. APÓS, TOMAR 1 CP PELA MANHÃ EM JEJUM."
+    },
+    {
+     "v": "ORAL",
+     "n": "SUCRALFATO 1 G",
+     "q": "1 CAIXA",
+     "p": "MASTIGAR 1 CP DE 8/8 HORAS POR 7 DIAS, LONGE DOS OUTROS REMÉDIOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DOMPERIDONA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP 30 MINUTOS ANTES DO ALMOÇO E DO JANTAR POR ATÉ 7 DIAS."
+    }
+   ],
+   "nota": "Domperidona por até 7 dias, pelo risco de arritmia (prolongamento do QT)."
+  },
+  {
+   "id": "sc-pos-hda",
+   "t": "Pós HDA",
+   "c": "sc",
+   "kw": "pos hda omeprazol 20 mg sucralfato 1 g domperidona 10 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "180 CP",
+     "p": "TOMAR 2 CP EM JEJUM PELA MANHÃ E 2 CP ANTES DO JANTAR POR 15 DIAS. DEPOIS, TOMAR 2 CP EM JEJUM PELA MANHÃ ATÉ COMPLETAR 60 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "SUCRALFATO 1 G",
+     "q": "21 CP",
+     "p": "MASTIGAR 1 CP DE 8/8 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DOMPERIDONA 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP 30 MINUTOS ANTES DO CAFÉ, ALMOÇO E JANTAR POR ATÉ 7 DIAS."
+    }
+   ],
+   "nota": "Domperidona por até 7 dias, pelo risco de arritmia (prolongamento do QT)."
+  },
+  {
+   "id": "sc-h-pylori-terapia-tripla-14-dias",
+   "t": "H. pylori (terapia tripla 14 dias)",
+   "c": "sc",
+   "kw": "h. pylori (terapia tripla 14 dias) omeprazol 20 mg amoxicilina 500 mg claritromicina 500 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "56 CP",
+     "p": "TOMAR 2 CP DE 12/12 HORAS POR 14 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "AMOXICILINA 500 MG",
+     "q": "56 CP",
+     "p": "TOMAR 2 CP DE 12/12 HORAS POR 14 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "CLARITROMICINA 500 MG",
+     "q": "28 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 14 DIAS."
+    }
+   ]
+  },
+  {
+   "id": "sc-constipacao",
+   "t": "Constipação",
+   "c": "sc",
+   "kw": "constipacao lactulose 667 mg/ml oleo mineral simeticona 75 mg/ml gotas escopolamina (butilbrometo) 10 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "LACTULOSE 667 MG/ML",
+     "q": "1 FRASCO",
+     "p": "TOMAR 15 ML 1 A 2 VEZES AO DIA. AJUSTAR A DOSE ATÉ FEZES MACIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "ÓLEO MINERAL",
+     "q": "1 FRASCO",
+     "p": "TOMAR 10 ML À NOITE SE NÃO EVACUAR. NÃO USAR DEITADO."
+    },
+    {
+     "v": "ORAL",
+     "n": "SIMETICONA 75 MG/ML GOTAS",
+     "q": "1 FRASCO",
+     "p": "TOMAR 40 GOTAS DE 8/8 HORAS SE GASES OU DISTENSÃO."
+    },
+    {
+     "v": "ORAL",
+     "n": "ESCOPOLAMINA (BUTILBROMETO) 10 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE CÓLICA ABDOMINAL."
+    }
+   ],
+   "nota": "Evite óleo mineral em idosos, acamados e em quem tem disfagia, pelo risco de aspiração."
+  },
+  {
+   "id": "sc-hemorroidas-crise",
+   "t": "Hemorroidas (crise)",
+   "c": "sc",
+   "kw": "hemorroidas (crise) diosmina 450 mg + hesperidina 50 mg cetoprofeno 50 mg omeprazol 20 mg dipirona 1 g policresuleno + cinchocaina pomada retal santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIOSMINA 450 MG + HESPERIDINA 50 MG",
+     "q": "2 CAIXAS",
+     "p": "TOMAR 2 CP DE 8/8 HORAS POR 4 DIAS. DEPOIS, 2 CP DE 12/12 HORAS POR 3 DIAS. DEPOIS, 1 CP DE 12/12 HORAS POR 30 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "CETOPROFENO 50 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP PELA MANHÃ EM JEJUM POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR."
+    },
+    {
+     "v": "TOP",
+     "n": "POLICRESULENO + CINCHOCAÍNA POMADA RETAL",
+     "q": "1 TUBO",
+     "p": "APLICAR NA REGIÃO ANAL 2 VEZES AO DIA, APÓS HIGIENE."
+    }
+   ],
+   "ori": [
+    "BANHO DE ASSENTO COM ÁGUA MORNA 3 VEZES AO DIA. DIETA RICA EM FIBRAS E BOA INGESTA DE ÁGUA. NÃO FORÇAR A EVACUAÇÃO E NÃO PERMANECER MUITO TEMPO SENTADO NO VASO."
+   ]
+  },
+  {
+   "id": "sc-pos-operatorio-orificial-hemorroidectomia-fissura-fistula",
+   "t": "Pós-operatório orificial (hemorroidectomia / fissura / fístula)",
+   "c": "sc",
+   "kw": "pos-operatorio orificial (hemorroidectomia / fissura / fistula) dipirona 1 g cetoprofeno 100 mg omeprazol 20 mg diosmina 450 mg + hesperidina 50 mg lactulose 667 mg/ml ciprofloxacino 500 mg neomicina + bacitracina pomada lidocaina gel 2% santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR."
+    },
+    {
+     "v": "ORAL",
+     "n": "CETOPROFENO 100 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "OMEPRAZOL 20 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP EM JEJUM, 30 MINUTOS ANTES DO CAFÉ, POR 10 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIOSMINA 450 MG + HESPERIDINA 50 MG",
+     "q": "60 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 30 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "LACTULOSE 667 MG/ML",
+     "q": "1 FRASCO",
+     "p": "TOMAR 15 ML ATÉ 2 VEZES AO DIA SE DIFICULDADE PARA EVACUAR."
+    },
+    {
+     "v": "ORAL",
+     "n": "CIPROFLOXACINO 500 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "TOP",
+     "n": "NEOMICINA + BACITRACINA POMADA",
+     "q": "1 TUBO",
+     "p": "APLICAR NA REGIÃO ANAL 2 VEZES AO DIA, APÓS HIGIENE LOCAL."
+    },
+    {
+     "v": "TOP",
+     "n": "LIDOCAÍNA GEL 2%",
+     "q": "1 TUBO",
+     "p": "APLICAR NA REGIÃO ANAL 2 VEZES AO DIA, APÓS HIGIENE LOCAL."
+    }
+   ],
+   "ori": [
+    "MANTER O CURATIVO ATÉ O FINAL DO DIA E RETIRAR NO BANHO, DEIXANDO CAIR BASTANTE ÁGUA MORNA. É NORMAL SANGRAR UM POUCO NOS PRIMEIROS DIAS E NAS EVACUAÇÕES. EM CASO DE SANGRAMENTO IMPORTANTE OU SECREÇÃO COM PUS, PROCURAR A URGÊNCIA. NÃO SEGURAR AS EVACUAÇÕES. É NORMAL DOER NAS PRIMEIRAS VEZES, MAS SEGURAR DEIXA AS FEZES MAIS ENDURECIDAS. NÃO USAR PAPEL HIGIÊNICO. APÓS EVACUAR, LAVAR E SECAR COM TOALHA MACIA. OS PONTOS SÃO ABSORVÍVEIS E NÃO PRECISAM SER RETIRADOS."
+   ],
+   "nota": "O ciprofloxacino é escolha do serviço: avalie a indicação em cada caso."
+  },
+  {
+   "id": "sc-pneumonia-comunitaria-ambulatorial",
+   "t": "Pneumonia comunitária ambulatorial",
+   "c": "sc",
+   "kw": "pneumonia comunitaria ambulatorial amoxicilina 875 mg + clavulanato 125 mg azitromicina 500 mg dipirona 1 g salbutamol 100 mcg/jato santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "AMOXICILINA 875 MG + CLAVULANATO 125 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "AZITROMICINA 500 MG",
+     "q": "5 CP",
+     "p": "TOMAR 1 CP UMA VEZ AO DIA POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "INAL",
+     "n": "SALBUTAMOL 100 MCG/JATO",
+     "q": "1 FRASCO",
+     "p": "INALAR 2 JATOS ATÉ DE 6/6 HORAS SE FALTA DE AR OU CHIADO, COM ESPAÇADOR."
+    }
+   ]
+  },
+  {
+   "id": "sc-sindrome-gripal-sintomaticos",
+   "t": "Síndrome gripal (sintomáticos)",
+   "c": "sc",
+   "kw": "sindrome gripal (sintomaticos) dipirona 1 g loratadina 10 mg levodropropizina 6 mg/ml xarope ambroxol 30 mg/5 ml xarope santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "LORATADINA 10 MG",
+     "q": "5 CP",
+     "p": "TOMAR 1 CP UMA VEZ AO DIA POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "LEVODROPROPIZINA 6 MG/ML XAROPE",
+     "q": "1 FRASCO",
+     "p": "TOMAR 10 ML DE 8/8 HORAS POR 5 DIAS SE TOSSE SECA."
+    },
+    {
+     "v": "ORAL",
+     "n": "AMBROXOL 30 MG/5 ML XAROPE",
+     "q": "1 FRASCO",
+     "p": "TOMAR 5 ML DE 8/8 HORAS POR 5 DIAS.",
+     "opt": true
+    }
+   ]
+  },
+  {
+   "id": "sc-oseltamivir",
+   "t": "Oseltamivir",
+   "c": "sc",
+   "kw": "oseltamivir fosfato de oseltamivir 75 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "FOSFATO DE OSELTAMIVIR 75 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 5 DIAS."
+    }
+   ],
+   "nota": "Ajustar a dose se o clearance de creatinina estiver reduzido."
+  },
+  {
+   "id": "sc-cistite-fosfomicina",
+   "t": "Cistite (fosfomicina)",
+   "c": "sc",
+   "kw": "cistite (fosfomicina) fosfomicina trometamol 3 g dipirona 1 g santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "FOSFOMICINA TROMETAMOL 3 G",
+     "q": "1 ENVELOPE",
+     "p": "DILUIR O ENVELOPE EM MEIO COPO DE ÁGUA E TOMAR EM DOSE ÚNICA À NOITE, APÓS ESVAZIAR A BEXIGA."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR."
+    }
+   ]
+  },
+  {
+   "id": "sc-colica-renal-terapia-expulsiva",
+   "t": "Cólica renal / terapia expulsiva",
+   "c": "sc",
+   "kw": "colica renal / terapia expulsiva tansulosina 0,4 mg dipirona 1 g cetorolaco de trometamol 10 mg sublingual paracetamol 500 mg + codeina 30 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "TANSULOSINA 0,4 MG",
+     "q": "14 CP",
+     "p": "TOMAR 1 CP À NOITE POR 14 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR."
+    },
+    {
+     "v": "ORAL",
+     "n": "CETOROLACO DE TROMETAMOL 10 MG SUBLINGUAL",
+     "q": "1 CAIXA",
+     "p": "COLOCAR 1 CP EMBAIXO DA LÍNGUA DE 8/8 HORAS POR ATÉ 5 DIAS, SE DOR."
+    },
+    {
+     "v": "ORAL",
+     "n": "PARACETAMOL 500 MG + CODEÍNA 30 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE DOR INTENSA."
+    }
+   ],
+   "ori": [
+    "BEBER BASTANTE ÁGUA. RETORNAR SE FEBRE, VÔMITOS QUE NÃO PARAM, DOR QUE NÃO MELHORA COM OS REMÉDIOS OU PARADA DA URINA."
+   ]
+  },
+  {
+   "id": "sc-dengue-grupo-a-receita-orientacoes",
+   "t": "Dengue grupo A (receita + orientações)",
+   "c": "sc",
+   "kw": "dengue grupo a (receita + orientacoes) dipirona 1 g ondansetrona 8 mg sais de reidratacao oral santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR OU FEBRE."
+    },
+    {
+     "v": "ORAL",
+     "n": "ONDANSETRONA 8 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS."
+    },
+    {
+     "v": "ORAL",
+     "n": "SAIS DE REIDRATAÇÃO ORAL",
+     "q": "1 CAIXA",
+     "p": "DILUIR 1 ENVELOPE EM 1 LITRO DE ÁGUA FILTRADA OU FERVIDA E GUARDAR NA GELADEIRA. BEBER NO TOTAL CERCA DE {litros:60} LITROS POR DIA (60 ML POR KG), SENDO 1/3 DE SORO DE REIDRATAÇÃO E O RESTANTE DE ÁGUA, SUCOS, ÁGUA DE COCO, CHÁS E SOPAS."
+    }
+   ],
+   "ori": [
+    "REPOUSO. EVITAR ESFORÇO FÍSICO. NÃO TOMAR AAS, IBUPROFENO, DICLOFENACO, NIMESULIDA, CETOPROFENO, CORTICOIDE OU QUALQUER OUTRO REMÉDIO SEM ORIENTAÇÃO MÉDICA. NÃO TOMAR BEBIDA ALCOÓLICA. RETORNAR PARA REAVALIAÇÃO NO DIA EM QUE A FEBRE PASSAR OU NO 5º DIA DE DOENÇA SE A FEBRE CONTINUAR. RETORNAR IMEDIATAMENTE SE: DOR DE BARRIGA FORTE E CONTÍNUA, VÔMITOS QUE NÃO PARAM, SANGRAMENTOS, URINAR POUCO OU NADA POR UM DIA, SONOLÊNCIA OU IRRITABILIDADE, TONTURA AO LEVANTAR, DESMAIO OU MAL ESTAR IMPORTANTE."
+   ],
+   "nota": "Hidratação de 60 mL/kg/dia (Ministério da Saúde), calculada pelo peso do paciente."
+  },
+  {
+   "id": "sc-herpes-zoster",
+   "t": "Herpes-zóster",
+   "c": "sc",
+   "kw": "herpes-zoster aciclovir 400 mg dipirona 1 g santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "ACICLOVIR 400 MG",
+     "q": "70 CP",
+     "p": "TOMAR 2 CP (800 MG) 5 VEZES AO DIA, DE 4/4 HORAS, PULANDO A DOSE DA MADRUGADA, POR 7 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP DE 6/6 HORAS SE DOR."
+    }
+   ],
+   "nota": "Ajustar a dose do aciclovir na insuficiência renal."
+  },
+  {
+   "id": "sc-rifamicina-spray-na-ferida",
+   "t": "Rifamicina spray na ferida",
+   "c": "sc",
+   "kw": "rifamicina spray na ferida rifamicina sv spray santa casa",
+   "it": [
+    {
+     "v": "TOP",
+     "n": "RIFAMICINA SV SPRAY",
+     "q": "1 FRASCO",
+     "p": "APLICAR SOBRE A FERIDA OPERATÓRIA 2 VEZES AO DIA POR 10 DIAS, APÓS LIMPEZA COM ÁGUA E SABÃO."
+    }
+   ]
+  },
+  {
+   "id": "sc-colagenase-cloranfenicol",
+   "t": "Colagenase + cloranfenicol",
+   "c": "sc",
+   "kw": "colagenase + cloranfenicol colagenase + cloranfenicol pomada santa casa",
+   "it": [
+    {
+     "v": "TOP",
+     "n": "COLAGENASE + CLORANFENICOL POMADA",
+     "q": "1 TUBO",
+     "p": "APLICAR FINA CAMADA NA LESÃO 1 VEZ AO DIA, APÓS LIMPEZA LOCAL, E OCLUIR COM GAZE."
+    }
+   ]
+  },
+  {
+   "id": "sc-curativo-espuma-com-prata-biatain-ag",
+   "t": "Curativo espuma com prata (Biatain Ag)",
+   "c": "sc",
+   "kw": "curativo espuma com prata (biatain ag) curativo de espuma com prata nao adesivo 10 x 10 cm (biatain ag) santa casa",
+   "it": [
+    {
+     "v": "TOP",
+     "n": "CURATIVO DE ESPUMA COM PRATA NÃO ADESIVO 10 X 10 CM (BIATAIN AG)",
+     "q": "1 UNIDADE",
+     "p": "CORTAR NO TAMANHO DA FERIDA E COBRIR COM FILME TRANSPARENTE OU FITA. TROCAR A CADA 72 HORAS. NÃO MOLHAR O CURATIVO."
+    }
+   ]
+  },
+  {
+   "id": "sc-tvp-rivaroxabana",
+   "t": "TVP: rivaroxabana",
+   "c": "sc",
+   "kw": "tvp: rivaroxabana rivaroxabana 15 mg rivaroxabana 20 mg santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "RIVAROXABANA 15 MG",
+     "q": "42 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS, JUNTO COM A REFEIÇÃO, POR 21 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "RIVAROXABANA 20 MG",
+     "q": "USO CONTÍNUO",
+     "p": "APÓS OS 21 DIAS, TOMAR 1 CP UMA VEZ AO DIA, JUNTO COM A REFEIÇÃO, ATÉ REAVALIAÇÃO (MÍNIMO 3 MESES)."
+    }
+   ],
+   "nota": "Ajustar na insuficiência renal e conferir interações."
+  },
+  {
+   "id": "sc-enoxaparina-profilatica-domiciliar",
+   "t": "Enoxaparina profilática domiciliar",
+   "c": "sc",
+   "kw": "enoxaparina profilatica domiciliar enoxaparina 40 mg santa casa",
+   "it": [
+    {
+     "v": "SC",
+     "n": "ENOXAPARINA 40 MG",
+     "q": "___ SERINGAS",
+     "p": "APLICAR 1 SERINGA NO SUBCUTÂNEO DA BARRIGA UMA VEZ AO DIA POR ___ DIAS."
+    }
+   ],
+   "nota": "Dose profilática. Ajustar na insuficiência renal grave."
+  },
+  {
+   "id": "sc-epistaxe",
+   "t": "Epistaxe",
+   "c": "sc",
+   "kw": "epistaxe acido tranexamico 250 mg soro fisiologico 0,9% oximetazolina 0,5 mg/ml santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "ÁCIDO TRANEXÂMICO 250 MG",
+     "q": "1 CAIXA",
+     "p": "TOMAR 2 CP (500 MG) DE 8/8 HORAS POR 5 DIAS."
+    },
+    {
+     "v": "NAS",
+     "n": "SORO FISIOLÓGICO 0,9%",
+     "q": "1 FRASCO",
+     "p": "LAVAR AS NARINAS COM AUXÍLIO DE SERINGA 3 VEZES AO DIA."
+    },
+    {
+     "v": "NAS",
+     "n": "OXIMETAZOLINA 0,5 MG/ML",
+     "q": "1 FRASCO",
+     "p": "EM CASO DE SANGRAMENTO: PINGAR 3 GOTAS NA NARINA, COMPRIMIR O NARIZ POR 10 MINUTOS E APLICAR GELO NA TESTA."
+    }
+   ],
+   "nota": "Confira a apresentação disponível do ácido tranexâmico (250 ou 500 mg)."
+  },
+  {
+   "id": "sc-corticoide-im-betametasona",
+   "t": "Corticoide IM (betametasona)",
+   "c": "sc",
+   "kw": "corticoide im (betametasona) betametasona (diprospan) santa casa",
+   "it": [
+    {
+     "v": "IM",
+     "n": "BETAMETASONA (DIPROSPAN)",
+     "q": "1 AMPOLA",
+     "p": "APLICAR 1 AMPOLA INTRAMUSCULAR NO GLÚTEO, DOSE ÚNICA."
+    }
+   ]
+  },
+  {
+   "id": "sc-pos-operatorio-hernia-colecistectomia-receita-orientacoes",
+   "t": "Pós-operatório hérnia / colecistectomia (receita + orientações)",
+   "c": "sc",
+   "kw": "pos-operatorio hernia / colecistectomia (receita + orientacoes) nimesulida 100 mg dipirona 1 g santa casa",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "NIMESULIDA 100 MG",
+     "q": "10 CP",
+     "p": "TOMAR 1 CP DE 12/12 HORAS POR 5 DIAS."
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 1 G",
+     "q": "1 CAIXA",
+     "p": "TOMAR 1 CP ATÉ DE 6/6 HORAS SE DOR."
+    }
+   ],
+   "ori": [
+    "NÃO AGACHAR, CARREGAR PESO, DIRIGIR, FAZER ESFORÇO FÍSICO, SUBIR E DESCER ESCADAS OU TER RELAÇÃO SEXUAL POR 30 DIAS. PODE CAMINHAR LEVE. EVITAR ALIMENTOS GORDUROSOS E PESADOS NOS PRIMEIROS 7 DIAS. FAZER BOLSA DE GELO POR 20 MINUTOS, 4 VEZES AO DIA, PROTEGENDO A PELE COM UM PANO. NÃO RETIRAR OS CURATIVOS DE MICROPORE COR DA PELE. RETORNO NO AMBULATÓRIO EM 2 SEMANAS (AGENDAR). EM CASO DE ALTERAÇÃO NOS PONTOS, DOR OU QUALQUER QUEIXA, RETORNAR À EMERGÊNCIA DA SANTA CASA."
+   ],
+   "nota": "Ajuste os dias de restrição conforme a cirurgia."
+  },
   {
    "id": "conj-bac",
    "t": "Conjuntivite bacteriana",
