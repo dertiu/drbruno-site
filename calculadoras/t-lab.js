@@ -270,7 +270,7 @@
 
   /* ---------- Gotejamento ---------- */
   const gotas = {
-    id: 'gotas', g: 'vent', title: 'Gotejamento e vazão', desc: 'Gotas/min, microgotas/min e mL/h; ou o tempo de infusão para um gotejamento',
+    id: 'gotas', g: 'med', title: 'Gotejamento e vazão', desc: 'Gotas/min, microgotas/min e mL/h; ou o tempo de infusão para um gotejamento',
     kw: 'gotas microgotas gotejamento soro hidratacao vazao equipo macrogotas infusao tempo',
     fields: v => [F.SEG('mode', '', [['t', 'Tempo → gotejamento'], ['g', 'Gotas/min → tempo']], { def: 't' }), F.N('vol', 'Volume a infundir', { unit: 'mL' }),
       ...(v.mode === 'g' ? [F.N('gts', 'Gotejamento', { unit: 'gotas/min' })] : [F.N('h', 'Tempo de infusão', { unit: 'h' })])],
@@ -284,7 +284,7 @@
 
   /* ---------- Diluições ---------- */
   const dil = {
-    id: 'dil', g: 'vent', title: 'Diluição e concentração', desc: 'C₁V₁ = C₂V₂, porcentagem ⇄ mg/mL e razão (1:1.000)',
+    id: 'dil', g: 'med', title: 'Diluição e concentração', desc: 'C₁V₁ = C₂V₂, porcentagem ⇄ mg/mL e razão (1:1.000)',
     kw: 'diluicao concentracao c1v1 porcentagem mg/ml razao solucao ampola agua destilada',
     fields: v => {
       const m = v.mode || 'c';

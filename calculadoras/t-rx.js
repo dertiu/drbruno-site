@@ -8,11 +8,17 @@
   const VIA = { ORAL: 'USO ORAL', TOP: 'USO TÓPICO', OFT: 'USO OFTALMOLÓGICO', OTO: 'USO OTOLÓGICO', NAS: 'USO NASAL', INAL: 'USO INALATÓRIO', IM: 'USO INTRAMUSCULAR', EV: 'USO ENDOVENOSO', SC: 'USO SUBCUTÂNEO', VAG: 'USO VAGINAL', RET: 'USO RETAL', BUC: 'USO BUCAL', SL: 'USO SUBLINGUAL' };
   const CATS = (DATA.cats || []).map(c => [c.id, c.t, c.d || '']);
   const R = DATA.receitas || [];
+  const CORD = {}; CATS.forEach((c, i) => { CORD[c[0]] = i; });
+  R.forEach((r, i) => { r._i = i; });
+  const byArea = (a, b) => ((CORD[a.c] != null ? CORD[a.c] : 99) - (CORD[b.c] != null ? CORD[b.c] : 99)) || ((a.ped ? 1 : 0) - (b.ped ? 1 : 0)) || (a._i - b._i);
+  const SRC = { sc: 'Santa Casa' };
 
   /* ---------- doses pelo peso e idade: marcadores no texto ----------
      {gt:A:MAX} gotas = peso × A (máx.)   {ml:A:MAX} mL = peso × A (máx.)   {mg:A:MAX} mg = peso × A (máx.)
      {kg} peso   {litros:A} litros = peso × A mL / 1000   {idade:1=TEXTO|6=TEXTO|TEXTO} por faixa etária (anos)
-     {ivermectina} comprimidos de 6 mg pelo peso   {dengueped} e {dengueped3} volume diário de líquidos da dengue na criança */
+     {ivermectina} comprimidos de 6 mg pelo peso   {dengueped} e {dengueped3} volume diário de líquidos da dengue na criança
+     {peso:15=TEXTO|23=TEXTO|TEXTO} por faixa de peso (até o limite, em kg)
+     {fr:A:MAX:N:VOL} frascos para N doses de (peso × A mL, máx.) em frascos de VOL mL, com 10% de margem */
   const B = '___';
   const br = n => String(n).replace('.', ',');
   const r05 = v => v >= 3 ? Math.round(v * 2) / 2 : Math.round(v * 10) / 10;
@@ -31,12 +37,22 @@
       switch (k) {
         case 'gt': return ok ? String(Math.max(1, Math.round(Math.min(kg * f, mx)))) : B;
         case 'ml': return ok ? br(r05(Math.min(kg * f, mx))) : B;
-        case 'mg': return ok ? br(Math.round(Math.min(kg * f, mx))) : B;
+        case 'mg': { if (!ok) return B; const v = Math.round(Math.min(kg * f, mx)); return v >= 10000 ? v.toLocaleString('pt-BR') : br(v); }
         case 'kg': return ok ? br(Math.round(kg * 10) / 10) : B;
         case 'litros': return ok ? br(Math.round(kg * f / 100) / 10) : B;
         case 'ivermectina': return ivm(kg);
         case 'dengueped': return ok ? String(Math.round(dengPed(kg) / 10) * 10) : B;
         case 'dengueped3': return ok ? String(Math.round(dengPed(kg) / 30) * 10) : B;
+        case 'peso': {
+          if (!ok) return B;
+          for (const p of (arg || '').split('|')) { const i = p.indexOf('='); if (i < 0) return p; if (kg <= num(p.slice(0, i))) return p.slice(i + 1); }
+          return B;
+        }
+        case 'fr': {
+          if (!ok) return B + ' FR';
+          const n = Math.max(1, Math.ceil(r05(Math.min(kg * f, mx)) * num(a[2]) * 1.1 / num(a[3]) - 1e-9)); // 10% de margem para perdas
+          return String(n).padStart(2, '0') + ' FR';
+        }
         case 'idade': {
           if (!isFinite(c.age)) return B;
           const parts = (arg || '').split('|');
@@ -47,8 +63,14 @@
       return m;
     });
   }
-  const KGT = /\{(gt|ml|mg|kg|litros|ivermectina|dengueped)/i, AGT = /\{idade/i;
-  const needOf = r => { const s = r.it.map(i => i.n + ' ' + i.q + ' ' + i.p).join(' '); return (KGT.test(s) ? 'kg ' : '') + (AGT.test(s) ? 'age' : ''); };
+  const KGT = /\{(gt|ml|mg|kg|litros|ivermectina|dengueped|peso|fr)|^peso/im, AGT = /\{idade|^idade/im;
+  const needOf = r => { const s = r.it.map(i => i.n + ' ' + i.q + ' ' + i.p + '\n' + (i.se || '')).join(' '); return (KGT.test(s) ? 'kg ' : '') + (AGT.test(s) ? 'age' : ''); };
+  // item condicionado à idade ou ao peso ("idade<1", "peso>10"): some quando o dado é conhecido e não cumpre
+  const fits = (it, c) => {
+    const m = /^(idade|peso)(<=|>=|<|>)([\d.]+)$/.exec(it.se || ''); if (!m) return true;
+    const v = m[1] === 'idade' ? c.age : c.kg, n = +m[3]; if (!(v >= 0) || (m[1] === 'peso' && !(v > 0))) return true;
+    return m[2] === '<' ? v < n : m[2] === '<=' ? v <= n : m[2] === '>' ? v > n : v >= n;
+  };
   R.forEach(r => { r.need = needOf(r); });
 
   /* ---------- montagem do texto ---------- */
@@ -83,7 +105,7 @@
     sel.forEach(rid => {
       const r = R.find(x => x.id === rid); if (!r) return;
       r.it.forEach((it, i) => {
-        const key = rid + ':' + i; if (!inc(key, it)) return;
+        const key = rid + ':' + i; if (!fits(it, c) || !inc(key, it)) return;
         const nm = vB(it.n, c, key + ':n'), sig = val(it.n, c) + '|' + val(it.p, c); if (seen.has(sig)) return; seen.add(sig);
         let g = groups.find(x => x.v === it.v); if (!g) { g = { v: it.v, items: [] }; groups.push(g); }
         g.items.push({ n: nm, q: vB(it.q, c, key + ':q'), p: vB(it.p, c, key + ':p'), key, it, rid });
@@ -108,9 +130,12 @@
     kw: 'receita receituário prescrição alta para casa modelo pronto conjuntivite ivas otite itu sarna dengue',
     disc: 'Modelos de apoio. Revise alergias, gestação, função renal, interações e a disponibilidade no SUS antes de entregar a receita.',
     render: (h, u2, sub) => {
-      const st = { q: '', pop: '', cat: '', sel: [], inc: {}, edit: null };
+      let pop0 = ''; try { pop0 = localStorage.getItem('drb_rx_pop') || ''; } catch (e) { }
+      const st = { q: '', pop: pop0, cat: '', sel: [], inc: {}, edit: null };
       if (sub && sub.indexOf('c:') === 0) st.cat = sub.slice(2);
-      else if (sub && R.find(r => r.id === sub)) st.sel = [sub];
+      else if (sub && sub.indexOf('s:') === 0) st.cat = sub;
+      else if (sub && sub.indexOf('p:') === 0) { st.pop = sub.slice(2) === 'a' ? 'a' : sub.slice(2) === 'c' ? 'c' : ''; st.byPop = true; }
+      else if (sub && R.find(r => r.id === sub)) { st.sel = [sub]; const r0 = R.find(r => r.id === sub); if (st.pop && (st.pop === 'c') !== !!r0.ped) st.pop = ''; }
       const root = h('div', { class: 'rx' });
       const side = h('section', { class: 'rx-l' }), doc = h('section', { class: 'rx-r', id: 'rxdoc' });
       root.append(side, doc);
@@ -120,17 +145,17 @@
       const ul = h('ul', { class: 'rx-list' });
       side.append(h('label', { class: 'gs rx-search' }, u.icon('search'), search), popSeg, catBox, ul);
 
-      const setUrl = () => { try { const s = st.sel.length === 1 ? '/' + st.sel[0] : st.cat ? '/c:' + st.cat : ''; history.replaceState(null, '', '#/receitas' + s); } catch (e) { } };
+      const setUrl = () => { try { const s = st.sel.length === 1 ? '/' + st.sel[0] : st.cat ? (st.cat.indexOf('s:') === 0 ? '/' + st.cat : '/c:' + st.cat) : ''; history.replaceState(null, '', '#/receitas' + s); } catch (e) { } };
       function chips() {
         popSeg.innerHTML = '';
-        [['', 'Todos'], ['a', 'Adulto'], ['c', 'Criança']].forEach(([v, l]) => popSeg.append(h('button', { type: 'button', class: st.pop === v ? 'on' : '', 'aria-pressed': st.pop === v ? 'true' : 'false', onclick: () => { st.pop = v; chips(); list(); if (st.sel.length && !visible().some(r => r.id === st.sel[0])) openFirst(); } }, l)));
+        [['a', 'Adulto'], ['c', 'Criança'], ['', 'Todas']].forEach(([v, l]) => popSeg.append(h('button', { type: 'button', class: st.pop === v ? 'on' : '', 'aria-pressed': st.pop === v ? 'true' : 'false', onclick: () => { st.pop = v; try { localStorage.setItem('drb_rx_pop', v); } catch (e) { } chips(); list(); if (!st.sel.length || !visible().some(r => r.id === st.sel[0])) openFirst(); } }, l)));
         catBox.innerHTML = '';
-        [['', 'Todas as áreas']].concat(CATS.map(c => [c[0], c[1]])).forEach(([v, l]) => { const o = h('option', { value: v }, l); if (st.cat === v) o.selected = true; catBox.append(o); });
+        [['', 'Todas as áreas']].concat(CATS.map(c => [c[0], c[1]])).concat(Object.keys(SRC).map(k => ['s:' + k, 'Receitas da ' + SRC[k]])).forEach(([v, l]) => { const o = h('option', { value: v }, l); if (st.cat === v) o.selected = true; catBox.append(o); });
       }
       const visible = (q, cat) => {
         const parts = q ? u.norm(q.trim()).split(/\s+/).filter(Boolean) : [], c = cat == null ? st.cat : cat;
-        return R.filter(r => (!st.pop || (st.pop === 'c' ? r.ped : !r.ped)) && (!c || r.c === c) &&
-          (!parts.length || parts.every(p => u.norm(r.t + ' ' + r.kw + ' ' + (r.ped ? 'criança pediatria' : 'adulto')).includes(p))));
+        return R.filter(r => (!st.pop || (st.pop === 'c' ? r.ped : !r.ped)) && (!c || (c.indexOf('s:') === 0 ? r.src === c.slice(2) : r.c === c)) &&
+          (!parts.length || parts.every(p => u.norm(r.t + ' ' + r.kw + ' ' + (r.ped ? 'criança pediatria' : 'adulto') + ' ' + (SRC[r.src] || '')).includes(p)))).sort(byArea);
       };
       const openRx = id => { Object.keys(BL).forEach(k => delete BL[k]); st.sel = [id]; st.edit = null; st.inc = {}; try { localStorage.setItem('drb_rx_last', id); } catch (e) { } list(); render(); setUrl(); };
       const openFirst = () => { const r = visible('')[0]; if (r) openRx(r.id); else { st.sel = []; render(); setUrl(); } };
@@ -141,11 +166,11 @@
         if (!rs.length) { ul.append(h('li', { class: 'rx-empty' }, 'Nenhuma receita encontrada. Tente outro termo ou limpe os filtros.')); return; }
         let lastCat = null;
         rs.forEach(r => {
-          if (!st.cat && r.c !== lastCat) { lastCat = r.c; ul.append(h('li', { class: 'rx-h' }, CATS.find(c => c[0] === r.c)[1])); }
+          if ((!st.cat || st.cat.indexOf('s:') === 0) && r.c !== lastCat) { lastCat = r.c; ul.append(h('li', { class: 'rx-h' }, catT(r.c))); }
           const on = st.sel.includes(r.id);
           ul.append(h('li', { class: 'rx-item' + (on ? ' on' : '') },
             h('button', { type: 'button', class: 'rx-open', onclick: () => { openRx(r.id); if (window.innerWidth < 1000) window.scrollTo(0, 0); } },
-              h('span', { class: 'rx-t' }, r.t), r.ped && h('span', { class: 'rx-tag' }, 'criança')),
+              h('span', { class: 'rx-t' }, st.pop === 'c' ? r.t.replace(/\s*\((criança|lactente)\)$/i, '') : r.t), r.ped && st.pop !== 'c' && h('span', { class: 'rx-tag' }, 'criança'), r.src && st.cat !== 's:' + r.src && h('span', { class: 'rx-tag src' }, SRC[r.src] || r.src)),
             h('button', { type: 'button', class: 'rx-add', title: on ? 'Remover da receita' : 'Somar à receita aberta', 'aria-label': (on ? 'Remover ' : 'Somar ') + r.t,
               onclick: () => { st.sel = on ? st.sel.filter(x => x !== r.id) : st.sel.concat(r.id); st.edit = null; list(); render(); setUrl(); } }, on ? '−' : '+')));
         });
@@ -156,7 +181,7 @@
         root.classList.toggle('has-sel', !!st.sel.length);
         if (!st.sel.length) {
           doc.append(h('div', { class: 'rx-blank' }, h('h2', null, 'Escolha um diagnóstico'),
-            h('p', null, 'Toque em uma receita para abrir. Use o botão + para somar outra (por exemplo, IVAS + amoxicilina). Itens marcados como opção ficam desmarcados até você incluir.')));
+            h('p', null, 'Toque em uma receita para abrir. Use o botão + para somar outra (por exemplo, IVAS + otite). Itens marcados como opção ficam desmarcados até você incluir.')));
           return;
         }
         const c = CTX(), rs = st.sel.map(id => R.find(r => r.id === id));
@@ -200,7 +225,7 @@
             const pp = h('div', { class: 'rx-paper' });
             // todos os itens (incluídos e opções), agrupados por via, com caixa de seleção
             const all = []; const seen = new Set();
-            st.sel.forEach(rid => { const r = R.find(x => x.id === rid); r.it.forEach((it, i) => { const sig = val(it.n, c2) + '|' + val(it.p, c2); if (seen.has(sig)) return; seen.add(sig); all.push({ it, key: rid + ':' + i }); }); });
+            st.sel.forEach(rid => { const r = R.find(x => x.id === rid); r.it.forEach((it, i) => { if (!fits(it, c2)) return; const sig = val(it.n, c2) + '|' + val(it.p, c2); if (seen.has(sig)) return; seen.add(sig); all.push({ it, key: rid + ':' + i }); }); });
             const vias = []; all.forEach(x => { if (!vias.includes(x.it.v)) vias.push(x.it.v); });
             vias.forEach(v => {
               pp.append(h('div', { class: 'rx-via' }, VIA[v] + ':'));
@@ -234,13 +259,19 @@
       chips(); list();
       if (!st.sel.length) {
         let last = null; try { last = localStorage.getItem('drb_rx_last'); } catch (e) { }
-        if (!st.cat && last && R.find(r => r.id === last)) openRx(last); else openFirst();
+        const lr = !st.cat && !st.byPop && last && R.find(r => r.id === last);
+        if (lr && (!st.pop || (st.pop === 'c') === !!lr.ped)) openRx(last); else openFirst();
       } else render();
       return root;
     }
   };
 
-  const links = CATS.map(([id, t, d]) => ({ id: 'rx-' + id, g: 'rx', title: t, desc: d, kw: 'receita ' + d, href: '#/receitas/c:' + id }));
+  const links = [
+    { id: 'rx-ped', g: 'rx', title: 'Receitas pediátricas', desc: 'Pneumonia, otite, amigdalite, GECA, IVAS, gripe, ITU, bronquiolite, crupe e mais, com dose pelo peso', kw: 'receita criança pediatria pediátrica dose peso', href: '#/receitas/p:c' },
+    { id: 'rx-adulto', g: 'rx', title: 'Receitas de adulto', desc: 'Todas as receitas de adulto por área', kw: 'receita adulto', href: '#/receitas/p:a' },
+    { id: 'rx-sc', g: 'rx', title: 'Receitas da Santa Casa', desc: 'Protocolos do serviço: pós-operatório, analgesia, antibióticos, gastro, curativos e anticoagulação', kw: 'receita santa casa serviço cirurgia pós-operatório', href: '#/receitas/s:sc' }
+  ].concat(CATS.map(([id, t, d]) => ({ id: 'rx-' + id, g: 'rx', title: t, desc: d, kw: 'receita ' + d, href: '#/receitas/c:' + id })));
+  links.push({ id: 'ped-rx', g: 'ped', title: 'Receitas pediátricas', desc: 'Receitas de alta com dose calculada pelo peso da criança', kw: 'receita criança pediatria alta', href: '#/receitas/p:c' });
   D.add(tool, ...links);
   R.forEach(r => D.links.push({ id: 'rxl-' + r.id, g: 'rx', title: 'Receita: ' + r.t, desc: r.ped ? 'Receita pediátrica com dose pelo peso' : 'Receita pronta para copiar', kw: 'receita ' + r.kw, href: '#/receitas/' + r.id }));
   D.rx = { R, CATS, VIA, compose, toText, CTX, fill, needOf };

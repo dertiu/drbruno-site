@@ -4,19 +4,45 @@
   const D = window.DRB = {
     tools: [],
     groups: [
-      { id: 'med', c: '#e9b766', title: 'Medicações e infusões' },
-      { id: 'rx', c: '#e6a3c4', title: 'Receitas prontas' },
-      { id: 'cir', c: '#ee9474', title: 'Cirurgia e trauma' },
-      { id: 'desc', c: '#e8c48a', title: 'Descrições cirúrgicas' }, { id: 'aih', c: '#a8c8e8', title: 'SIGTAP e AIH' },
-      { id: 'pront', c: '#d9b8a0', title: 'Prontuário e textos prontos' },
-      { id: 'ped', c: '#71cbe3', title: 'Pediatria e emergência' },
-      { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos' },
-      { id: 'lab', c: '#bda6ec', title: 'Renal, metabólico e gasometria' },
-      { id: 'vent', c: '#93b6f2', title: 'Ventilação, oxigênio e fluidos' },
-      { id: 'peri', c: '#a0a9b2', title: 'Perícia' }
-    ]
+      { id: 'med', c: '#e9b766', title: 'Medicações e infusões', s: 'pr' },
+      { id: 'rx', c: '#e6a3c4', title: 'Receitas prontas', s: 'pr' },
+      { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos', s: 'av' },
+      { id: 'ped', c: '#71cbe3', title: 'Pediatria e emergência', s: 'av' },
+      { id: 'lab', c: '#bda6ec', title: 'Laboratório e cálculos', s: 'av' },
+      { id: 'vent', c: '#93b6f2', title: 'Ventilação, oxigênio e fluidos', s: 'av' },
+      { id: 'cir', c: '#ee9474', title: 'Cirurgia e trauma', s: 'ci' },
+      { id: 'desc', c: '#e8c48a', title: 'Descrições cirúrgicas', s: 'ci' },
+      { id: 'aih', c: '#a8c8e8', title: 'SIGTAP e AIH', s: 'ci' },
+      { id: 'pront', c: '#d9b8a0', title: 'Prontuário e textos prontos', s: 'do' },
+      { id: 'peri', c: '#a0a9b2', title: 'Perícia', s: 'do' }
+    ],
+    // seções da tela inicial e do menu
+    sections: { pr: 'Prescrever', av: 'Avaliar e calcular', ci: 'Cirurgia', do: 'Documentos' },
+    // subgrupos dentro de cada área (ordem de exibição)
+    subs: {
+      med: [['Doses', ['dose', 'mgkg', 'eletro']], ['Infusões e diluições', ['inf', 'dil', 'gotas']], ['Emergência', ['sri', 'tromb']], ['Diabetes', ['ins', 'cad']]],
+      rx: [['Atalhos', ['receitas', 'rx-ped', 'rx-adulto', 'rx-sc']], ['Por área', null]],
+      esc: [['Neurológico', ['gcs', 'nihss', 'abcd2', 'rass']], ['Cardiovascular e trombose', ['heart', 'wellstep', 'perc', 'wellstvp', 'cha', 'hasbled']], ['Infecção e gravidade', ['qsofa', 'sirs', 'sofa', 'news2', 'curb', 'centor']], ['Gastro e fígado', ['blatch', 'child', 'meld']]],
+      ped: [['Emergência', ['pedone', 'pedkit', 'pedhid']], ['Avaliação', ['pedsv', 'pedvit', 'westley', 'apgar']], ['Receitas', ['ped-rx']]],
+      lab: [['Renal e eletrólitos', ['repos', 'nacorr', 'clcr']], ['Exames', ['gaso', 'lab', 'liquidos']], ['Medidas e conversões', ['imc', 'qtc', 'conv']]],
+      vent: [['Ventilação e oxigênio', ['vent', 'oxig', 'o2cil']], ['Fluidos', ['fluid', 'mant']]],
+      cir: [['Abdome agudo', ['alvarado', 'toquio', 'ranson', 'bisap']], ['Trauma', ['choque', 'tmt', 'rts']], ['Perioperatório', ['rcri', 'profilaxia', 'posop', 'sedproc']]],
+      desc: [['Modelos', ['descricoes']], ['Por área', null]],
+      aih: [['', null]],
+      pront: [['Modelos', ['prontuario', 'handover']], ['Por tipo', null]]
+    }
   };
   D.add = (...t) => D.tools.push(...t);
+  D.blocks = gid => {
+    const ts = D.tools.filter(t => t.g === gid), S = (D.subs || {})[gid];
+    if (!S) return [['', ts]];
+    const used = new Set(), out = [];
+    S.forEach(([name, ids]) => { if (!ids) return; const l = ids.map(id => ts.find(t => t.id === id)).filter(Boolean); l.forEach(t => used.add(t)); if (l.length) out.push([name, l]); });
+    const rest = ts.filter(t => !used.has(t));
+    if (rest.length) { const slot = S.find(x => !x[1]); out.push([slot ? slot[0] : '', rest]); }
+    return out;
+  };
+  D.sorted = gid => D.blocks(gid).reduce((a, b) => a.concat(b[1]), []);
   D.links = [];
   const u = D.u = {};
 
@@ -245,15 +271,18 @@
           box.append(q);
         }
       }
+      const blocksEl = gid => { const bl = D.blocks(gid), multi = bl.length > 1; return bl.map(([name, l]) => h('div', { class: 'tblk' }, multi && name ? h('h3', { class: 'tsub' }, name) : '', h('ul', { class: 'tlist' }, l.map(row)))); };
+      let lastSec = null;
       D.groups.forEach(g => {
         if (G && g.id !== G.id) return;
         const ts = D.tools.filter(t => t.g === g.id); if (!ts.length) return;
-        if (G) { box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id }, h('ul', { class: 'tlist' }, ts.map(row)))); return; }
+        if (G) { box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id }, ...blocksEl(g.id))); return; }
+        if (g.s && g.s !== lastSec) { lastSec = g.s; box.append(h('h2', { class: 'hsec' }, D.sections[g.s] || '')); }
         const HO = u.LS('drb_home_open', {});
         const open = !!HO[g.id];
         const sec = h('section', { class: 'grp acc' + (open ? ' open' : ''), style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id });
-        const list = h('ul', { class: 'tlist' });
-        const fill = () => { if (!list.firstChild) list.append(...ts.map(row)); };
+        const list = h('div', { class: 'tblks' });
+        const fill = () => { if (!list.firstChild) list.append(...blocksEl(g.id)); };
         if (open) fill();
         const head = h('button', { type: 'button', class: 'grp-b', 'aria-expanded': open ? 'true' : 'false', onclick: () => {
           const o2 = !sec.classList.contains('open'); if (o2) fill();
@@ -505,7 +534,8 @@
     nav.append(h('a', { class: 'sl home', href: '#/', 'data-k': 'home' }, icon('home', false, 18), 'Início'));
     const favs = S.favs.map(id => D.tools.find(t => t.id === id)).filter(Boolean);
     if (favs.length) nav.append(sideGroup_({ id: 'fav', title: 'Favoritos', c: 'var(--read)' }, favs, true));
-    D.groups.forEach(g => { const ts = D.tools.filter(t => t.g === g.id); if (ts.length) nav.append(sideGroup_(g, ts)); });
+    let lastSec = null;
+    D.groups.forEach(g => { const ts = D.sorted(g.id); if (!ts.length) return; if (g.s && g.s !== lastSec) { lastSec = g.s; nav.append(h('div', { class: 'side-sec' }, D.sections[g.s] || '')); } nav.append(sideGroup_(g, ts)); });
     el.append(nav);
     const foot = h('div', { class: 'side-f' },
       h('button', { type: 'button', class: 'sl', onclick: () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; u.SAVE('drb_theme', S.theme); setTheme(); sideRefresh(sideKeyT, sideKeyG); } }, icon(S.theme === 'dark' ? 'sun' : 'moon', false, 18), S.theme === 'dark' ? 'Tema claro' : 'Tema escuro'),

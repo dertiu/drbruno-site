@@ -724,3 +724,14 @@ button.sl .ico{color:var(--muted)}
 @media(min-width:900px){.pbar{display:none}.grp.acc{margin-bottom:8px}}
 @media(min-width:900px){.quick{margin-top:22px}}
 @media(max-width:600px){.app-h .chip-pt .tok:nth-of-type(n+2){display:none}}
+/* seções, subgrupos e etiquetas */
+.hsec{margin:22px 2px 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.quick+.hsec,.pbar+.hsec{margin-top:4px}
+.side-sec{margin:16px 12px 4px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.tsub{margin:16px 10px 2px;font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.tblk:first-child .tsub{margin-top:6px}
+.grp.acc .tblks{display:none;padding:2px 8px 6px;background:var(--bg);border-top:1px solid var(--div)}
+.grp.acc.open .tblks{display:block}
+.grp.acc .tblks .tlist{display:block;padding:0;border:0;background:none}
+.grp.acc .tblk .trow:first-child{border-top:0}
+.rx-tag.src{background:transparent;border:1px solid var(--div);color:var(--muted)}

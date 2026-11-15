@@ -318,7 +318,7 @@
 
   /* ---------- RCRI ---------- */
   const rcri = F.score({
-    id: 'rcri', title: 'RCRI (Lee): risco cardíaco perioperatório', max: 6, desc: 'Risco de complicação cardíaca em cirurgia não cardíaca',
+    id: 'rcri', g: 'cir', title: 'RCRI (Lee): risco cardíaco perioperatório', max: 6, desc: 'Risco de complicação cardíaca em cirurgia não cardíaca',
     kw: 'risco cirurgico pre operatorio rcri lee cardiaco cirurgia',
     items: [C('a', 'Cirurgia de alto risco (intraperitoneal, intratorácica ou vascular suprainguinal)', 1, 'Cirurgia alto risco'), C('b', 'Doença arterial coronariana (IAM prévio, angina, nitrato, onda Q)', 1, 'DAC'),
       C('c', 'Insuficiência cardíaca', 1, 'ICC'), C('d', 'AVC ou AIT prévio', 1, 'AVC/AIT'), C('e', 'Diabetes em uso de insulina', 1, 'DM insulinodependente'), C('f', 'Creatinina > 2 mg/dL', 1, 'Creatinina > 2')],

@@ -275,6 +275,7 @@
       h('div', { class: 'panel' },
         h('div', { class: 'fgrid' }, inp('Título (diagnóstico)', r.t, v => { r.t = v; }, { full: true }),
           h('label', { class: 'fld' }, h('span', { class: 'lbl' }, 'Categoria'), catSel), h('div', { class: 'fld' }, h('span', { class: 'lbl' }, 'Público'), pop),
+          h('label', { class: 'desc-chk full', style: 'grid-column:1/-1' }, h('input', { type: 'checkbox', checked: r.src === 'sc', onchange: e => { if (e.target.checked) r.src = 'sc'; else delete r.src; saveDraft(); } }), 'Receita da Santa Casa (aparece no filtro do serviço)'),
           inp('Palavras de busca (sinônimos)', r.kw, v => { r.kw = v; }, { full: true, attrs: { placeholder: 'olho vermelho colírio secreção' } })),
         h('h3', { class: 'sec' }, 'Itens da receita'), items,
         h('label', { class: 'fld' }, h('span', { class: 'lbl' }, 'Orientações ao paciente (uma por linha; saem na receita)'), ori),
