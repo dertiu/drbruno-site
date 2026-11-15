@@ -110,34 +110,104 @@
     }
   };
 
+  /* ---------- Montagem de soros de NaCl com o que o serviço tiver ---------- */
+  // Na+ em mEq/L (1 g de NaCl = 17,1 mEq): SF 0,9% 154; NaCl 20% 3.420 (3,4 mEq/mL); NaCl 10% 1.710 (1,7 mEq/mL)
+  const NAC = { sf: 154, ad: 0, sg: 0, n20: 3420, n10: 1710 };
+  const NLAB = { sf: 'SF 0,9%', ad: 'Água destilada', sg: 'SG 5%', n20: 'NaCl 20%', n10: 'NaCl 10%' };
+  const PRONTA = { 513: 'NaCl 3%', 154: 'SF 0,9%', 130: 'Ringer lactato', 77: 'NaCl 0,45%', 0: 'SG 5%' };
+  const half = x => Math.round(x * 2) / 2;
+  const pct = m => fmt(m / 171, 2) + '%';
+  const ampl = (k, ml) => {
+    if (!/^n/.test(k)) return '';
+    const w = Math.floor(ml / 10 + 1e-9), r = Math.round((ml - w * 10) * 10) / 10;
+    if (!w) return ` (${fmt(r, 1)} mL de 1 ampola de 10 mL)`;
+    return ` (${w} ${w === 1 ? 'ampola' : 'ampolas'} de 10 mL${r ? ' + ' + fmt(r, 1) + ' mL' : ''})`;
+  };
+  // opções de preparo para chegar a t mEq/L com volume final V mL
+  function soros(t, V) {
+    const out = [], conc = (b, bv, a, av) => (NAC[b] * bv + NAC[a] * av) / (bv + av);
+    if (PRONTA[t] != null) out.push({ id: 'pronta', n: 'Frasco pronto de ' + PRONTA[t], d: `${PRONTA[t]} ${fmt(V, 0)} mL, sem preparo`, c: t, vt: V });
+    const mix = (b, a) => { // retira parte da base e completa com o aditivo até V
+      const x = half(V * (t - NAC[b]) / (NAC[a] - NAC[b])); if (!(x > 0) || x >= V) return;
+      const d = /^n/.test(a) ? `Do frasco de ${NLAB[b]} ${fmt(V, 0)} mL, retirar ${fmt(x, 1)} mL e acrescentar ${fmt(x, 1)} mL de ${NLAB[a]}${ampl(a, x)}, total ${fmt(V, 0)} mL`
+        : `${NLAB[b]} ${fmt(V - x, 1)} mL + ${NLAB[a]} ${fmt(x, 1)} mL, total ${fmt(V, 0)} mL`;
+      out.push({ id: b + '-' + a, n: NLAB[b] + ' + ' + NLAB[a], d, c: conc(b, V - x, a, x), vt: V });
+    };
+    const cheia = (b, a) => { // frasco cheio de V mL + aditivo, sem retirar nada
+      const x = half(V * (t - NAC[b]) / (NAC[a] - t)); if (!(x > 0)) return;
+      out.push({ id: b + '-' + a + '-c', n: NLAB[b] + ' (frasco cheio) + ' + NLAB[a], d: `Frasco de ${NLAB[b]} ${fmt(V, 0)} mL sem retirar nada + ${NLAB[a]} ${fmt(x, 1)} mL${ampl(a, x)}, total ${fmt(V + x, 0)} mL`, c: conc(b, V, a, x), vt: V + x });
+    };
+    if (t > 154) { mix('sf', 'n20'); cheia('sf', 'n20'); mix('ad', 'n20'); mix('sf', 'n10'); cheia('sf', 'n10'); mix('ad', 'n10'); }
+    else if (t > 0 && t < 154) { if (t >= 77) mix('sf', 'ad'); mix('sf', 'sg'); mix('sg', 'n20'); cheia('sg', 'n20'); mix('sg', 'n10'); }
+    else if (t === 0) out.push({ id: 'agua', n: 'Água livre por via oral ou sonda', d: 'Água filtrada VO ou pela sonda, fracionada ao longo do dia (sem preparo)', c: 0, vt: V });
+    return out;
+  }
+  D.soros = soros;
+  const recTxt = r => `${r.d} (Na⁺ final ${fmt(r.c, 0)} mEq/L, ${pct(r.c)})`;
+  const recKey = t => 'drb_na_rec_' + (t > 154 ? 'hiper' : t > 0 && t < 154 ? 'hipo' : t);
+  const recDef = t => { try { return localStorage.getItem(recKey(t)) || ''; } catch (e) { return ''; } };
+  const VPREP = [['100', '100 mL'], ['250', '250 mL'], ['500', '500 mL'], ['1000', '1.000 mL']];
+  const recOpts = t => soros(t, 500).map(r => [r.id, r.n]);
+
   /* ---------- Sódio: correção ---------- */
   const TBWF = (age, sex) => (!isFinite(age) || age < 18) ? 0.6 : age >= 65 ? (sex === 'F' ? 0.45 : 0.5) : (sex === 'F' ? 0.5 : 0.6);
   const nacorr = {
-    id: 'nacorr', g: 'lab', title: 'Sódio: hiponatremia e hipernatremia', desc: 'Variação esperada do Na⁺ por litro (Adrogué-Madias), volume de solução e déficit de água livre',
-    kw: 'sodio hiponatremia hipernatremia adrogue madias agua livre deficit salina hipertonica desmielinizacao osmotica',
-    fields: v => v.mode === 'hiper'
-      ? [F.SEG('mode', '', [['hipo', 'Hiponatremia'], ['hiper', 'Hipernatremia']], { def: 'hipo' }), F.KG(), F.AGE(), F.SEX(), F.N('na', 'Sódio sérico', { unit: 'mEq/L' }), F.N('alvo', 'Sódio alvo', { unit: 'mEq/L', def: 145 }), F.N('hh', 'Queda máxima por hora', { unit: 'mEq/L/h', def: '0,5', full: true })]
-      : [F.SEG('mode', '', [['hipo', 'Hiponatremia'], ['hiper', 'Hipernatremia']], { def: 'hipo' }), F.KG(), F.AGE(), F.SEX(), F.N('na', 'Sódio sérico', { unit: 'mEq/L' }), F.N('dna', 'Aumento desejado em 24 h', { unit: 'mEq/L', def: 6 }),
-        F.SEL('inf', 'Solução a infundir', [['513', 'NaCl 3% (513 mEq/L)'], ['154', 'NaCl 0,9% (154 mEq/L)'], ['77', 'NaCl 0,45% (77 mEq/L)'], ['130', 'Ringer lactato (130 mEq/L)'], ['0', 'SG 5% (0 mEq/L)']], { def: '154' })],
+    id: 'nacorr', g: 'lab', title: 'Sódio: hiponatremia e hipernatremia', desc: 'Adrogué-Madias, volume em 24 h, déficit de água livre e como montar o soro com o que o seu serviço tiver (NaCl 20%, 10%, SF, água destilada ou SG 5%)',
+    kw: 'sodio hiponatremia hipernatremia adrogue madias agua livre deficit salina hipertonica nacl 3% 20% 10% montar soro preparo desmielinizacao osmotica',
+    fields: v => {
+      const hiper = v.mode === 'hiper', t = Number(hiper ? (v.inf2 != null ? v.inf2 : 77) : (v.inf != null ? v.inf : 513));
+      const top = [F.SEG('mode', '', [['hipo', 'Hiponatremia'], ['hiper', 'Hipernatremia']], { def: 'hipo', reset: ['rec'] }), F.KG(), F.AGE(), F.SEX(), F.N('na', 'Sódio sérico', { unit: 'mEq/L' })];
+      const sol = hiper
+        ? [F.N('alvo', 'Sódio alvo', { unit: 'mEq/L', def: 145 }), F.N('hh', 'Queda máxima por hora', { unit: 'mEq/L/h', def: '0,5' }),
+          F.SEL('inf2', 'Solução a infundir', [['0', 'SG 5% ou água livre VO/sonda (0 mEq/L)'], ['34', 'NaCl 0,2% (34 mEq/L)'], ['77', 'NaCl 0,45% (77 mEq/L)'], ['130', 'Ringer lactato (130 mEq/L)'], ['154', 'SF 0,9% (154 mEq/L), se instabilidade']], { def: '77', rebuild: true, reset: ['rec'] })]
+        : [F.N('dna', 'Aumento desejado em 24 h', { unit: 'mEq/L', def: 6 }),
+          F.SEL('inf', 'Solução a infundir', [['513', 'NaCl 3% (513 mEq/L)'], ['154', 'NaCl 0,9% (154 mEq/L)'], ['130', 'Ringer lactato (130 mEq/L)']], { def: '513', rebuild: true, reset: ['rec'] })];
+      const prep = [F.SEC('Como montar o soro')];
+      const ro = recOpts(t);
+      if (ro.length > 1) prep.push(F.SEL('rec', 'Com o que o serviço tem', ro, { def: recDef(t) || (t === 0 ? 'pronta' : ro[Math.min(1, ro.length - 1)][0]) }));
+      prep.push(F.SEG('vp', 'Volume de cada etapa', VPREP, { def: '500' }));
+      return top.concat(sol, prep);
+    },
     calc: v => {
       const { kg, age, sex, na } = v; if (!(kg > 0) || !(na > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe peso e sódio sérico.' }] };
-      const f = TBWF(age, sex), tbw = f * kg, al = [];
+      const f = TBWF(age, sex), tbw = f * kg, al = [], V = Number(v.vp) || 500;
       if (!isFinite(age) || (age >= 18 && !sex)) al.push({ lvl: 'info', text: 'Informe idade e sexo para refinar a água corporal total (assumido 0,6 × peso).' });
-      if (v.mode === 'hiper') {
+      const hiper = v.mode === 'hiper', t = Number(hiper ? v.inf2 : v.inf);
+      const rs = soros(t, V), cur = rs.find(r => r.id === v.rec) || rs[0];
+      if (cur && v.rec) { try { localStorage.setItem(recKey(t), v.rec); } catch (e) { } }
+      const table = rs.length > 1 ? { cls: 'txt', title: `Opções de preparo (etapas de ${fmt(V, 0)} mL). Toque para escolher`, head: ['Com o que o serviço tem', 'Como montar'],
+        rows: rs.map(r => ({ cells: [(r === cur ? '✓ ' : '') + r.n, recTxt(r)], set: { rec: r.id } })),
+        cap: 'NaCl 20%: 3,4 mEq/mL. NaCl 10%: 1,7 mEq/mL. Ampolas de 10 mL. Volumes arredondados para 0,5 mL; a concentração final já considera o arredondamento.' } : null;
+      if (hiper) {
         const alvo = v.alvo, hh = v.hh || 0.5; if (!(alvo > 0)) return null;
-        const def = tbw * (na / alvo - 1), horas = (na - alvo) / hh;
         if (na <= alvo) return { alerts: [{ lvl: 'info', text: 'O sódio já está no alvo ou abaixo.' }] };
-        al.push({ lvl: 'warn', text: 'Corrigir a hipernatremia crônica (> 48 h) em no máximo 10 a 12 mEq/L em 24 h (0,5 mEq/L/h) para evitar edema cerebral. Dosar Na⁺ a cada 4 a 6 h.' });
-        return { main: { label: 'Déficit de água livre', value: fmt(def, 1), unit: 'L' }, rows: [['Água corporal total', `${fmt(tbw, 1)} L (${fmt(f, 2)} × peso)`], ['Tempo mínimo de correção', `${fmt(horas, 0)} h`], ['Reposição de água livre', `${fmt(def * 1000 / horas, 0)} mL/h (mais perdas contínuas)`]], alerts: al, text: `Hipernatremia Na ${fmt(na, 0)}: déficit de água livre ${fmt(def, 1)} L; correção em ${fmt(horas, 0)} h.` };
+        const def = tbw * (na / alvo - 1), d1 = (t - na) / (tbw + 1);
+        if (d1 >= 0) return { alerts: [{ lvl: 'crit', text: 'Esta solução não reduz o sódio. Escolha uma solução mais diluída.' }] };
+        const queda = Math.min(na - alvo, hh * 24), vol = queda / -d1 * 1000, horas = (na - alvo) / hh;
+        al.push({ lvl: 'warn', text: 'Hipernatremia crônica (> 48 h): reduzir no máximo 10 a 12 mEq/L em 24 h (0,5 mEq/L/h) para evitar edema cerebral. Dosar Na⁺ a cada 4 a 6 h.' });
+        if (t === 154) al.push({ lvl: 'info', text: 'SF 0,9% só para expansão na hipovolemia ou instabilidade; depois trocar por solução hipotônica.' });
+        if (cur) al.unshift({ lvl: 'ok', text: 'Como montar: ' + recTxt(cur) + '.' });
+        if (t === 0) al.push({ lvl: 'info', text: 'SG 5% em grande volume pode causar hiperglicemia: monitorar glicemia. Preferir água pela via enteral quando possível.' });
+        return { main: { label: 'Volume da solução em 24 h', value: fmt(vol, 0), unit: 'mL' }, sub: `${fmt(vol / 24, 0)} mL/h, mais as perdas`,
+          rows: [['Déficit de água livre', `${fmt(def, 1)} L`], ['Água corporal total', `${fmt(tbw, 1)} L (${fmt(f, 2)} × peso)`], ['Variação por litro infundido', `${fmt(d1, 1)} mEq/L`], ['Queda prevista em 24 h', `${fmt(queda, 1)} mEq/L (Na⁺ ${fmt(na - queda, 0)})`], ['Tempo total até o alvo', `${fmt(horas, 0)} h`],
+            cur && t !== 0 && ['Quantas etapas', `${Math.max(1, Math.ceil(vol / cur.vt - 1e-9))} de ${fmt(cur.vt, 0)} mL para as 24 h`]].filter(Boolean),
+          table, alerts: al, notes: ['Somar as perdas insensíveis (adulto cerca de 1 L/dia) e as perdas contínuas (diurese, diarreia, sonda).'],
+          text: `Hipernatremia Na ${fmt(na, 0)}: déficit de água livre ${fmt(def, 1)} L. ${fmt(vol, 0)} mL de ${PRONTA[t] || ('NaCl ' + pct(t))} em 24 h (${fmt(vol / 24, 0)} mL/h), mais perdas.` + (cur ? ` Preparo: ${recTxt(cur)}.` : '') };
       }
-      const inf = Number(v.inf), dna = v.dna; if (!(dna > 0)) return null;
-      const d1 = (inf - na) / (tbw + 1);
+      const dna = v.dna; if (!(dna > 0)) return null;
+      const d1 = (t - na) / (tbw + 1);
       if (d1 <= 0) return { alerts: [{ lvl: 'crit', text: 'Esta solução não eleva o sódio (concentração menor ou igual à sérica). Escolha uma solução mais concentrada.' }] };
-      const vol = dna / d1;
+      const vol = dna / d1 * 1000;
       if (dna > 8) al.push({ lvl: 'crit', text: 'Aumento > 8 mEq/L em 24 h: risco de síndrome de desmielinização osmótica. Limite habitual: 8 mEq/L/24 h (4 a 6 nos de alto risco).' });
       al.push({ lvl: 'info', text: 'Alto risco de desmielinização: Na⁺ < 105, hipocalemia, etilismo, desnutrição, hepatopatia. Dosar Na⁺ a cada 2 a 4 h; se corrigir rápido demais, considerar reduzir com água livre e desmopressina.' });
-      return { main: { label: 'Volume total em 24 h', value: fmt(vol * 1000, 0), unit: 'mL' }, rows: [['Água corporal total', `${fmt(tbw, 1)} L`], ['Variação por litro infundido', `+${fmt(d1, 1)} mEq/L`], ['Vazão média', `${fmt(vol * 1000 / 24, 0)} mL/h`], ['Sódio alvo em 24 h', `${fmt(na + dna, 0)} mEq/L`]], alerts: al,
-        notes: ['Hiponatremia grave sintomática (convulsão, coma): NaCl 3% em bolus de 100 a 150 mL (ou 2 mL/kg) em 10 min, repetível, buscando +4 a 6 mEq/L.'], text: `Hiponatremia Na ${fmt(na, 0)}: meta +${fmt(dna, 0)} mEq/L em 24 h; ${fmt(vol * 1000, 0)} mL da solução escolhida (${fmt(vol * 1000 / 24, 0)} mL/h).` };
+      const bol = Math.min(150, Math.round(2 * kg));
+      if (cur) al.unshift({ lvl: 'ok', text: 'Como montar: ' + recTxt(cur) + '.' });
+      return { main: { label: 'Volume total em 24 h', value: fmt(vol, 0), unit: 'mL' }, sub: `${fmt(vol / 24, 1)} mL/h em bomba de infusão`,
+        rows: [['Água corporal total', `${fmt(tbw, 1)} L`], ['Variação por litro infundido', `+${fmt(d1, 1)} mEq/L`], ['Sódio alvo em 24 h', `${fmt(na + dna, 0)} mEq/L`],
+          cur && ['Quantas etapas', `${Math.max(1, Math.ceil(vol / cur.vt - 1e-9))} de ${fmt(cur.vt, 0)} mL para as 24 h`]].filter(Boolean),
+        table, alerts: al,
+        notes: [`Hiponatremia grave sintomática (convulsão, rebaixamento): NaCl 3% ${fmt(bol, 0)} mL (2 mL/kg, máx. 150 mL) EV em 10 a 20 min, repetível até 3 vezes, buscando +4 a 6 mEq/L. Monte com qualquer opção acima.`],
+        text: `Hiponatremia Na ${fmt(na, 0)}: meta +${fmt(dna, 0)} mEq/L em 24 h; ${fmt(vol, 0)} mL de ${PRONTA[t] || 'NaCl ' + pct(t)} em 24 h (${fmt(vol / 24, 1)} mL/h).` + (cur ? ` Preparo: ${recTxt(cur)}.` : '') };
     }
   };
 
@@ -360,7 +430,7 @@
       if (!(kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso.' }] };
       if (m === 'mg') {
         const mv = v.mv;
-        const rows = [['Sulfato de magnésio 10% (1 g/10 mL = 8,1 mEq)', '1 a 2 g (10 a 20 mL) em 100 mL de SF em 15 a 60 min'], ['Repor depois', '4 a 6 g (40 a 60 mL de MgSO₄ 10%) em 500 mL em 12 a 24 h']];
+        const rows = [['Sulfato de magnésio 10% (1 g/10 mL = 8,1 mEq)', '1 a 2 g (10 a 20 mL) em 100 mL de SF em 15 a 60 min'], ['Sulfato de magnésio 50% (1 g/2 mL)', '1 a 2 g (2 a 4 mL) em 100 mL de SF em 15 a 60 min'], ['Repor depois', '4 a 6 g em 500 mL de SF ou SG 5% em 12 a 24 h (MgSO₄ 10% 40 a 60 mL ou MgSO₄ 50% 8 a 12 mL)']];
         const al = [{ lvl: 'info', text: 'Hipomagnesemia leve (1,2 a 1,6 mg/dL) pode ser reposta por via oral. Cuidado na insuficiência renal (reduzir 50%).' }];
         if (v.grave) al.unshift({ lvl: 'crit', text: 'Torsades/convulsão: MgSO₄ 2 g (20 mL de 10%) IV em 5 a 15 min, repetível. Monitorizar reflexo patelar e FR.' });
         if (isFinite(mv)) rows.unshift(['Magnésio sérico', `${fmt(mv, 1)} mg/dL`]);
@@ -371,7 +441,7 @@
         const cc = isFinite(ca) && isFinite(alb) ? ca + 0.8 * (4 - alb) : NaN;
         const rows = [];
         if (isFinite(cc)) rows.push(['Cálcio corrigido pela albumina', `${fmt(cc, 1)} mg/dL (Ca + 0,8 × (4 − albumina))`]);
-        rows.push(['Gluconato de cálcio 10% (10 mL = 1 g = 4,65 mEq)', v.sint ? '1 a 2 g (10 a 20 mL) em 100 mL de SG 5% em 10 a 20 min' : '1 a 2 g em 50 a 100 mL em 30 min, depois manutenção'], ['Manutenção', '0,5 a 1,5 mg/kg/h de cálcio elementar (gluconato 10% 10 a 15 mL/h em 100 mL de SG 5%)']);
+        rows.push(['Gluconato de cálcio 10% (10 mL = 1 g = 4,65 mEq)', v.sint ? '1 a 2 g (10 a 20 mL) em 100 mL de SG 5% em 10 a 20 min' : '1 a 2 g em 50 a 100 mL em 30 min, depois manutenção'], ['Manutenção', '0,5 a 1,5 mg/kg/h de cálcio elementar (gluconato 10% 10 a 15 mL/h em 100 mL de SG 5%)'], ['Se só houver cloreto de cálcio 10% (10 mL = 1 g = 13,6 mEq)', 'Tem cerca de 3 vezes mais cálcio que o gluconato: 3 a 5 mL diluídos em 100 mL, de preferência em acesso central (irrita a veia)']);
         const al = [{ lvl: 'info', text: 'Prefira cálcio iônico quando disponível, pois a correção pela albumina pode errar no doente crítico.' }, { lvl: 'warn', text: 'Infundir em bolus lento, com monitorização, e nunca no mesmo acesso do bicarbonato ou fosfato. Em uso de digoxina, evitar bolus.' }];
         if (isFinite(cc) && cc >= 8.5) al.unshift({ lvl: 'ok', text: 'Cálcio corrigido normal: reposição geralmente desnecessária (se assintomático).' });
         return { main: { label: 'Cálcio corrigido', value: isFinite(cc) ? fmt(cc, 1) : 'n/d', unit: 'mg/dL' }, rows, alerts: al, text: `Cálcio ${isFinite(cc) ? 'corrigido ' + fmt(cc, 1) + ' mg/dL; ' : ''}gluconato de cálcio 10% 1 a 2 g IV em 10 a 30 min.` };
@@ -386,7 +456,7 @@
       const h = v.hv, ha = v.ha || 15; if (!(h > 0)) return { alerts: [{ lvl: 'info', text: 'Informe o bicarbonato sérico.' }] };
       if (h >= ha) return { alerts: [{ lvl: 'info', text: 'Bicarbonato no alvo ou acima.' }] };
       const def = 0.5 * kg * (ha - h);
-      return { main: { label: 'Déficit de bicarbonato', value: fmt(def, 0), unit: 'mEq' }, rows: [['Bicarbonato 8,4% (1 mEq/mL)', `${fmt(def, 0)} mL no total`], ['Infundir', 'Metade nas primeiras 4 a 6 h; reavaliar gasometria']],
+      return { main: { label: 'Déficit de bicarbonato', value: fmt(def, 0), unit: 'mEq' }, rows: [['Bicarbonato 8,4% (1 mEq/mL)', `${fmt(def, 0)} mL no total`], ['Bicarbonato 10% (1,19 mEq/mL)', `${fmt(def / 1.19, 0)} mL no total`], ['Solução quase isotônica (150 mEq/L)', 'SG 5% ou água destilada 850 mL + bicarbonato 8,4% 150 mL (ou 10% 126 mL), em vez de bolus'], ['Infundir', 'Metade nas primeiras 4 a 6 h; reavaliar gasometria']],
         alerts: [{ lvl: 'warn', text: 'Reservar para acidose grave (pH < 7,1 a 7,2) ou hipercalemia. Em CAD, só se pH < 6,9. Monitorizar K⁺ e Ca²⁺ ionizado.' }], text: `Déficit de HCO3: 0,5 × ${fmt(kg, 1)} × (${ha} − ${fmt(h, 0)}) = ${fmt(def, 0)} mEq.` };
     }
   };
@@ -418,6 +488,7 @@
         steps.push({ t: 'Reposição venosa', d: (perif ? PER + '. Se acesso só periférico, pode usar 2 acessos simultâneos com essa solução' : CEN + '. Repetir a cada hora conforme o K⁺') + '. Dosar o K⁺ a cada 1 a 2 h.' });
         steps.push({ t: 'Magnésio', d: 'Sulfato de magnésio 10% 20 mL (2 g) em 100 mL de SF 0,9% EV em 1 h (hipomagnesemia impede a correção do potássio).' });
       }
+      if (sev !== 'leve' || !v.vo) steps.push({ t: 'Com outras apresentações', d: '20 mEq de potássio = KCl 19,1% 8 mL, ou KCl 15% 10 mL, ou KCl 10% 15 mL. Só tem frasco de SF 0,9% de 250 mL: metade da dose (10 mEq) por frasco, em 1 h no periférico. Prefira SF 0,9% como diluente (o SG 5% estimula insulina e pode baixar mais o potássio).' });
       al.push({ lvl: 'warn', text: 'Nunca fazer KCl em bolus nem puro. Periférico: até 40 mEq/L e 10 mEq/h. Central: até 20 mEq/h com monitor.' });
       if (v.drc) al.push({ lvl: 'warn', text: 'Doença renal ou oligúria: reduzir a dose pela metade e dosar o K⁺ com mais frequência.' });
       if (sev !== 'grave' && k < 3) al.push({ lvl: 'info', text: 'Dosar e repor o magnésio se baixo.' });

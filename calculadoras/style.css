@@ -735,3 +735,12 @@ button.sl .ico{color:var(--muted)}
 .grp.acc .tblks .tlist{display:block;padding:0;border:0;background:none}
 .grp.acc .tblk .trow:first-child{border-top:0}
 .rx-tag.src{background:transparent;border:1px solid var(--div);color:var(--muted)}
+/* tabela de texto (opções de preparo de soro) */
+.tbl.txt td,.tbl.txt th{text-align:left}
+.tbl.txt td:first-child{width:34%;font-weight:700;padding-right:12px}
+@media(max-width:600px){
+  .tbl.txt thead{display:none}
+  .tbl.txt tr{display:block;padding:10px 0;border-bottom:1px solid var(--div)}
+  .tbl.txt td{display:block;width:auto!important;padding:0;border:0}
+  .tbl.txt td:first-child{margin-bottom:3px}
+}

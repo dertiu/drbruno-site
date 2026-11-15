@@ -2,7 +2,15 @@
 (function () {
   'use strict';
   const D = window.DRB, u = D.u, F = D.f, fmt = u.fmt;
-  const KCL = 2.56, NACL = 3.4, SF_NA = 0.154; // mEq/mL (KCl 19,1%, NaCl 20%) e mEq/mL do SF 0,9%
+  const SF_NA = 0.154; // mEq/mL do SF 0,9%
+  // ampolas que o serviço tem (mEq/mL); a escolha fica salva no aparelho
+  const KAMP = { '19': ['KCl 19,1%', 2.56], '15': ['KCl 15%', 2.0], '10': ['KCl 10%', 1.34] };
+  const NAMP = { '20': ['NaCl 20%', 3.42], '10': ['NaCl 10%', 1.71] };
+  const pref = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+  const keep = (k, x) => { try { localStorage.setItem(k, x); } catch (e) { } };
+  const half = x => Math.round(x * 2) / 2;
+  let KN = 'KCl 19,1%', KCL = 2.56, NN = 'NaCl 20%', NACL = 3.42;
+  const amps = v => { const k = KAMP[v.kamp] || KAMP['19'], n = NAMP[v.namp] || NAMP['20']; KN = k[0]; KCL = k[1]; NN = n[0]; NACL = n[1]; if (v.kamp) keep('drb_kamp', v.kamp); if (v.namp) keep('drb_namp', v.namp); };
 
   const modo = v => v.mode || (isFinite(v.age) && v.age < 18 ? 'ped' : 'ad');
 
@@ -17,11 +25,11 @@
     const comK = v.k !== 'n', est = v.est || 'alt';
     let sf = 0, sg = bags, naMl = 0;
     if (est === 'alt') { sf = Math.max(1, Math.round(bags / 3)); sg = bags - sf; }
-    else naMl = Math.max(1, Math.round(1.5 * kg / bags / NACL));
-    const kMl = comK ? Math.min(7, Math.max(1, Math.round(kg / bags / KCL))) : 0;
+    else naMl = Math.max(1, half(1.5 * kg / bags / NACL));
+    const kMl = comK ? half(Math.min(18, Math.max(2.5, kg / bags)) / KCL) : 0;
     const naTot = sf * 500 * SF_NA + bags * naMl * NACL, kTot = bags * kMl * KCL, gl = sg * 25;
-    const kConc = kMl * KCL * 2; // mEq/L
-    const aditivos = [kMl ? `KCl 19,1% ${kMl} mL (${fmt(kMl * KCL, 1)} mEq)` : '', naMl ? `NaCl 20% ${naMl} mL (${fmt(naMl * NACL, 1)} mEq)` : ''].filter(Boolean).join(' + ');
+    const kConc = kMl * KCL / (500 + kMl + naMl) * 1000; // mEq/L
+    const aditivos = [kMl ? `${KN} ${fmt(kMl, 1)} mL (${fmt(kMl * KCL, 1)} mEq)` : '', naMl ? `${NN} ${fmt(naMl, 1)} mL (${fmt(naMl * NACL, 1)} mEq)` : ''].filter(Boolean).join(' + ');
     const comp = [`SG 5% 500 mL × ${sg}`, sf ? `SF 0,9% 500 mL × ${sf}` : ''].filter(Boolean).join(' e ');
     const rows = [
       ['Volume em 24 h', `${fmt(vol, 0)} mL (${fmt(vol / kg, 0)} mL/kg/dia; alvo ${alvoTxt} mL/kg/dia)`],
@@ -54,16 +62,18 @@
     if (isFinite(v.age) && v.age < 28 / 365) return { alerts: [{ lvl: 'crit', text: 'Recém-nascido (menos de 28 dias): a manutenção depende dos dias de vida, da prematuridade e da taxa de infusão de glicose. Use o protocolo neonatal do serviço.' }] };
     const holl = kg <= 10 ? 100 * kg : kg <= 20 ? 1000 + 50 * (kg - 10) : 1500 + 20 * (kg - 20);
     const man = Math.min(holl, 2400), pct = Number(v.rest || 100), vol = man * pct / 100, rate = vol / 24;
-    const comK = v.k !== 'n', kMl500 = comK ? 4 : 0;
-    // por 100 mL de SG 5%: NaCl 20% 4,4 mL (isotônico) e KCl 19,1% 0,8 mL (cerca de 20 mEq/L)
-    const nacl = vol / 100 * 4.4, kcl = comK ? vol / 100 * 0.8 : 0;
+    const comK = v.k !== 'n';
+    // por bolsa de 500 mL de SG 5%: 75 mEq de Na⁺ (cerca de 150 mEq/L, isotônico) e 10 mEq de K⁺ (cerca de 20 mEq/L)
+    const na500 = half(75 / NACL), k500 = comK ? half(10 / KCL) : 0, kMl500 = k500;
+    const na100 = Math.round(15 / NACL * 10) / 10, k100 = comK ? Math.round(2 / KCL * 10) / 10 : 0;
+    const nacl = vol / 100 * (15 / NACL), kcl = comK ? vol / 100 * (2 / KCL) : 0;
     const naTot = nacl * NACL, kTot = kcl * KCL, tig = 50 * rate / 60 / kg;
     const rows = [
       ['Volume em 24 h', `${fmt(vol, 0)} mL (Holliday-Segar${pct < 100 ? ' a ' + pct + '%' : ''}${holl > 2400 ? ', limitado a 2.400 mL' : ''})`],
       ['Vazão', `${fmt(rate, 1)} mL/h`],
-      ['Solução por bolsa de 500 mL', `SG 5% 500 mL + NaCl 20% 22 mL${kMl500 ? ' + KCl 19,1% ' + kMl500 + ' mL' : ''}`],
-      ['Solução por 100 mL (bureta)', `SG 5% 100 mL + NaCl 20% 4,4 mL${comK ? ' + KCl 19,1% 0,8 mL' : ''}`],
-      ['Aditivos em 24 h', `NaCl 20% ${fmt(nacl, 1)} mL${comK ? ' e KCl 19,1% ' + fmt(kcl, 1) + ' mL' : ''}`],
+      ['Solução por bolsa de 500 mL', `SG 5% 500 mL + ${NN} ${fmt(na500, 1)} mL${kMl500 ? ' + ' + KN + ' ' + fmt(kMl500, 1) + ' mL' : ''}`],
+      ['Solução por 100 mL (bureta)', `SG 5% 100 mL + ${NN} ${fmt(na100, 1)} mL${comK ? ' + ' + KN + ' ' + fmt(k100, 1) + ' mL' : ''}`],
+      ['Aditivos em 24 h', `${NN} ${fmt(nacl, 1)} mL${comK ? ' e ' + KN + ' ' + fmt(kcl, 1) + ' mL' : ''}`],
       ['Sódio oferecido', `${fmt(naTot, 0)} mEq/dia (${fmt(naTot / kg, 1)} mEq/kg; solução isotônica, cerca de 143 mEq/L)`],
       ['Potássio oferecido', comK ? `${fmt(kTot, 0)} mEq/dia (${fmt(kTot / kg, 1)} mEq/kg; cerca de 20 mEq/L)` : 'não incluído'],
       ['Taxa de infusão de glicose (TIG)', `${fmt(tig, 1)} mg/kg/min`]
@@ -76,10 +86,10 @@
     al.push({ lvl: 'info', text: 'Isto é apenas manutenção. Desidratação e choque pedem expansão (20 mL/kg) e reposição do déficit antes; veja a ferramenta Hidratação venosa pediátrica completa. Perdas extras são repostas à parte.' });
     const steps = [
       { t: 'Antes de prescrever', d: 'Avalie perfusão e hidratação. Se há desidratação ou choque, trate antes. Dose Na⁺, K⁺ e glicemia se o jejum for prolongado ou a criança estiver grave.' },
-      { t: 'Prescrição', d: `SG 5% 500 mL + NaCl 20% 22 mL${kMl500 ? ' + KCl 19,1% ' + kMl500 + ' mL' : ''}, EV a ${fmt(rate, 1)} mL/h em bomba de infusão.` },
+      { t: 'Prescrição', d: `SG 5% 500 mL + ${NN} ${fmt(na500, 1)} mL${kMl500 ? ' + ' + KN + ' ' + fmt(kMl500, 1) + ' mL' : ''}, EV a ${fmt(rate, 1)} mL/h em bomba de infusão.` },
       { t: 'Acompanhamento', d: 'Diurese e balanço, peso diário, Na⁺ e glicemia em 24 h (antes se vômitos, diarreia ou Na⁺ em queda). Se Na⁺ cair, reavalie volume e restrinja água livre. Reavalie diariamente a necessidade da via venosa.' }
     ];
-    const text = `Dieta zero. Hidratação venosa de manutenção (${fmt(kg, 1)} kg): SG 5% 500 mL + NaCl 20% 22 mL${kMl500 ? ' + KCl 19,1% ' + kMl500 + ' mL' : ''}, EV a ${fmt(rate, 1)} mL/h (${fmt(vol, 0)} mL/24 h). TIG ${fmt(tig, 1)} mg/kg/min.`;
+    const text = `Dieta zero. Hidratação venosa de manutenção (${fmt(kg, 1)} kg): SG 5% 500 mL + ${NN} ${fmt(na500, 1)} mL${kMl500 ? ' + ' + KN + ' ' + fmt(kMl500, 1) + ' mL' : ''}, EV a ${fmt(rate, 1)} mL/h (${fmt(vol, 0)} mL/24 h). TIG ${fmt(tig, 1)} mg/kg/min.`;
     return { main: { label: 'Vazão de manutenção', value: fmt(rate, 1), unit: 'mL/h' }, sub: `${fmt(vol, 0)} mL em 24 h`, rows, steps, alerts: al, text };
   }
 
@@ -91,13 +101,17 @@
       const m = modo(v), out = [F.SEG('mode', '', [['ad', 'Adulto'], ['ped', 'Criança']], { def: m }), F.KG(), F.AGE()];
       if (m === 'ad') out.push(
         F.SEL('cond', 'Condição', [['n', 'Sem restrições (30 mL/kg/dia)'], ['r', 'Idoso frágil, ICC, cirrose, DRC ou desnutrido (20 a 25 mL/kg/dia)']], { def: 'n' }),
-        F.SEL('est', 'Tipo de soro', [['alt', 'SG 5% e SF 0,9% (2:1) com KCl'], ['sg', 'Só SG 5% com NaCl 20% e KCl (hipotônico)']], { def: 'alt' }));
+        F.SEL('est', 'Tipo de soro', [['alt', 'SG 5% e SF 0,9% (2:1) com KCl'], ['sg', 'Só SG 5% com NaCl e KCl (hipotônico)']], { def: 'alt' }));
       else out.push(F.SEL('rest', 'Volume', [['100', '100% da manutenção'], ['67', 'Restrito a 2/3 (risco de ADH aumentado)']], { def: '100' }));
-      out.push(F.SEL('k', 'Potássio', [['s', 'Com KCl (diurese presente e K⁺ menor que 5)'], ['n', 'Sem KCl (oligúria, DRC, K⁺ alto ou sem exame)']], { def: 's' }));
+      out.push(F.SEL('k', 'Potássio', [['s', 'Com KCl (diurese presente e K⁺ menor que 5)'], ['n', 'Sem KCl (oligúria, DRC, K⁺ alto ou sem exame)']], { def: 's' }),
+        F.SEC('Ampolas do seu serviço'),
+        F.SEL('kamp', 'Cloreto de potássio', [['19', 'KCl 19,1% (2,56 mEq/mL)'], ['15', 'KCl 15% (2 mEq/mL)'], ['10', 'KCl 10% (1,34 mEq/mL)']], { def: pref('drb_kamp', '19') }),
+        F.SEL('namp', 'Cloreto de sódio', [['20', 'NaCl 20% (3,4 mEq/mL)'], ['10', 'NaCl 10% (1,7 mEq/mL)']], { def: pref('drb_namp', '20') }));
       return out;
     },
     calc: v => {
       if (!(v.kg > 0)) return { alerts: [{ lvl: 'warn', text: 'Informe o peso.' }] };
+      amps(v);
       return modo(v) === 'ped' ? crianca(v) : adulto(v);
     }
   };

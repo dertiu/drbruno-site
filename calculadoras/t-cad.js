@@ -165,7 +165,7 @@
             : k < 3.5 ? h('div', null, al('crit', `K⁺ ${fmt(k, 1)} (< 3,5): NÃO iniciar a insulina. Repor KCl 10 mEq/h e dosar o K⁺ a cada 1 a 2 h.`), rows([['Solução prática', 'SF 0,9% 1.000 mL + KCl 19,1% 16 mL (40 mEq) a 250 mL/h = 10 mEq/h'], ['Iniciar insulina quando', 'K⁺ ≥ 3,5 mEq/L']]))
               : k <= 5 ? h('div', null, al('warn', `K⁺ ${fmt(k, 1)} (3,5 a 5,0): repor junto com a hidratação e iniciar a insulina.`), rows([['Solução prática', 'KCl 19,1% 8 a 12 mL (20 a 30 mEq) em cada 1.000 mL do soro de hidratação'], ['Alvo', 'K⁺ entre 4 e 5 mEq/L']]))
                 : al('ok', `K⁺ ${fmt(k, 1)} (> 5,0): não repor agora. Iniciar a insulina e dosar o K⁺ em 2 h.`),
-          h('p', { class: 'hint' }, 'Confirmar diurese antes de repor. KCl 19,1% = 2,56 mEq/mL. Em acesso periférico, até 40 mEq/L e 10 mEq/h.')));
+          h('p', { class: 'hint' }, 'Confirmar diurese antes de repor. KCl 19,1% = 2,56 mEq/mL. Em acesso periférico, até 40 mEq/L e 10 mEq/h. Outras ampolas: NaCl 10% = o dobro dos mL do NaCl 20%; KCl 10% (1,34 mEq/mL) = 1,9 vez os mL do KCl 19,1%; KCl 15% (2 mEq/mL) = 1,3 vez.')));
 
         // 4. insulina
         const blocked = !isFinite(k) || k < 3.5 || !(kg > 0) || !isFinite(I.gl);

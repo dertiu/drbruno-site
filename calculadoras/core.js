@@ -493,7 +493,7 @@
     if (r.table) {
       const tb = r.table;
       if (tb.title) el.append(h('h3', { class: 'ttl' }, tb.title));
-      el.append(h('table', { class: 'tbl' + (tb.head.length >= 3 ? ' wide' : '') },
+      el.append(h('table', { class: 'tbl' + (tb.head.length >= 3 ? ' wide' : '') + (tb.cls ? ' ' + tb.cls : '') },
         h('thead', null, h('tr', null, tb.head.map(c => h('th', null, c)))),
         h('tbody', null, tb.rows.map(row => {
           if (row.sec) return h('tr', { class: 'tsec' }, h('th', { colspan: tb.head.length, scope: 'colgroup' }, row.sec));
