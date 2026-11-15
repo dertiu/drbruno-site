@@ -74,19 +74,6 @@ Sem o passo 2 o app continua usando o backend antigo e as telas novas avisam err
 - **Discord**: mensagem livre ou por modelo, mensagens geradas a partir dos dados e botões para disparar as rotinas automáticas.
 - **Arquivo**: Concluídos e Renúncias.
 
-## Ferramentas do perito
-
-Página **Ferramentas** no menu (no celular, em **Mais**). Fica toda em `ferramentas.js`, roda só no navegador, sem servidor e sem mexer na planilha. Os valores ficam salvos no aparelho (`pericias_ft`). Cada ferramenta tem **Copiar para o laudo**, que gera o parágrafo pronto para revisar.
-
-- **Interdição e curatela**: MEEM por domínio (referências de Brucki e Bertolucci por escolaridade), fluência verbal, Pfeffer, Katz (com a letra), Lawton e Brody, Barthel, CDR (escore global pelas regras de Morris e soma dos domínios), Reisberg e gerador de texto do exame psíquico.
-- **Auxílio-acidente**: goniometria com o grau da Nota 1 do Quadro 6, força muscular (Quadro 8), audiometria (Quadro 2), acuidade visual (Quadro 1), encurtamento (Quadro 7), consulta ao Anexo III e linha do tempo das datas.
-- **Pós-bariátrica**: dados ponderais (IMC, %PTP, %PEP, reganho, estabilidade), Escala de Pittsburgh com complicações por região e DUT 18 da ANS.
-- **Home care**: tabelas NEAD e ABEMID (as páginas /nead e /ABEMID, abertas dentro do app), Braden, Karnofsky e ECOG.
-- **Erro médico e dano corporal**: tabela da Lei 6.194/1974 com redução pela repercussão, quantum doloris e dano estético.
-- **Rotina**: prazos em dias úteis (feriados nacionais, 9 de julho, Carnaval, Sexta-feira Santa, Corpus Christi, 8 de dezembro e recesso de 20/12 a 20/01; feriados locais se digitam na própria tela), resumo do CPC e do Código de Ética e checklists do laudo por tipo de perícia.
-
-Para incluir uma ferramenta nova, acrescente um `add({...})` em `ferramentas.js` com `id`, `grupos`, `nome`, `desc`, `form(v)` e `res(v)`.
-
 ## Sistema do processo (coluna SISTEMA)
 
 O eproc do TJSP tem uma base separada para cada competência, cada uma com endereço e cor próprios:

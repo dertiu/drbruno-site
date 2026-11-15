@@ -1113,7 +1113,6 @@ const ICONES = {
   mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   lua: '<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z"/>',
-  ferramentas: '<path d="M4 20 14.5 9.5M13 4.5a4 4 0 0 0 5.6 5.6L20 11.5l-2 2-1.4-1.4"/><path d="M13 4.5 11.5 3l-2 2L11 6.4"/><path d="M5 4h4M7 2v4M17 17h4M19 15v4"/>',
   ajustes: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'
 };
 function ic(nome) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONES[nome] || '') + '</svg>'; }
@@ -1128,7 +1127,6 @@ function views() {
     { id: 'agenda', rot: 'Agenda' },
     { id: 'calendario', rot: 'Calendário' },
     { id: 'documentos', rot: 'Documentos' },
-    { id: 'ferramentas', rot: 'Ferramentas' },
     perito ? { id: 'gestao', rot: 'Financeiro', icone: 'gestao' } : { id: 'pagamentos', rot: 'Pagamentos', icone: 'financeiro' },
     { id: 'discord', rot: 'Discord' },
     { id: 'arquivo', rot: 'Arquivo' }
@@ -1380,20 +1378,14 @@ function render() {
   renderNav();
   $('#titulo').textContent = (views().find(v => v.id === state.view) || views()[0]).rot;
   $('#btn-novo').textContent = (state.view === 'agenda' || state.view === 'calendario') ? '+ Horário' : state.view === 'tarefas' ? '+ Tarefa' : '+ Processo';
-  $('#btn-novo').hidden = ['discord', 'gestao', 'documentos', 'ferramentas'].indexOf(state.view) >= 0;
+  $('#btn-novo').hidden = ['discord', 'gestao', 'documentos'].indexOf(state.view) >= 0;
   if (!state.dados.PERICIAS) return;
   ({ painel: renderPainel, tarefas: renderTarefas, processos: renderProcessos, calendario: renderCalendario, agenda: renderAgenda,
-     documentos: renderDocumentos, ferramentas: renderFerramentas, gestao: renderGestao, pagamentos: renderPagamentos, discord: renderDiscord, arquivo: renderArquivo })[state.view]();
+     documentos: renderDocumentos, gestao: renderGestao, pagamentos: renderPagamentos, discord: renderDiscord, arquivo: renderArquivo })[state.view]();
   if (foco) {
     const el = document.getElementById(foco.id);
     if (el) { el.focus(); try { if (foco.s != null) el.setSelectionRange(foco.s, foco.e); } catch (e) {} }
   }
-}
-
-// Ferramentas do perito (escalas, calculadoras, tabelas e checklists): ver ferramentas.js
-function renderFerramentas() {
-  if (window.PericiasFerramentas) window.PericiasFerramentas.render($('#conteudo'));
-  else $('#conteudo').innerHTML = '<p class="vazio">As ferramentas não carregaram. Atualize a página.</p>';
 }
 
 /* ---------- PEÇAS DE TELA ---------- */
