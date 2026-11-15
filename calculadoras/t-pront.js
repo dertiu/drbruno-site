@@ -122,6 +122,21 @@ DRENO: OSCILA ___, BORBULHA ___.
 2. CUIDADOS DE ENFERMARIA
 3. CUIDADOS COM DRENO`],
 
+    ['ev-pcr-obito', 'ev', 'PCR com evolução a óbito', '',
+`EVOLUI NESTA DATA COM PARADA CARDIORRESPIRATÓRIA ÀS ___.
+IMEDIATAMENTE INICIADAS MANOBRAS DE REANIMAÇÃO CARDIOPULMONAR (RCP) AVANÇADA COM:
+
+- COMPRESSÕES TORÁCICAS DE ALTA QUALIDADE.
+- ACESSO VENOSO PERIFÉRICO OBTIDO.
+- ADMINISTRAÇÃO DE FÁRMACOS CONFORME PROTOCOLO.
+- VIA AÉREA PROTEGIDA COM INTUBAÇÃO OROTRAQUEAL.
+- RITMOS MONITORIZADOS: ASSISTOLIA.
+
+APÓS ___ MINUTOS DE RCP SEM RETORNO DA CIRCULAÇÃO ESPONTÂNEA, FOI CONSTATADO ÓBITO ÀS ___.
+
+REALIZADO ECG SEM SINAIS DE ATIVIDADE ELÉTRICA.
+FAMÍLIA INFORMADA. EQUIPE DE ENFERMAGEM CIENTE. PREENCHIDA DECLARAÇÃO DE ÓBITO.`],
+
     // ===== ANAMNESE DO PS
     ['hp-dorabd-apend', 'hpma', 'Dor abdominal migratória (suspeita de apendicite)', '',
 `# QP: dor abdominal há ___.
@@ -747,7 +762,7 @@ CONDUTA: MANUTENÇÃO DE MEDIDAS CLÍNICAS PROPORCIONAIS, COM FOCO EM CONFORTO, 
 
   const tool = {
     id: 'prontuario', g: 'pront', title: 'Modelos de prontuário', desc: 'Exame físico, evolução, anamnese do PS, condutas, ambulatório, orientações, declarações e respostas CROSS, com troca masculino e feminino',
-    kw: 'prontuario modelo exame fisico evolucao anamnese hpma qp conduta alta ambulatorio retorno orientacoes pre operatorias declaracao cadeira de rodas cross nir regulacao vaga negada superlotacao caso aceito trauma abcde xabcde hints tce leve',
+    kw: 'prontuario modelo pcr parada cardiorrespiratoria rcp reanimacao obito constatacao declaracao de obito exame fisico evolucao anamnese hpma qp conduta alta ambulatorio retorno orientacoes pre operatorias declaracao cadeira de rodas cross nir regulacao vaga negada superlotacao caso aceito trauma abcde xabcde hints tce leve',
     disc: 'Modelos de apoio para agilizar o registro. Ajuste ao que foi efetivamente perguntado, examinado e feito: o prontuário precisa refletir o atendimento real.',
     render: (h, u2, sub) => {
       const root = h('div', { class: 'rx desc pront' });
@@ -840,7 +855,7 @@ CONDUTA: MANUTENÇÃO DE MEDIDAS CLÍNICAS PROPORCIONAIS, COM FOCO EM CONFORTO, 
 
   const links = [
     ['ef', 'Exame físico pronto', 'geral, abreviado, PS, trauma ABCDE e XABCDE, HINTS'],
-    ['ev', 'Evolução médica', 'cirurgia geral em enfermaria e emergência, torácica com dreno'],
+    ['ev', 'Evolução médica', 'cirurgia geral em enfermaria e emergência, torácica com dreno, PCR com óbito'],
     ['hpma', 'Anamnese do PS', 'QP e HPMA das queixas mais comuns'],
     ['cd', 'Condutas e frases prontas', 'alta, TCE leve, radiografia sem fratura, recusa'],
     ['amb', 'Ambulatório', 'hérnia, vesícula, retirada de pontos, vascular'],
