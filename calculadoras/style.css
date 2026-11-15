@@ -744,3 +744,9 @@ button.sl .ico{color:var(--muted)}
   .tbl.txt td{display:block;width:auto!important;padding:0;border:0}
   .tbl.txt td:first-child{margin-bottom:3px}
 }
+/* orientações da receita: itens para marcar */
+.rx-ori-h{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.rx-ori-c{font-size:13px;color:#5b6570}
+.rx-ori-all{margin-left:auto;min-height:36px;padding:0 12px;border:1px solid var(--pl);border-radius:8px;background:transparent;color:#0b6c8f;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.rx-it.rx-oi{grid-template-columns:22px minmax(0,1fr)}
+.rx-it.rx-oi .rx-p{font-size:14.5px}

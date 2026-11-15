@@ -100,6 +100,7 @@
   }
   const line = (n, q) => { const w = 54, d = Math.max(4, w - n.length - (q ? q.length : 0) - 2); return n + ' ' + '-'.repeat(d) + (q ? ' ' + q : ''); };
 
+  const ORI = { opt: true };
   function compose(sel, inc, c) {
     const groups = [], seen = new Set(), ori = [];
     sel.forEach(rid => {
@@ -110,7 +111,8 @@
         let g = groups.find(x => x.v === it.v); if (!g) { g = { v: it.v, items: [] }; groups.push(g); }
         g.items.push({ n: nm, q: vB(it.q, c, key + ':q'), p: vB(it.p, c, key + ':p'), key, it, rid });
       });
-      (r.ori || []).forEach(o => o.split(/(?<=\.)\s+/).forEach(f => { f = f.trim(); if (f && !ori.includes(f)) ori.push(f); }));
+      // orientações: cada frase vira um item para marcar (desmarcado por padrão)
+      (r.ori || []).forEach(o => o.split(/(?<=\.)\s+/).forEach(f => { f = f.trim(); if (f && !ori.some(x => x.f === f)) { const key = 'ori:' + f; ori.push({ f, key, on: !!inc(key, ORI) }); } }));
     });
     return { groups, ori };
   }
@@ -120,7 +122,8 @@
       out.push(VIA[g.v] + ':', '');
       g.items.forEach((x, i) => out.push(`${i + 1}. ${line(x.n, x.q)}`, x.p, ''));
     });
-    if (comp.ori.length) out.push('ORIENTAÇÕES: ' + comp.ori.join(' '));
+    const oo = comp.ori.filter(o => o.on).map(o => o.f);
+    if (oo.length) out.push('ORIENTAÇÕES: ' + oo.join(' '));
     return out.join('\n').trim();
   }
 
@@ -239,7 +242,16 @@
                     h('span', { class: 'rx-p' }, ...rich(x.it.p, c2, x.key + ':p', h)))));
               });
             });
-            if (comp.ori.length) pp.append(h('div', { class: 'rx-ori' }, h('b', null, 'ORIENTAÇÕES: '), comp.ori.join(' ')));
+            if (comp.ori.length) {
+              const allOn = comp.ori.every(o => o.on);
+              pp.append(h('div', { class: 'rx-ori' },
+                h('div', { class: 'rx-ori-h' }, h('b', null, 'ORIENTAÇÕES'), h('span', { class: 'rx-ori-c' }, comp.ori.filter(o => o.on).length + ' de ' + comp.ori.length),
+                  h('button', { type: 'button', class: 'rx-ori-all', onclick: () => { comp.ori.forEach(o => { st.inc[o.key] = !allOn; }); paper(); } }, allOn ? 'Tirar todas' : 'Incluir todas')),
+                ...comp.ori.map(o => {
+                  const cb = h('input', { type: 'checkbox', 'aria-label': 'Incluir orientação', onchange: e => { st.inc[o.key] = e.target.checked; paper(); } }); cb.checked = o.on;
+                  return h('label', { class: 'rx-it rx-oi' + (o.on ? '' : ' off') }, cb, h('span', { class: 'rx-p' }, o.f));
+                })));
+            }
             paperBox.append(pp);
           }
           const text = st.edit != null ? st.edit : toText(comp);
