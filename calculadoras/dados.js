@@ -1,7 +1,7 @@
 /* Dados editáveis pelo painel do editor (admin.html). Não editar à mão se for usar o painel. */
 window.DRB_DATA = {
  "versao": 1,
- "atualizado": "2026-11-13",
+ "atualizado": "2026-11-15",
  "aviso": "",
  "cats": [
   {
@@ -22,7 +22,7 @@ window.DRB_DATA = {
   {
    "id": "gu",
    "t": "Urinário, genital e IST",
-   "d": "Cistite, pielonefrite, ITU na criança e na gestante, cólica renal, corrimentos, IST"
+   "d": "Cistite, pielonefrite, ITU na criança e na gestante, cólica renal, corrimentos, uretrite, sífilis, HPV, herpes genital e outras IST"
   },
   {
    "id": "pele",
@@ -2021,7 +2021,7 @@ window.DRB_DATA = {
    "id": "candida",
    "t": "Candidíase vulvovaginal",
    "c": "gu",
-   "kw": "corrimento branco coceira vaginal fluconazol miconazol",
+   "kw": "corrimento branco grumoso leite coalhado coceira prurido vaginal candidíase monilíase fluconazol miconazol nistatina gestante",
    "it": [
     {
      "v": "ORAL",
@@ -2034,18 +2034,56 @@ window.DRB_DATA = {
      "n": "MICONAZOL CREME VAGINAL 2%",
      "q": "01 TB",
      "p": "APLICAR 01 APLICADOR VIA VAGINAL À NOITE, AO DEITAR, POR 07 DIAS"
+    },
+    {
+     "v": "VAG",
+     "n": "NISTATINA CREME VAGINAL 100.000 UI/4G",
+     "q": "01 TB",
+     "p": "APLICAR 01 APLICADOR VIA VAGINAL À NOITE, AO DEITAR, POR 14 DIAS",
+     "opt": true
     }
    ],
    "ori": [
-    "USAR ROUPAS ÍNTIMAS DE ALGODÃO. EVITAR DUCHAS VAGINAIS."
+    "USAR ROUPAS ÍNTIMAS DE ALGODÃO. EVITAR DUCHAS VAGINAIS. A PARCERIA SÓ PRECISA DE TRATAMENTO SE TIVER SINTOMAS."
    ],
-   "nota": "Gestante: apenas o creme vaginal (miconazol ou nistatina), sem fluconazol."
+   "nota": "Gestante e lactante: apenas creme vaginal (miconazol 7 noites ou nistatina 14 noites), sem fluconazol. No PCDT-IST o creme vaginal é a primeira opção e o fluconazol oral a segunda. Quatro ou mais episódios no ano: ver Candidíase recorrente."
+  },
+  {
+   "id": "candida-rec",
+   "t": "Candidíase vulvovaginal recorrente",
+   "c": "gu",
+   "kw": "candidíase recorrente de repetição corrimento coceira fluconazol semanal manutenção",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "FLUCONAZOL 150MG",
+     "q": "03 CP",
+     "p": "01 CP VO NOS DIAS 1, 4 E 7 (INDUÇÃO)"
+    },
+    {
+     "v": "ORAL",
+     "n": "FLUCONAZOL 150MG",
+     "q": "24 CP",
+     "p": "01 CP VO 1X POR SEMANA POR 06 MESES (MANUTENÇÃO, INICIAR APÓS A INDUÇÃO)"
+    },
+    {
+     "v": "VAG",
+     "n": "MICONAZOL CREME VAGINAL 2%",
+     "q": "02 TB",
+     "p": "APLICAR 01 APLICADOR VIA VAGINAL À NOITE POR 14 DIAS (GESTANTE OU SE NÃO PUDER USAR FLUCONAZOL)",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "USAR ROUPAS ÍNTIMAS DE ALGODÃO. EVITAR DUCHAS VAGINAIS. NÃO INTERROMPER A MANUTENÇÃO SEM ORIENTAÇÃO."
+   ],
+   "nota": "Quatro ou mais episódios em 1 ano. Investigar diabetes, imunossupressão e uso frequente de antibiótico ou corticoide; se possível, cultura com identificação da espécie. Manutenção alternativa: miconazol creme 2x por semana ou óvulo vaginal 1x por semana por 6 meses. Gestante: só via vaginal."
   },
   {
    "id": "vaginose",
-   "t": "Vaginose bacteriana / tricomoníase",
+   "t": "Vaginose bacteriana",
    "c": "gu",
-   "kw": "corrimento odor metronidazol",
+   "kw": "corrimento acinzentado odor peixe gardnerella vaginose metronidazol clindamicina gestante",
    "it": [
     {
      "v": "ORAL",
@@ -2059,17 +2097,50 @@ window.DRB_DATA = {
      "q": "01 TB",
      "p": "APLICAR 01 APLICADOR VIA VAGINAL À NOITE POR 05 DIAS",
      "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "CLINDAMICINA 300MG",
+     "q": "14 CP",
+     "p": "01 CP VO DE 12/12H POR 07 DIAS (SEGUNDA OPÇÃO)",
+     "opt": true
     }
    ],
    "ori": [
-    "NÃO INGERIR BEBIDA ALCOÓLICA DURANTE E ATÉ 24H APÓS O TRATAMENTO. TRICOMONÍASE: TRATAR A PARCERIA SEXUAL."
-   ]
+    "NÃO INGERIR BEBIDA ALCOÓLICA DURANTE E ATÉ 24H APÓS O USO DO METRONIDAZOL. NÃO É NECESSÁRIO TRATAR A PARCERIA."
+   ],
+   "nota": "Metronidazol oral ou vaginal pode ser usado na gestação e na amamentação. Recorrente: metronidazol oral por 10 a 14 dias ou gel vaginal por 10 dias, seguido de ácido bórico 600 mg vaginal por 21 dias e gel vaginal 2x por semana por 4 a 6 meses."
+  },
+  {
+   "id": "tricomoniase",
+   "t": "Tricomoníase",
+   "c": "gu",
+   "kw": "corrimento amarelo esverdeado bolhoso odor colo em framboesa trichomonas tricomonas metronidazol ist dst parceria",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "METRONIDAZOL 400MG",
+     "q": "05 CP",
+     "p": "05 CP VO EM DOSE ÚNICA (2 G)"
+    },
+    {
+     "v": "ORAL",
+     "n": "METRONIDAZOL 250MG",
+     "q": "28 CP",
+     "p": "02 CP VO DE 12/12H POR 07 DIAS (EM VEZ DA DOSE ÚNICA)",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "NÃO INGERIR BEBIDA ALCOÓLICA DURANTE E ATÉ 24H APÓS O USO DO METRONIDAZOL. A PARCERIA SEXUAL DEVE RECEBER O MESMO TRATAMENTO. EVITAR RELAÇÕES SEXUAIS ATÉ O FIM DO TRATAMENTO DO CASAL. MANTER O TRATAMENTO DURANTE A MENSTRUAÇÃO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "PCDT-IST 2022. Mesmo esquema na gestação e na amamentação. Tratar a parceria com o mesmo esquema."
   },
   {
    "id": "uretrite",
-   "t": "Corrimento uretral (gonorreia e clamídia)",
+   "t": "Corrimento uretral / cervicite (gonorreia e clamídia)",
    "c": "gu",
-   "kw": "uretrite ist dst corrimento ceftriaxona azitromicina",
+   "kw": "uretrite cervicite gonorreia gonococo clamídia corrimento uretral purulento ardor ao urinar ist dst ceftriaxona azitromicina",
    "it": [
     {
      "v": "IM",
@@ -2082,12 +2153,364 @@ window.DRB_DATA = {
      "n": "AZITROMICINA 500MG",
      "q": "02 CP",
      "p": "02 CP VO EM DOSE ÚNICA"
+    },
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "14 CP",
+     "p": "01 CP VO DE 12/12H POR 07 DIAS (EM VEZ DA AZITROMICINA)",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "ABSTINÊNCIA SEXUAL ATÉ 7 DIAS APÓS O TRATAMENTO E O DA PARCERIA. USAR PRESERVATIVO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C. RETORNAR SE OS SINTOMAS PERSISTIREM APÓS 7 DIAS."
+   ],
+   "nota": "Esquema do PCDT-IST 2022 para uretrite sem agente definido, gonorreia e cervicite. Alergia grave a cefalosporina: azitromicina 500 mg 4 cp (2 g) dose única. Doxiciclina contraindicada na gestação. Notificar e tratar parcerias. Persistência: ver Corrimento uretral persistente."
+  },
+  {
+   "id": "clamidia",
+   "t": "Clamídia / uretrite não gonocócica",
+   "c": "gu",
+   "kw": "clamídia chlamydia uretrite não gonocócica cervicite azitromicina doxiciclina ist dst",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "AZITROMICINA 500MG",
+     "q": "02 CP",
+     "p": "02 CP VO EM DOSE ÚNICA"
+    },
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "14 CP",
+     "p": "01 CP VO DE 12/12H POR 07 DIAS (EM VEZ DA AZITROMICINA)",
+     "opt": true
     }
    ],
    "ori": [
     "ABSTINÊNCIA SEXUAL ATÉ 7 DIAS APÓS O TRATAMENTO E O DA PARCERIA. USAR PRESERVATIVO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
    ],
-   "nota": "Esquema do PCDT-IST. Notificar e tratar parcerias."
+   "nota": "Quando a gonorreia foi afastada (Gram sem diplococos ou exame só positivo para clamídia). Os sintomas podem levar até 7 dias para melhorar. Gestante: azitromicina. Tratar parcerias."
+  },
+  {
+   "id": "uretrite-persist",
+   "t": "Corrimento uretral persistente ou recorrente",
+   "c": "gu",
+   "kw": "uretrite persistente recorrente falha mycoplasma genitalium trichomonas metronidazol moxifloxacino",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "METRONIDAZOL 400MG",
+     "q": "05 CP",
+     "p": "05 CP VO EM DOSE ÚNICA (2 G)"
+    },
+    {
+     "v": "ORAL",
+     "n": "MOXIFLOXACINO 400MG",
+     "q": "07 CP",
+     "p": "01 CP VO 1X AO DIA POR 07 DIAS",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "NÃO INGERIR BEBIDA ALCOÓLICA DURANTE E ATÉ 24H APÓS O USO DO METRONIDAZOL. ABSTINÊNCIA SEXUAL ATÉ O FIM DO TRATAMENTO DO CASAL. RETORNAR PARA REAVALIAÇÃO."
+   ],
+   "nota": "Sintomas após 7 dias do tratamento: se houve reexposição ou má adesão, repetir o esquema de gonorreia e clamídia. Sem reexposição: cobrir Trichomonas (metronidazol) e Mycoplasma genitalium, que pode ser resistente à azitromicina. O moxifloxacino é eficaz nas cepas resistentes, mas não está no SUS. Colher material para cultura ou biologia molecular antes, se disponível."
+  },
+  {
+   "id": "dip",
+   "t": "Doença inflamatória pélvica (ambulatorial)",
+   "c": "gu",
+   "kw": "dip doença inflamatória pélvica salpingite anexite dor pélvica cervicite ceftriaxona doxiciclina metronidazol",
+   "it": [
+    {
+     "v": "IM",
+     "n": "CEFTRIAXONA 500MG",
+     "q": "01 FA",
+     "p": "APLICAR 01 FA IM DOSE ÚNICA (NA UNIDADE)"
+    },
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "28 CP",
+     "p": "01 CP VO DE 12/12H POR 14 DIAS"
+    },
+    {
+     "v": "ORAL",
+     "n": "METRONIDAZOL 250MG",
+     "q": "56 CP",
+     "p": "02 CP VO DE 12/12H POR 14 DIAS"
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 500MG",
+     "q": "20 CP",
+     "p": "01 A 02 CP VO DE 6/6H SE DOR OU FEBRE"
+    }
+   ],
+   "ori": [
+    "NÃO INGERIR BEBIDA ALCOÓLICA DURANTE E ATÉ 24H APÓS O USO DO METRONIDAZOL. EVITAR RELAÇÕES SEXUAIS ATÉ O FIM DO TRATAMENTO DO CASAL. RETORNO OBRIGATÓRIO EM 3 DIAS PARA REAVALIAÇÃO. RETORNAR ANTES SE FEBRE, VÔMITOS OU PIORA DA DOR. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "PCDT-IST 2022. Internar se abscesso tubo-ovariano, gestação, sem melhora em 72h, intolerância à via oral, estado geral grave ou dúvida de abdome agudo cirúrgico. O DIU pode ser mantido. Tratar parcerias para gonorreia e clamídia."
+  },
+  {
+   "id": "sifilis-rec",
+   "t": "Sífilis recente (primária, secundária ou latente até 1 ano)",
+   "c": "gu",
+   "kw": "sífilis recente primária secundária latente cancro duro roséola vdrl teste rápido benzetacil penicilina benzatina gestante parceria ist dst",
+   "it": [
+    {
+     "v": "IM",
+     "n": "PENICILINA G BENZATINA 1.200.000 UI",
+     "q": "02 FA",
+     "p": "APLICAR 2.400.000 UI IM EM DOSE ÚNICA: 01 FA EM CADA GLÚTEO (NA UNIDADE)"
+    },
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "30 CP",
+     "p": "01 CP VO DE 12/12H POR 15 DIAS (SÓ SE ALERGIA À PENICILINA E NÃO GESTANTE)",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 500MG",
+     "q": "10 CP",
+     "p": "01 A 02 CP VO DE 6/6H SE DOR OU FEBRE",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "PODE HAVER FEBRE, CALAFRIOS E DOR NO CORPO NAS PRIMEIRAS 24H APÓS A INJEÇÃO: USAR ANTITÉRMICO E RETORNAR SE PIORAR. A PARCERIA SEXUAL DEVE SER TESTADA E TRATADA. EVITAR RELAÇÕES SEXUAIS ATÉ O FIM DO TRATAMENTO DO CASAL. REPETIR O VDRL A CADA 3 MESES NO PRIMEIRO ANO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "PCDT-IST 2022. Notificação compulsória. Gestante: só penicilina benzatina (doxiciclina contraindicada), VDRL mensal e, se alergia à penicilina, dessensibilização. Parcerias expostas nos últimos 90 dias: tratar presuntivamente com 2.400.000 UI dose única, mesmo com teste negativo. A doxiciclina exige seguimento clínico e sorológico rigoroso."
+  },
+  {
+   "id": "sifilis-tard",
+   "t": "Sífilis tardia ou de duração ignorada",
+   "c": "gu",
+   "kw": "sífilis tardia latente duração ignorada terciária vdrl teste rápido benzetacil penicilina benzatina 3 doses semanal gestante ist dst",
+   "it": [
+    {
+     "v": "IM",
+     "n": "PENICILINA G BENZATINA 1.200.000 UI",
+     "q": "06 FA",
+     "p": "APLICAR 2.400.000 UI IM (01 FA EM CADA GLÚTEO) 1X POR SEMANA POR 03 SEMANAS, NA UNIDADE (TOTAL 7.200.000 UI)"
+    },
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "60 CP",
+     "p": "01 CP VO DE 12/12H POR 30 DIAS (SÓ SE ALERGIA À PENICILINA E NÃO GESTANTE)",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 500MG",
+     "q": "10 CP",
+     "p": "01 A 02 CP VO DE 6/6H SE DOR OU FEBRE",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "NÃO FALTAR ÀS APLICAÇÕES SEMANAIS: SE ATRASAR, O TRATAMENTO PRECISA SER REINICIADO. A PARCERIA SEXUAL DEVE SER TESTADA E TRATADA. EVITAR RELAÇÕES SEXUAIS ATÉ O FIM DO TRATAMENTO DO CASAL. REPETIR O VDRL A CADA 3 MESES NO PRIMEIRO ANO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "Latente tardia (mais de 1 ano), latente de duração ignorada e terciária. Intervalo entre as doses: até 7 dias na gestante e até 14 dias fora da gestação; passou disso, reiniciar o esquema. Notificação compulsória. Sinais neurológicos, oculares ou auditivos: neurossífilis, internar para penicilina cristalina 18 a 24 milhões UI/dia EV (3 a 4 milhões UI de 4/4h) por 14 dias."
+  },
+  {
+   "id": "ulcera-gen",
+   "t": "Úlcera genital (tratamento sindrômico)",
+   "c": "gu",
+   "kw": "úlcera genital ferida no pênis vulva cancro duro cancro mole sífilis herpes ist dst penicilina azitromicina",
+   "it": [
+    {
+     "v": "IM",
+     "n": "PENICILINA G BENZATINA 1.200.000 UI",
+     "q": "02 FA",
+     "p": "APLICAR 2.400.000 UI IM EM DOSE ÚNICA: 01 FA EM CADA GLÚTEO (NA UNIDADE)"
+    },
+    {
+     "v": "ORAL",
+     "n": "AZITROMICINA 500MG",
+     "q": "02 CP",
+     "p": "02 CP VO EM DOSE ÚNICA"
+    },
+    {
+     "v": "ORAL",
+     "n": "ACICLOVIR 200MG",
+     "q": "42 CP",
+     "p": "02 CP VO DE 8/8H POR 07 DIAS (SE VESÍCULAS OU LESÕES SUGESTIVAS DE HERPES)",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 500MG",
+     "q": "20 CP",
+     "p": "01 A 02 CP VO DE 6/6H SE DOR OU FEBRE"
+    }
+   ],
+   "ori": [
+    "LAVAR AS LESÕES COM ÁGUA E SABÃO E MANTER SECAS. EVITAR RELAÇÕES SEXUAIS ATÉ A CICATRIZAÇÃO E O TRATAMENTO DA PARCERIA. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C. RETORNAR EM 7 A 14 DIAS PARA REAVALIAÇÃO."
+   ],
+   "nota": "Sem diagnóstico etiológico: lesão com menos de 4 semanas, tratar sífilis recente e cancro mole; vesículas ou história de herpes, tratar herpes. Colher teste rápido de sífilis antes de aplicar a penicilina. Lesão há mais de 4 semanas: considerar donovanose, LGV e neoplasia e biopsiar."
+  },
+  {
+   "id": "herpes-gen",
+   "t": "Herpes genital",
+   "c": "gu",
+   "kw": "herpes genital vesículas úlceras dolorosas aciclovir recorrência supressão gestante ist dst",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "ACICLOVIR 200MG",
+     "q": "60 CP",
+     "p": "02 CP VO DE 8/8H POR 07 A 10 DIAS (PRIMEIRO EPISÓDIO)"
+    },
+    {
+     "v": "ORAL",
+     "n": "ACICLOVIR 200MG",
+     "q": "30 CP",
+     "p": "02 CP VO DE 8/8H POR 05 DIAS (RECORRÊNCIA: INICIAR AOS PRIMEIROS SINTOMAS)",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 500MG",
+     "q": "20 CP",
+     "p": "01 A 02 CP VO DE 6/6H SE DOR OU FEBRE"
+    },
+    {
+     "v": "TOP",
+     "n": "LIDOCAÍNA GELEIA 2%",
+     "q": "01 TB",
+     "p": "APLICAR FINA CAMADA NAS LESÕES ATÉ 4X AO DIA SE DOR",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "LAVAR AS LESÕES COM ÁGUA E SABÃO E MANTER SECAS. EVITAR RELAÇÕES SEXUAIS ATÉ A CICATRIZAÇÃO COMPLETA. USAR PRESERVATIVO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C. RETORNAR SE DIFICULDADE PARA URINAR, DOR DE CABEÇA FORTE OU FEBRE ALTA."
+   ],
+   "nota": "PCDT-IST 2022. Iniciar o quanto antes; estender se não cicatrizar em 10 dias. Seis ou mais recorrências por ano: supressão com aciclovir 200 mg 2 cp 12/12h por até 6 meses. Gestante: tratar o primeiro episódio em qualquer trimestre; supressão a partir de 36 semanas (aciclovir 400 mg 8/8h) se infecção primária na gestação ou recorrências frequentes. Imunossuprimido grave: aciclovir 5 a 10 mg/kg EV de 8/8h."
+  },
+  {
+   "id": "hpv",
+   "t": "Verrugas anogenitais (HPV / condiloma)",
+   "c": "gu",
+   "kw": "hpv condiloma acuminado verruga genital crista de galo podofilotoxina imiquimode ist dst",
+   "it": [
+    {
+     "v": "TOP",
+     "n": "PODOFILOTOXINA 0,15% CREME",
+     "q": "01 TB",
+     "p": "APLICAR SOBRE AS VERRUGAS 2X AO DIA (MANHÃ E NOITE) POR 03 DIAS SEGUIDOS E PAUSAR 04 DIAS. REPETIR O CICLO SE AINDA HOUVER VERRUGAS, NO MÁXIMO 04 CICLOS"
+    },
+    {
+     "v": "TOP",
+     "n": "IMIQUIMODE 5% CREME (SACHÊ 250MG)",
+     "q": "01 CX",
+     "p": "APLICAR CAMADA FINA SOBRE AS VERRUGAS À NOITE, 3X POR SEMANA EM DIAS ALTERNADOS, E LAVAR APÓS 6 A 10H. USAR POR ATÉ 16 SEMANAS. UM SACHÊ NOVO POR APLICAÇÃO",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "LAVAR E SECAR A ÁREA ANTES DE APLICAR. APLICAR SÓ SOBRE AS VERRUGAS, PROTEGENDO A PELE SADIA, E LAVAR AS MÃOS APÓS. NÃO USAR DENTRO DA VAGINA, DO ÂNUS OU DA URETRA. SE IRRITAÇÃO OU FERIDA INTENSA, SUSPENDER E RETORNAR. USAR PRESERVATIVO. MANTER O PREVENTIVO (PAPANICOLAU) EM DIA. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "Tratamento domiciliar do PCDT-IST. No consultório: ácido tricloroacético 80 a 90% semanal, crioterapia, eletrocauterização ou exérese. Gestante: não usar podofilotoxina, imiquimode nem podofilina; preferir ATA, crioterapia ou exérese. Lesões em colo, vagina, uretra ou canal anal, extensas ou em imunossuprimido: encaminhar. Trocar a terapia se não houver melhora após 3 sessões."
+  },
+  {
+   "id": "cancro-mole",
+   "t": "Cancro mole (cancroide)",
+   "c": "gu",
+   "kw": "cancro mole cancroide úlcera genital dolorosa bubão haemophilus ducreyi azitromicina ist dst",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "AZITROMICINA 500MG",
+     "q": "02 CP",
+     "p": "02 CP VO EM DOSE ÚNICA"
+    },
+    {
+     "v": "IM",
+     "n": "CEFTRIAXONA 250MG",
+     "q": "01 FA",
+     "p": "APLICAR 01 FA IM DOSE ÚNICA (NA UNIDADE), EM VEZ DA AZITROMICINA",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "CIPROFLOXACINO 500MG",
+     "q": "06 CP",
+     "p": "01 CP VO DE 12/12H POR 03 DIAS (EM VEZ DA AZITROMICINA)",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "DIPIRONA 500MG",
+     "q": "20 CP",
+     "p": "01 A 02 CP VO DE 6/6H SE DOR OU FEBRE"
+    }
+   ],
+   "ori": [
+    "LAVAR AS LESÕES COM ÁGUA E SABÃO. A PARCERIA SEXUAL DEVE SER TRATADA, MESMO SEM SINTOMAS. EVITAR RELAÇÕES SEXUAIS ATÉ A CICATRIZAÇÃO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "Úlceras múltiplas, dolorosas, de fundo sujo, com adenite inguinal que fistuliza por orifício único. Bubão flutuante: aspirar com agulha, não incisar. Ciprofloxacino contraindicado na gestação e na amamentação."
+  },
+  {
+   "id": "lgv",
+   "t": "Linfogranuloma venéreo",
+   "c": "gu",
+   "kw": "linfogranuloma venéreo lgv bubão adenite inguinal proctite clamídia doxiciclina ist dst",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "42 CP",
+     "p": "01 CP VO DE 12/12H POR 21 DIAS"
+    },
+    {
+     "v": "ORAL",
+     "n": "AZITROMICINA 500MG",
+     "q": "06 CP",
+     "p": "02 CP VO 1X POR SEMANA POR 03 SEMANAS (GESTANTE OU LACTANTE)",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "A PARCERIA SEXUAL DEVE SER AVALIADA E TRATADA. EVITAR RELAÇÕES SEXUAIS ATÉ O FIM DO TRATAMENTO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "Lesão de inoculação fugaz seguida de adenite inguinal que fistuliza por múltiplos orifícios; pode haver proctite. Parcerias sintomáticas: mesmo esquema; assintomáticas: azitromicina 1 g dose única ou doxiciclina 100 mg 12/12h por 7 dias. Doxiciclina contraindicada na gestação e na amamentação."
+  },
+  {
+   "id": "donovanose",
+   "t": "Donovanose",
+   "c": "gu",
+   "kw": "donovanose granuloma inguinal úlcera genital crônica azitromicina doxiciclina ist dst",
+   "it": [
+    {
+     "v": "ORAL",
+     "n": "AZITROMICINA 500MG",
+     "q": "06 CP",
+     "p": "02 CP VO 1X POR SEMANA POR NO MÍNIMO 03 SEMANAS OU ATÉ CICATRIZAR"
+    },
+    {
+     "v": "ORAL",
+     "n": "DOXICICLINA 100MG",
+     "q": "42 CP",
+     "p": "01 CP VO DE 12/12H POR NO MÍNIMO 21 DIAS (EM VEZ DA AZITROMICINA)",
+     "opt": true
+    },
+    {
+     "v": "ORAL",
+     "n": "SULFAMETOXAZOL + TRIMETOPRIMA 400 + 80MG",
+     "q": "84 CP",
+     "p": "02 CP VO DE 12/12H POR NO MÍNIMO 21 DIAS (EM VEZ DA AZITROMICINA)",
+     "opt": true
+    }
+   ],
+   "ori": [
+    "MANTER O TRATAMENTO ATÉ A CICATRIZAÇÃO COMPLETA. LAVAR AS LESÕES COM ÁGUA E SABÃO. REALIZAR TESTES PARA HIV, SÍFILIS E HEPATITES B E C."
+   ],
+   "nota": "Úlcera indolor, vermelho vivo, que sangra com facilidade e evolui lentamente. Parcerias não precisam de tratamento. Doxiciclina contraindicada na gestação e na amamentação. Biopsiar se não melhorar."
   },
   {
    "id": "colica-renal",
