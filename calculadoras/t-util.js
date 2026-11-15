@@ -21,7 +21,7 @@
   };
 
   const handover = {
-    id: 'handover', g: 'util', title: 'Passagem de plantão (local)',
+    id: 'handover', g: 'pront', title: 'Passagem de plantão (local)',
     desc: 'Quadro simples de leitos, paciente, diagnóstico e pendências. Fica só neste aparelho e some ao fechar ou limpar',
     kw: 'passagem de plantao handover kanban leitos pendencias paciente diagnostico lgpd quadro',
     disc: 'LGPD: use apenas iniciais ou o número do leito, nunca nome completo, CPF ou prontuário. Os dados ficam apenas neste navegador, expiram em 24 h e não são enviados a nenhum servidor.',

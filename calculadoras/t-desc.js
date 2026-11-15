@@ -325,7 +325,7 @@
       let lastC = null, og = null;
       all2.forEach(g => { if (g.m.c !== lastC) { lastC = g.m.c; og = h('optgroup', { label: catName(g.m.c) }); psel.append(og); } const o = h('option', { value: g.k }, gTitle(g.m)); if (g.k === curK) o.selected = true; og.append(o); });
       const pickRow = h('div', { class: 'desc-pick' }, back, h('label', { class: 'desc-pl' }, h('span', { class: 'lbl' }, 'Procedimento'), psel));
-      const head = h('div', { class: 'desc-head' }, pickRow, h('h2', null, F ? F.t : m.t), h('span', { class: 'desc-meta' }, [catName(m.c), m.a && 'Modelo: ' + m.a + (m.nt ? ' (' + m.nt + ')' : '')].filter(Boolean).join(' · ')));
+      const head = h('div', { class: 'desc-head' }, pickRow, h('h2', null, F ? F.t : m.t), F ? '' : h('span', { class: 'desc-meta' }, [catName(m.c), m.a && 'Modelo: ' + m.a + (m.nt ? ' (' + m.nt + ')' : '')].filter(Boolean).join(' · ')));
       // seletores da ficha
       let famBox = '';
       if (F) {
@@ -351,19 +351,19 @@
         const pool = c.list.concat(showMore ? moreU : []);
         const chipsM = pool.length > 1 || moreU.length ? h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Modelo do cirurgião'),
           h('div', { class: 'desc-sibl' }, pool.map(x => h('button', { type: 'button', class: 'rx-cat' + (x.id === m.id ? ' on' : '') + (c.list.indexOf(x) < 0 ? ' adp' : ''), title: c.list.indexOf(x) < 0 ? 'Modelo de outra ' + F.ax.map(a => a.l.split(' (')[0].toLowerCase()).join('/') + ', adaptado' : '', 'aria-pressed': x.id === m.id ? 'true' : 'false', onclick: () => { if (x.id === m.id) return; if (st.f.s !== st.f.gen && !confirm('Trocar o modelo descarta as suas edições nos passos. Continuar?')) return; open(x.id, st.ax); } }, vlab(x), x.nt ? h('small', null, ' · ' + x.nt) : '', c.list.indexOf(x) < 0 ? h('small', null, ' · adaptado') : '')),
-            !showMore && moreU.length ? h('button', { type: 'button', class: 'rx-cat adp', onclick: () => { st.more = true; render(); } }, '+ ' + moreU.length + ' cirurgiões com o texto adaptado') : '')) : '';
+            !showMore && moreU.length ? h('button', { type: 'button', class: 'rx-cat adp', onclick: () => { st.more = true; render(); } }, '+ ' + moreU.length + ' adaptados') : '')) : '';
         const note = f.ad.length ? h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, 'O serviço não tem um modelo exatamente assim. O texto foi montado a partir do modelo de ' + (m.a || 'um cirurgião do serviço') + ', ajustando ' + f.ad.join(' e ') + '. Confira os achados e os passos.')) : '';
         famBox = h('div', { class: 'panel desc-fam' }, h('div', { class: 'fgrid' }, ...axes, chipsM), note);
       }
       const inp = (k, label, ph) => h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, label), h('span', { class: 'inwrap' }, h('input', { value: f[k], 'data-k': k, placeholder: ph || '', autocomplete: 'off', oninput: e => { f[k] = e.target.value; chk(); } })));
       const tipo = h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Cirurgia tipo (potencial de contaminação)'),
         h('div', { class: 'seg desc-tipo', role: 'group', 'aria-label': 'Potencial de contaminação' }, TIPOS.map(([v, l]) => h('button', { type: 'button', class: f.tipo === v ? 'on' : '', 'aria-pressed': f.tipo === v ? 'true' : 'false', onclick: e => { f.tipo = v; e.currentTarget.parentNode.querySelectorAll('button').forEach(b => { const on = b === e.currentTarget; b.className = on ? 'on' : ''; b.setAttribute('aria-pressed', on); }); } }, l))));
-      const ta = h('textarea', { class: 'desc-steps', 'aria-label': 'Passos da descrição cirúrgica, um por linha', spellcheck: 'true', oninput: e => { f.s = e.target.value; grow(); chk(); } });
+      const ta = h('textarea', { class: 'desc-steps', 'aria-label': 'Passos da descrição cirúrgica, um por linha', placeholder: 'Um passo por linha', spellcheck: 'true', oninput: e => { f.s = e.target.value; grow(); chk(); } });
       ta.value = f.s;
       const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(2000, ta.scrollHeight + 4) + 'px'; };
       // itens para marcar
       const ops = optsFor(m.bc || m.c, f.base, m.fm);
-      const optBox = ops.length && h('div', { class: 'desc-opts' }, h('span', { class: 'lbl' }, 'Marque o que foi feito ou encontrado para incluir na descrição'),
+      const optBox = ops.length && h('div', { class: 'desc-opts' }, h('span', { class: 'lbl' }, 'Incluir na descrição'),
         h('div', { class: 'desc-optl' }, ops.map(o => { const c = h('input', { type: 'checkbox', onchange: e => {
           let ls = f.s.split('\n');
           const ox = f.up ? UP(o.x) : o.x;
@@ -378,7 +378,7 @@
       const fillP = D.fillPanel({ get: () => f.s, set: t => { f.s = t; ta.value = t; grow(); chk(true); } });
       const relF = h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Relatório da cirurgia (intercorrências e destino)'), h('textarea', { class: 'desc-rel', rows: 3, oninput: e => { f.rel = e.target.value; chk(); } }, f.rel));
       const form = h('div', { class: 'panel desc-form' },
-        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), fillP, optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Edite à vontade.'), ta, numB, warn);
+        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), fillP, optBox || '', ta, numB, warn);
       /* SIGTAP: procedimentos da descrição, cirurgias múltiplas e CID */
       const S = D.sig;
       const sgBox = h('div', { class: 'dsg' });
@@ -397,29 +397,33 @@
         if (f.sgOn && !f.sgDone) { f.sgDone = true; applySig(); }
         const chips = h('div', { class: 'dsg-chips' }, f.sg.map((c, i) => h('div', { class: 'dsg-chip' }, h('code', null, S.fmt(c)), h('span', null, (S.by[c] || {}).n || 'código não encontrado na tabela'),
           h('button', { type: 'button', 'aria-label': 'Tirar ' + S.fmt(c), onclick: () => { f.sg.splice(i, 1); if (!f.sg.length) f.cid = ''; applySig(); sgDraw(); } }, '×'))));
-        const pick = S.picker(h, c => { if (f.sg.indexOf(c) < 0) f.sg.push(c); applySig(); sgDraw(); }, { ph: f.sg.length ? 'Adicionar outro procedimento (nome ou código)' : 'Buscar o procedimento SIGTAP (nome ou código)' });
-        const multN = f.sg.length > 1 ? h('div', { class: 'alert info sg-mult' }, u.icon('alert'), h('span', null, 'Mais de um procedimento: na AIH vai ', h('b', null, S.label(S.MULT)), ', e a descrição lista o código e o nome de cada um.')) : '';
-        const onB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.sgOn = e.target.checked; applySig(); } }), 'Usar o código e o nome SIGTAP em Cirurgia proposta e realizada');
+        const pick = S.picker(h, c => { if (f.sg.indexOf(c) < 0) f.sg.push(c); applySig(); sgDraw(); }, { ph: f.sg.length ? 'Adicionar procedimento' : 'Buscar procedimento SIGTAP' });
+        const multN = f.sg.length > 1 ? h('p', { class: 'hint dsg-mult' }, 'Na AIH: ', h('b', null, S.label(S.MULT))) : '';
+        const onB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.sgOn = e.target.checked; applySig(); } }), 'Nome SIGTAP em cirurgia proposta e realizada');
         onB.firstChild.checked = f.sgOn;
-        // CID principal compatível com o 1º procedimento
+        // CID principal compatível com o 1º procedimento (lista curta vira um seletor)
         const first = S.by[f.sg[0]] || { d: [] };
-        const cidLbl = h('span', { class: 'lbl' }, 'CID principal' + (f.cid ? ': ' + S.fmtCid(f.cid) + ' ' + S.cidName(f.cid) : ''));
-        const cidIn = h('input', { type: 'search', class: 'fillp-in', placeholder: first.d.length ? 'Filtrar os ' + first.d.length + ' CID compatíveis' : 'Digite o CID ou a doença', oninput: () => cidRes() });
-        const cres = h('div', { class: 'sg-res' });
-        function cidRes() {
-          cres.innerHTML = '';
-          const within = first.d.length ? first.d : null;
-          let q = cidIn.value.trim(), rs;
-          if (!q && within) { const w = nrm(f.dx + ' ' + f.cr0).split(/[^a-z0-9]+/).filter(x => x.length > 3 && !/^(cirurg|aguda$|para$|com$)/.test(x)); rs = S.searchCid('', within).map(x => ({ x, n: w.filter(t => x.k.indexOf(t) >= 0).length })).sort((a, b) => b.n - a.n).map(o => o.x); }
-          else rs = q ? S.searchCid(q, within) : [];
-          rs.slice(0, q ? 10 : 5).forEach(x => cres.append(h('button', { type: 'button', class: 'sg-opt' + (f.cid === x.c ? ' on' : ''), onclick: () => { f.cid = f.cid === x.c ? '' : x.c; sgDraw(); } }, h('code', null, S.fmtCid(x.c)), h('span', null, x.n))));
+        let cidF = '';
+        if (f.sg.length && first.d.length) {
+          const w = nrm(f.dx + ' ' + f.cr0).split(/[^a-z0-9]+/).filter(x => x.length > 3 && !/^(cirurg|aguda$|para$|com$)/.test(x));
+          const rs = first.d.map(c => ({ c, n: S.C[c] || '', k: nrm(S.C[c] || '') })).map(x => ({ x, n: w.filter(t => x.k.indexOf(t) >= 0).length })).sort((a, b) => b.n - a.n).map(o => o.x);
+          const sel = h('select', { class: 'dsg-cid', 'aria-label': 'CID principal', onchange: e => { f.cid = e.target.value; } },
+            h('option', { value: '' }, 'Escolha o CID (' + rs.length + ' compatíveis)'), rs.map(x => h('option', { value: x.c }, S.fmtCid(x.c) + '  ' + x.n)));
+          sel.value = f.cid || '';
+          cidF = h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'CID principal'), sel);
+        } else if (f.sg.length) {
+          const cidLbl = h('span', { class: 'lbl' }, 'CID principal' + (f.cid ? ': ' + S.fmtCid(f.cid) + ' ' + S.cidName(f.cid) : ''));
+          const cres = h('div', { class: 'sg-res' });
+          const cidIn = h('input', { type: 'search', class: 'fillp-in', placeholder: 'Digite o CID ou a doença', oninput: () => {
+            cres.innerHTML = ''; const q = cidIn.value.trim(); if (!q) return;
+            S.searchCid(q, null).slice(0, 8).forEach(x => cres.append(h('button', { type: 'button', class: 'sg-opt' + (f.cid === x.c ? ' on' : ''), onclick: () => { f.cid = x.c; sgDraw(); } }, h('code', null, S.fmtCid(x.c)), h('span', null, x.n))));
+          } });
+          cidF = h('div', { class: 'fld full' }, cidLbl, cidIn, cres);
         }
-        const cidF = f.sg.length ? h('div', { class: 'fld full' }, cidLbl, cidIn, cres) : '';
-        const aihB = f.sg.length ? h('button', { type: 'button', class: 'rx-btn' }, u.icon('copy'), 'Copiar texto da AIH') : '';
-        if (aihB) aihB.onclick = () => S.copy(S.aihText(f.sg, f.cid), aihB, 'Copiar texto da AIH');
-        const sigL = h('a', { class: 'hint', href: '#/sigtap' + (f.sg[0] ? '/' + f.sg[0] : '') }, 'Abrir na tabela SIGTAP');
-        sgBox.append(h('span', { class: 'lbl' }, 'Procedimentos SIGTAP (competência ' + S.v.slice(4) + '/' + S.v.slice(0, 4) + ')'), chips, pick, multN, f.sg.length ? onB : '', cidF, h('div', { class: 'sg-row' }, aihB, sigL));
-        if (f.sg.length) cidRes();
+        const aihB = f.sg.length ? h('button', { type: 'button', class: 'rx-btn sm' }, u.icon('copy'), 'Copiar AIH') : '';
+        if (aihB) aihB.onclick = () => S.copy(S.aihText(f.sg, f.cid), aihB, 'Copiar AIH');
+        const sigL = h('a', { class: 'hint', href: '#/sigtap' + (f.sg[0] ? '/' + f.sg[0] : '') }, 'Ver na tabela SIGTAP');
+        sgBox.append(h('span', { class: 'lbl' }, 'Procedimentos SIGTAP'), chips, multN, pick, f.sg.length ? onB : '', cidF, f.sg.length ? h('div', { class: 'sg-row' }, aihB, sigL) : '');
       }
       const dataP = h('div', { class: 'panel desc-form' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Dados do relatório'), sgBox, h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox));
       function chk(now) {

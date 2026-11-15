@@ -13,7 +13,6 @@
       { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos' },
       { id: 'lab', c: '#bda6ec', title: 'Renal, metabólico e gasometria' },
       { id: 'vent', c: '#93b6f2', title: 'Ventilação, oxigênio e fluidos' },
-      { id: 'util', c: '#b9c2cb', title: 'Utilidades do plantão' },
       { id: 'peri', c: '#a0a9b2', title: 'Perícia' }
     ]
   };
@@ -184,7 +183,8 @@
     const before = JSON.stringify(S.patient);
     const ret = document.activeElement;
     const close = () => {
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey); window.removeEventListener('hashchange', close);
+      if (!wrap.isConnected) return;
       wrap.remove(); document.body.classList.remove('sheet-open');
       const changed = JSON.stringify(S.patient) !== before;
       const cur = decodeURIComponent((location.hash || '').replace(/^#\/?/, '')).split('/')[0];
@@ -199,7 +199,7 @@
       h('button', { type: 'button', class: 'copy sheet-ok', onclick: close }, 'Concluir'));
     const wrap = h('div', { id: 'ptsheet', class: 'sheet-w', onclick: e => { if (e.target === wrap) close(); } }, sheet);
     document.body.append(wrap); document.body.classList.add('sheet-open');
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey); window.addEventListener('hashchange', close);
     setTimeout(() => { const i = sheet.querySelector('input'); if (i) { i.focus(); try { i.select(); } catch (e) { } } }, 60);
   }
   D.openPatient = openPatient;
@@ -235,7 +235,7 @@
       } else {
         const av = ((window.DRB_DATA || {}).aviso || '').trim();
         if (av) box.append(h('div', { class: 'aviso', role: 'note' }, icon('alert'), h('span', null, av)));
-        box.append(patientPanel());
+        box.append(patientBar());
         const favs = S.favs.map(byId).filter(Boolean), rec = S.recents.map(byId).filter(t => t && !S.favs.includes(t.id)).slice(0, 5);
         if (!favs.length && !rec.length) box.append(h('p', { class: 'hint tip' }, icon('star', false, 16), 'Toque na estrela de uma ferramenta para fixá-la aqui no topo.'));
         if (favs.length || rec.length) {
@@ -250,7 +250,7 @@
         const ts = D.tools.filter(t => t.g === g.id); if (!ts.length) return;
         if (G) { box.append(h('section', { class: 'grp', style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id }, h('ul', { class: 'tlist' }, ts.map(row)))); return; }
         const HO = u.LS('drb_home_open', {});
-        const open = HO[g.id] != null ? !!HO[g.id] : window.innerWidth >= 900;
+        const open = !!HO[g.id];
         const sec = h('section', { class: 'grp acc' + (open ? ' open' : ''), style: '--gc:' + (g.c || 'var(--cyan)'), id: 'grp-' + g.id });
         const list = h('ul', { class: 'tlist' });
         const fill = () => { if (!list.firstChild) list.append(...ts.map(row)); };
@@ -259,17 +259,24 @@
           const o2 = !sec.classList.contains('open'); if (o2) fill();
           sec.classList.toggle('open', o2); head.setAttribute('aria-expanded', o2);
           const m = u.LS('drb_home_open', {}); m[g.id] = o2; u.SAVE('drb_home_open', m);
-        } }, h('i', { class: 'dot' }), h('span', { class: 'grp-n' }, h('span', { class: 'grp-nt' }, g.title), h('span', { class: 'grp-pv' }, ts.slice(0, 4).map(t => t.title).join(' · '))), h('span', { class: 'n' }, ts.length + ''), icon('chev', false, 18));
+        } }, h('i', { class: 'dot' }), h('span', { class: 'grp-n' }, h('span', { class: 'grp-nt' }, g.title)), icon('chev', false, 18));
         sec.append(h('h2', { class: 'grp-t' }, head), list);
         box.append(sec);
       });
       box.append(disclaimer('Ferramentas de apoio à decisão. Não substituem o julgamento clínico. Confira doses, diluições e indicações com o protocolo da sua instituição e a bula antes de prescrever ou administrar.'));
       if (!G) box.append(h('p', { class: 'adm-link' }, ((window.DRB_DATA || {}).estatisticas ? 'Este site registra estatísticas anônimas de uso, sem cookies e sem dados pessoais. ' : ''), h('a', { href: 'admin.html' }, 'Painel do editor')));
     }
-    root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão'),
-      h('p', { class: 'lead' }, G ? 'Toque em uma ferramenta para abrir. A estrela fixa a ferramenta nos favoritos.' : 'Informe o paciente uma vez e ele preenche todas as calculadoras. Busque no topo ou abra uma área abaixo.'), box);
+    root.append(h('h1', { class: 'title' }, G ? G.title : 'Plantão'), box);
     draw();
     return root;
+  }
+  function patientBar() {
+    const p = S.patient;
+    const bits = [p.kg !== '' && p.kg + ' kg', ageLabel(), p.sex === 'M' ? 'masc.' : p.sex === 'F' ? 'fem.' : '', p.cm !== '' && p.cm + ' cm'].filter(Boolean);
+    return h('button', { type: 'button', class: 'pbar' + (bits.length ? '' : ' empty'), onclick: openPatient, 'aria-label': bits.length ? 'Paciente atual: ' + bits.join(', ') + '. Editar' : 'Informar peso e idade do paciente' },
+      icon('user', false, 20),
+      h('span', { class: 'pbar-t' }, bits.length ? bits.map(b => h('span', { class: 'tok' }, b)) : 'Peso e idade do paciente'),
+      h('span', { class: 'pbar-e' }, bits.length ? 'Editar' : 'Preencher'));
   }
   function patientPanel(o) {
     o = o || {};
@@ -432,6 +439,10 @@
 
   function renderResult(el, r, t, onSet) {
     el.innerHTML = '';
+    const ask = a => /^(informe|preencha|selecione|escolha|marque|digite)\b/i.test(String(a.text || '').trim());
+    if (r && !r.main && !r.table && !(r.rows && r.rows.length) && !(r.steps && r.steps.length) && r.alerts && r.alerts.length && r.alerts.every(ask)) {
+      el.append(h('div', { class: 'empty' }, r.alerts.map(a => a.text).join(' '))); return;
+    }
     if (!r || (!r.main && !(r.alerts && r.alerts.length) && !r.table && !(r.rows && r.rows.length) && !(r.steps && r.steps.length))) {
       el.append(h('div', { class: 'empty' }, 'Preencha os campos para ver o resultado.')); return;
     }
@@ -509,7 +520,7 @@
       if (!fav) { box.parentNode.querySelectorAll('.sg.open:not([data-g="fav"])').forEach(x => { if (x !== box) { x.classList.remove('open'); x.querySelector('.sgh').setAttribute('aria-expanded', 'false'); } }); OPEN.cur = o ? g.id : null; }
       else OPEN.fav = o;
       box.classList.toggle('open', o); head.setAttribute('aria-expanded', o); u.SAVE('drb_open', OPEN);
-    } }, h('i', { class: 'dot' }), h('span', { class: 'gn' }, g.title), h('span', { class: 'gc' }, String(ts.length)), icon('chev', false, 16));
+    } }, h('i', { class: 'dot' }), h('span', { class: 'gn' }, g.title), icon('chev', false, 16));
     const list = h('div', { class: 'sgl' }, ts.map(t => h('a', { class: 'sl', href: t.href || '#/' + t.id, target: t.href && t.href[0] !== '#' ? '_blank' : null, 'data-k': t.id + (fav ? '-f' : '') }, t.title)));
     box.append(head, list);
     return box;

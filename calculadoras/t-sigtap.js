@@ -149,36 +149,38 @@
         aihBox.innerHTML = '';
         const cs = st.aih.c;
         aihBox.append(h('h3', { class: 'sec', style: 'margin-top:0' }, 'AIH em montagem'));
-        if (!cs.length) { aihBox.append(h('p', { class: 'hint' }, 'Use "+ Adicionar à AIH" nos procedimentos. Com mais de um procedimento cirúrgico, a AIH vai como ' + S.label(MULT) + ' e os procedimentos entram na lista.')); return; }
-        if (cs.length > 1) aihBox.append(h('div', { class: 'alert info sg-mult' }, u.icon('alert'), h('span', null, 'Principal da AIH: ', h('b', null, S.label(MULT)))));
+        if (cs.length > 1) aihBox.append(h('p', { class: 'hint dsg-mult' }, 'Principal da AIH: ', h('b', null, S.label(MULT))));
         const ol = h('ol', { class: 'sg-ol' });
-        cs.forEach((c, i) => ol.append(h('li', null, h('code', null, S.fmt(c)), ' ', (S.by[c] || {}).n || '', h('button', { type: 'button', class: 'sg-x', 'aria-label': 'Remover', onclick: () => { cs.splice(i, 1); if (!cs.length) st.aih.cid = ''; saveAih(); aihPanel(); } }, '×'))));
+        cs.forEach((c, i) => ol.append(h('li', null, h('code', null, S.fmt(c)), ' ', (S.by[c] || {}).n || '', h('button', { type: 'button', class: 'sg-x', 'aria-label': 'Remover', onclick: () => { cs.splice(i, 1); if (!cs.length) st.aih.cid = ''; saveAih(); if (cs.length) aihPanel(); else render(); } }, '×'))));
         aihBox.append(ol);
         // CID principal: compatível com o 1º procedimento; marca quando serve para todos
         const first = S.by[cs[0]] || { d: [] };
         const all = cs.map(c => (S.by[c] || { d: [] }).d);
         const both = new Set(first.d.filter(x => all.every(l => !l.length || l.indexOf(x) >= 0)));
-        const cidIn = h('input', { type: 'search', class: 'fillp-in', placeholder: first.d.length ? 'Filtrar CID compatível (' + first.d.length + ')' : 'Este procedimento não restringe CID: digite o CID', oninput: () => cidRes() });
-        const res = h('div', { class: 'sg-res' });
-        function cidRes() {
-          res.innerHTML = '';
-          const rs = S.searchCid(cidIn.value, first.d.length ? first.d : null).slice(0, cidIn.value.trim() ? 12 : 6);
-          rs.forEach(x => res.append(h('button', { type: 'button', class: 'sg-opt' + (st.aih.cid === x.c ? ' on' : ''), onclick: () => { st.aih.cid = x.c; saveAih(); aihPanel(); } }, h('code', null, S.fmtCid(x.c)), h('span', null, x.n), cs.length > 1 && both.has(x.c) ? h('small', null, 'serve para todos') : '')));
+        if (first.d.length) {
+          const sel = h('select', { class: 'dsg-cid', 'aria-label': 'CID principal', onchange: e => { st.aih.cid = e.target.value; saveAih(); aihPanel(); } },
+            h('option', { value: '' }, 'Escolha o CID (' + first.d.length + ' compatíveis)'),
+            first.d.map(c => h('option', { value: c }, S.fmtCid(c) + '  ' + (S.C[c] || '') + (cs.length > 1 && both.has(c) ? ' (serve para todos)' : ''))));
+          sel.value = st.aih.cid || '';
+          aihBox.append(h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'CID principal'), sel));
+        } else {
+          const cidIn = h('input', { type: 'search', class: 'fillp-in', placeholder: 'Digite o CID ou a doença', oninput: () => cidRes() });
+          const res = h('div', { class: 'sg-res' });
+          const cidRes = () => { res.innerHTML = ''; if (!cidIn.value.trim()) return; S.searchCid(cidIn.value, null).slice(0, 8).forEach(x => res.append(h('button', { type: 'button', class: 'sg-opt' + (st.aih.cid === x.c ? ' on' : ''), onclick: () => { st.aih.cid = x.c; saveAih(); aihPanel(); } }, h('code', null, S.fmtCid(x.c)), h('span', null, x.n)))); };
+          aihBox.append(h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'CID principal' + (st.aih.cid ? ': ' + S.fmtCid(st.aih.cid) + ' ' + S.cidName(st.aih.cid) : '')), cidIn, res));
         }
-        aihBox.append(h('div', { class: 'fld full' }, h('span', { class: 'lbl' }, 'CID principal' + (st.aih.cid ? ': ' + S.fmtCid(st.aih.cid) + ' ' + S.cidName(st.aih.cid) : '')), cidIn, res));
-        cidRes();
-        const cb = h('button', { type: 'button', class: 'copy' }, u.icon('copy'), 'Copiar texto da AIH');
-        cb.onclick = () => copyText(S.aihText(cs, st.aih.cid), cb, 'Copiar texto da AIH');
+        const cb = h('button', { type: 'button', class: 'copy' }, u.icon('copy'), 'Copiar AIH');
+        cb.onclick = () => copyText(S.aihText(cs, st.aih.cid), cb, 'Copiar AIH');
         aihBox.append(h('pre', { class: 'sg-pre' }, S.aihText(cs, st.aih.cid)), h('div', { class: 'sg-row' }, cb, h('button', { type: 'button', class: 'rx-btn', onclick: () => { st.aih = { c: [], cid: '' }; saveAih(); aihPanel(); } }, 'Limpar')));
       }
       function procView(p) {
         const inAih = st.aih.c.indexOf(p.c) >= 0;
         const add = h('button', { type: 'button', class: 'rx-btn' + (inAih ? '' : ' sg-add'), onclick: () => { if (inAih) st.aih.c = st.aih.c.filter(x => x !== p.c); else st.aih.c.push(p.c); saveAih(); render(); D.toast && D.toast(inAih ? 'Removido da AIH' : 'Adicionado à AIH'); } }, inAih ? 'Tirar da AIH' : '+ Adicionar à AIH');
-        const cpy = h('button', { type: 'button', class: 'copy' }, u.icon('copy'), 'Copiar código e nome');
-        cpy.onclick = () => copyText(S.label(p.c), cpy, 'Copiar código e nome');
-        const facts = [['Código', S.fmt(p.c)], ['Registro', p.r.split('').map(x => REG[x]).join(', ')], ['Complexidade', CX[p.cx] || p.cx], ['Sexo', SX[p.sx] || p.sx],
-          ['Permanência média', p.pm >= 9999 ? 'não se aplica' : p.pm + (p.pm === 1 ? ' dia' : ' dias')], ['Idade', age(p.i0) + ' a ' + age(p.i1)], ['Valor hospitalar (SH)', money(p.sh)], ['Valor profissional (SP)', money(p.sp)], ['Total SH + SP', money(p.sh + p.sp)],
-          ['Grupo', (S.SG[p.c.slice(0, 4)] || '') + ' › ' + (S.FO[p.c.slice(0, 6)] || '')]];
+        const cpy = h('button', { type: 'button', class: 'copy' }, u.icon('copy'), 'Copiar');
+        cpy.onclick = () => copyText(S.label(p.c), cpy, 'Copiar');
+        const facts = [['Registro', p.r.split('').map(x => REG[x]).join(', ')], ['Complexidade', CX[p.cx] || p.cx], ['Sexo', SX[p.sx] || p.sx],
+          ['Permanência média', p.pm >= 9999 ? 'não se aplica' : p.pm + (p.pm === 1 ? ' dia' : ' dias')], ['Idade', age(p.i0) + ' a ' + age(p.i1)], ['Valor hospitalar (SH)', money(p.sh)], ['Valor profissional (SP)', money(p.sp)], ['Total', money(p.sh + p.sp)],
+          ['Grupo', ((S.SG[p.c.slice(0, 4)] || '') + ' › ' + (S.FO[p.c.slice(0, 6)] || '')).replace(/\s+,/g, ',')]];
         const cidF = h('input', { type: 'search', class: 'fillp-in', placeholder: 'Filtrar os ' + p.d.length + ' CID compatíveis', oninput: () => cl() });
         const cul = h('div', { class: 'sg-cids' });
         function cl() {
@@ -191,7 +193,7 @@
           h('div', { class: 'desc-head' }, h('h2', null, p.n), h('span', { class: 'desc-meta' }, S.fmt(p.c) + (p.r.indexOf('P') < 0 ? ' · não pode ser o principal da AIH' : ''))),
           h('div', { class: 'sg-row sg-acts' }, cpy, add),
           h('div', { class: 'panel' }, h('dl', { class: 'sg-dl' }, ...facts.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]).flat())),
-          h('div', { class: 'panel' }, h('h3', { class: 'sec', style: 'margin-top:0' }, 'CID principal compatível'), cidF, cul));
+          h('div', { class: 'panel' }, h('h3', { class: 'sec', style: 'margin-top:0' }, 'CID principal compatível (' + p.d.length + ')'), p.d.length > 8 ? cidF : '', cul));
       }
       function cidView(c) {
         const ps = S.cidProcs(c).filter(p => p.r.indexOf('P') >= 0);
@@ -218,8 +220,8 @@
         else if (st.mode === 'c' && st.cid && S.C[st.cid]) doc.append(cidView(st.cid));
         else if (st.mode === 'c' && st.cid) doc.append(h('div', { class: 'rx-blank' }, h('h2', null, 'CID ' + S.fmtCid(st.cid) + ' não está na tabela'), h('p', null, 'O SIGTAP usa a CID-10 da competência ' + S.v.slice(4) + '/' + S.v.slice(0, 4) + '. Alguns códigos novos da CID-10 ainda não aparecem: busque pelo nome da doença.')));
         else doc.append(h('div', { class: 'rx-blank' }, h('h2', null, st.mode === 'p' ? 'Busque um procedimento' : 'Busque um CID'),
-          h('p', null, 'Tabela SIGTAP da competência ' + S.v.slice(4) + '/' + S.v.slice(0, 4) + ': ' + S.list.length + ' procedimentos de internação, com os CID principais compatíveis, valores e permanência. Pelo CID você vê quais procedimentos aceitam aquele diagnóstico, tanto para internação clínica quanto cirúrgica.')));
-        aihPanel(); doc.append(h('div', { class: 'panel' }, aihBox));
+          h('p', null, st.mode === 'p' ? 'Pelo nome ou pelo código. Mostra os CID compatíveis, valores e permanência.' : 'Mostra os procedimentos clínicos e cirúrgicos que aceitam o CID como principal da AIH.')));
+        if (st.aih.c.length) { aihPanel(); doc.append(h('div', { class: 'panel' }, aihBox)); }
       }
       modes(); list(); render();
       S.load(err => { if (err) { cnt.textContent = 'Não foi possível carregar a tabela. Verifique a conexão.'; return; } list(); render(); });

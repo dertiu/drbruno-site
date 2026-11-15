@@ -82,7 +82,8 @@
     function render(focusIdx) {
       box.innerHTML = '';
       const fs = scan(o.get());
-      if (!fs.length) { box.append(h('div', { class: 'fillp-ok' }, u.icon('check'), h('span', null, 'Todos os campos ___ foram completados.'))); return; }
+      box.hidden = !fs.length;
+      if (!fs.length) return;
       const head = h('button', { type: 'button', class: 'fillp-h', 'aria-expanded': open ? 'true' : 'false', onclick: () => { open = !open; render(); } },
         h('span', null, 'Campos para completar'), h('span', { class: 'n' }, String(fs.length)), u.icon('chev', false, 18));
       box.append(head);

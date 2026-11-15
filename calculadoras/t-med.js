@@ -318,8 +318,8 @@
       const out = [F.SEL('drug', 'Droga', INF.map(x => [x.id, x.name, x.g]), { reset: ['amt', 'vol', 'inp'], def: INF[0].id }),
         F.SEC('Diluição'),
         F.N('amt', `Droga (${d.amtU})`, { def: dv(sv ? sv.amt : d.amt) }), F.N('vol', 'Volume total (mL)', { def: dv(sv ? sv.vol : d.vol) }),
-        F.NOTE(d.note + (sv ? ' Diluição personalizada salva neste aparelho.' : ' Altere para a do seu hospital: fica salva neste aparelho.')),
-        F.BTN('Restaurar diluição padrão', raw => { const all = u.LS('drb_dil', {}) || {}; delete all[d.id]; u.SAVE('drb_dil', all); delete raw.amt; delete raw.vol; })];
+        F.NOTE(d.note + (sv ? ' Usando a sua diluição, salva neste aparelho.' : ' Se mudar, fica salva neste aparelho.'))];
+      if (sv) out.push(F.BTN('Voltar à diluição padrão', raw => { const all = u.LS('drb_dil', {}) || {}; delete all[d.id]; u.SAVE('drb_dil', all); delete raw.amt; delete raw.vol; }));
       if (parseU(d.du).perKg) out.push(F.KG());
       out.push(F.SEC('Cálculo'),
         F.SEG('mode', '', [['dose', 'Dose → mL/h'], ['rate', 'mL/h → dose']], { reset: ['inp'], def: 'dose' }),
