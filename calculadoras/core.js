@@ -26,10 +26,16 @@
       ped: [['Emergência', ['pedone', 'pedkit', 'pedhid']], ['Avaliação', ['pedsv', 'pedvit', 'westley', 'apgar']], ['Receitas', ['ped-rx']]],
       lab: [['Renal e eletrólitos', ['repos', 'nacorr', 'clcr']], ['Exames', ['gaso', 'lab', 'liquidos']], ['Medidas e conversões', ['imc', 'qtc', 'conv']]],
       vent: [['Ventilação e oxigênio', ['vent', 'oxig', 'o2cil']], ['Fluidos', ['fluid', 'mant']]],
-      cir: [['Abdome agudo', ['alvarado', 'toquio', 'ranson', 'bisap']], ['Trauma', ['choque', 'tmt', 'rts']], ['Perioperatório', ['rcri', 'profilaxia', 'posop', 'sedproc']]],
+      cir: [['Abdome agudo', ['alvarado', 'toquio', 'ranson', 'bisap']], ['Trauma', ['choque', 'queimados', 'tmt', 'rts']], ['Perioperatório', ['rcri', 'profilaxia', 'posop', 'sedproc']]],
       desc: [['Modelos', ['descricoes']], ['Por área', null]],
       aih: [['', null]],
-      pront: [['Modelos', ['prontuario', 'handover']], ['Por tipo', null]]
+      pront: [['Modelos', ['prontuario', 'handover']], ['Por tipo', null]],
+      peri: [['Interdição e curatela', ['meem', 'fluencia', 'pfeffer', 'lawton', 'katz', 'barthel', 'cdr', 'gds', 'psiquico']],
+        ['Auxílio-acidente', ['gonio', 'forca', 'audio', 'visao', 'encurt', 'anexo3']],
+        ['Erro médico e dano corporal', ['valdano', 'quantum', 'danoest', 'vss', 'posas', 'clavien', 'dpvat', 'queimados-p']],
+        ['Pós-bariátrica', ['ponderal', 'pittsburgh', 'dut']],
+        ['Home care', ['nead', 'abemid', 'braden', 'kps']],
+        ['Rotina do perito', ['datas', 'prazos', 'cpc', 'checklist']], ['Outras', null]]
     }
   };
   D.add = (...t) => D.tools.push(...t);
@@ -115,6 +121,7 @@
   F.SEG = (id, label, options, o) => Object.assign({ type: 'seg', id, label, options }, o);
   F.CHK = (id, label, pts, o) => Object.assign({ type: 'chk', id, label, pts }, o);
   F.DATE = (id, label, o) => Object.assign({ type: 'date', id, label }, o);
+  F.TXT = (id, label, o) => Object.assign({ type: 'txt', id, label }, o);
   F.SEC = label => ({ type: 'sec', label });
   F.NOTE = text => ({ type: 'note', text });
   F.BTN = (label, action) => ({ type: 'btn', id: '_btn_' + label, label, action });
@@ -358,7 +365,7 @@
         else if (raw[f.id] === undefined) {
           if (f.def !== undefined) raw[f.id] = (typeof f.def === 'boolean' || typeof f.def === 'function') ? f.def : String(f.def);
           else if (f.type === 'chk') raw[f.id] = false;
-          else if (f.type === 'date') raw[f.id] = '';
+          else if (f.type === 'date' || f.type === 'txt') raw[f.id] = '';
         }
         if (f.type === 'sel' || f.type === 'seg') {
           if (!f.options.some(o => String(o[0]) === String(raw[f.id]))) raw[f.id] = String(f.options[0][0]);
@@ -409,6 +416,10 @@
         case 'date':
           return h('label', { class: fc(), for: id }, h('span', { class: 'lbl' }, f.label),
             h('input', { id, type: 'date', value: raw[f.id] || '', oninput: e => set(e.target.value) }));
+        case 'txt':
+          return h('label', { class: fc(), for: id }, h('span', { class: 'lbl' }, f.label),
+            h('input', { id, type: 'text', autocomplete: 'off', placeholder: f.ph || '', value: raw[f.id] || '', oninput: e => set(e.target.value) }),
+            f.hint && h('span', { class: 'fh' }, f.hint));
         case 'sel': {
           const s = h('select', { id, onchange: e => set(e.target.value) });
           let og = null, cur = null;
@@ -503,17 +514,20 @@
       if (tb.cap) el.append(h('p', { class: 'cap' }, tb.cap));
     }
     (r.notes || []).forEach(n => el.append(h('p', { class: 'note' }, n)));
-    const text = r.text || defaultText(t, r);
+    const text = r.text === false ? '' : (r.text || defaultText(t, r));
     if (text) {
-      const b = h('button', { type: 'button', class: 'copy' }, icon('copy'), 'Copiar para prontuário');
+      const lbl = (t && t.copyLbl) || 'Copiar para prontuário';
+      if (t && t.copyLbl && t.prev !== false) el.append(h('p', { class: 'peri-txt' }, text));
+      const b = h('button', { type: 'button', class: 'copy' }, icon('copy'), lbl);
       b.onclick = () => {
-        const done = () => { b.lastChild.textContent = 'Copiado'; setTimeout(() => { b.lastChild.textContent = 'Copiar para prontuário'; }, 1600); };
+        const done = () => { b.lastChild.textContent = 'Copiado'; setTimeout(() => { b.lastChild.textContent = lbl; }, 1600); };
         if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
         else fallbackCopy(text, done);
       };
       el.append(b);
     }
   }
+  D.renderResult = renderResult;
   function fallbackCopy(text, done) {
     const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = text; document.body.append(ta); ta.select();
     try { document.execCommand('copy'); done(); } catch (e) { } ta.remove();
