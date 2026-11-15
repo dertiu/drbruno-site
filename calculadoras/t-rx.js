@@ -57,6 +57,25 @@
     return { kg: u.num(p.kg), age: isFinite(a) ? (un === 'a' ? a : un === 'm' ? a / 12 : a / 365.25) : NaN };
   };
   const val = (x, c) => fill(x, c);
+  // lacunas ___ escritas no próprio modelo (fora das marcações {…}) podem ser preenchidas pelo usuário
+  const BL = {};
+  const prot = x => { const t = []; return { s: String(x || '').replace(/\{[^}]*\}/g, m => { t.push(m); return '\u0000' + (t.length - 1) + '\u0000'; }), back: y => y.replace(/\u0000(\d+)\u0000/g, (m, i) => t[i]) }; };
+  const vB = (x, c, key) => { const p = prot(x); let k = 0; return fill(p.back(p.s.replace(/_{3,}/g, m => { const v = BL[key + ':' + (k++)]; return v ? v.toLocaleUpperCase('pt-BR') : m; })), c); };
+  function rich(x, c, key, h) {
+    const p = prot(x), parts = p.s.split(/_{3,}/);
+    if (parts.length < 2) return [fill(x, c)];
+    const out = [];
+    parts.forEach((seg, k) => {
+      out.push(fill(p.back(seg), c));
+      if (k < parts.length - 1) {
+        const id = key + ':' + k, nx = parts[k + 1] || '';
+        const num = /^\s*(seringas|dias|cp|comprimidos|ml|frascos?|caixas?|unidades|ampolas?|vezes|horas)/i.test(nx);
+        out.push(h('input', { class: 'rx-blank-in', value: BL[id] || '', placeholder: '___', inputmode: num ? 'decimal' : 'text', size: num ? 3 : 10, 'aria-label': 'Completar campo',
+          oninput: e => { BL[id] = e.target.value.trim(); }, onclick: e => e.preventDefault(), onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const all = [...document.querySelectorAll('.rx-blank-in')], i = all.indexOf(e.target); if (all[i + 1]) all[i + 1].focus(); else e.target.blur(); } } }));
+      }
+    });
+    return out;
+  }
   const line = (n, q) => { const w = 54, d = Math.max(4, w - n.length - (q ? q.length : 0) - 2); return n + ' ' + '-'.repeat(d) + (q ? ' ' + q : ''); };
 
   function compose(sel, inc, c) {
@@ -65,9 +84,9 @@
       const r = R.find(x => x.id === rid); if (!r) return;
       r.it.forEach((it, i) => {
         const key = rid + ':' + i; if (!inc(key, it)) return;
-        const nm = val(it.n, c), sig = nm + '|' + val(it.p, c); if (seen.has(sig)) return; seen.add(sig);
+        const nm = vB(it.n, c, key + ':n'), sig = val(it.n, c) + '|' + val(it.p, c); if (seen.has(sig)) return; seen.add(sig);
         let g = groups.find(x => x.v === it.v); if (!g) { g = { v: it.v, items: [] }; groups.push(g); }
-        g.items.push({ n: nm, q: val(it.q, c), p: val(it.p, c), key, it, rid });
+        g.items.push({ n: nm, q: vB(it.q, c, key + ':q'), p: vB(it.p, c, key + ':p'), key, it, rid });
       });
       (r.ori || []).forEach(o => o.split(/(?<=\.)\s+/).forEach(f => { f = f.trim(); if (f && !ori.includes(f)) ori.push(f); }));
     });
@@ -97,29 +116,35 @@
       root.append(side, doc);
       const search = h('input', { type: 'search', class: 'rx-q', placeholder: 'Filtrar: conjuntivite, otite, criança…', 'aria-label': 'Filtrar receitas', oninput: e => { st.q = e.target.value; list(); } });
       const popSeg = h('div', { class: 'seg rx-pop', role: 'group', 'aria-label': 'Público' });
-      const catBox = h('div', { class: 'rx-cats' });
+      const catBox = h('select', { class: 'rx-catsel', 'aria-label': 'Área', onchange: e => { st.cat = e.target.value; list(); openFirst(); } });
       const ul = h('ul', { class: 'rx-list' });
       side.append(h('label', { class: 'gs rx-search' }, u.icon('search'), search), popSeg, catBox, ul);
 
       const setUrl = () => { try { const s = st.sel.length === 1 ? '/' + st.sel[0] : st.cat ? '/c:' + st.cat : ''; history.replaceState(null, '', '#/receitas' + s); } catch (e) { } };
       function chips() {
         popSeg.innerHTML = '';
-        [['', 'Todos'], ['a', 'Adulto'], ['c', 'Criança']].forEach(([v, l]) => popSeg.append(h('button', { type: 'button', class: st.pop === v ? 'on' : '', 'aria-pressed': st.pop === v ? 'true' : 'false', onclick: () => { st.pop = v; chips(); list(); } }, l)));
+        [['', 'Todos'], ['a', 'Adulto'], ['c', 'Criança']].forEach(([v, l]) => popSeg.append(h('button', { type: 'button', class: st.pop === v ? 'on' : '', 'aria-pressed': st.pop === v ? 'true' : 'false', onclick: () => { st.pop = v; chips(); list(); if (st.sel.length && !visible().some(r => r.id === st.sel[0])) openFirst(); } }, l)));
         catBox.innerHTML = '';
-        [['', 'Todas']].concat(CATS.map(c => [c[0], c[1]])).forEach(([v, l]) => catBox.append(h('button', { type: 'button', class: 'rx-cat' + (st.cat === v ? ' on' : ''), 'aria-pressed': st.cat === v ? 'true' : 'false', onclick: () => { st.cat = v; chips(); list(); setUrl(); } }, l)));
+        [['', 'Todas as áreas']].concat(CATS.map(c => [c[0], c[1]])).forEach(([v, l]) => { const o = h('option', { value: v }, l); if (st.cat === v) o.selected = true; catBox.append(o); });
       }
+      const visible = (q, cat) => {
+        const parts = q ? u.norm(q.trim()).split(/\s+/).filter(Boolean) : [], c = cat == null ? st.cat : cat;
+        return R.filter(r => (!st.pop || (st.pop === 'c' ? r.ped : !r.ped)) && (!c || r.c === c) &&
+          (!parts.length || parts.every(p => u.norm(r.t + ' ' + r.kw + ' ' + (r.ped ? 'criança pediatria' : 'adulto')).includes(p))));
+      };
+      const openRx = id => { Object.keys(BL).forEach(k => delete BL[k]); st.sel = [id]; st.edit = null; st.inc = {}; try { localStorage.setItem('drb_rx_last', id); } catch (e) { } list(); render(); setUrl(); };
+      const openFirst = () => { const r = visible('')[0]; if (r) openRx(r.id); else { st.sel = []; render(); setUrl(); } };
+      const catT = id => (CATS.find(c => c[0] === id) || [])[1] || '';
       function list() {
         ul.innerHTML = '';
-        const q = u.norm(st.q.trim()), parts = q ? q.split(/\s+/) : [];
-        const rs = R.filter(r => (!st.pop || (st.pop === 'c' ? r.ped : !r.ped)) && (!st.cat || r.c === st.cat) &&
-          (!parts.length || parts.every(p => u.norm(r.t + ' ' + r.kw + ' ' + (r.ped ? 'criança pediatria' : 'adulto')).includes(p))));
+        const rs = visible(st.q);
         if (!rs.length) { ul.append(h('li', { class: 'rx-empty' }, 'Nenhuma receita encontrada. Tente outro termo ou limpe os filtros.')); return; }
         let lastCat = null;
         rs.forEach(r => {
           if (!st.cat && r.c !== lastCat) { lastCat = r.c; ul.append(h('li', { class: 'rx-h' }, CATS.find(c => c[0] === r.c)[1])); }
           const on = st.sel.includes(r.id);
           ul.append(h('li', { class: 'rx-item' + (on ? ' on' : '') },
-            h('button', { type: 'button', class: 'rx-open', onclick: () => { st.sel = [r.id]; st.edit = null; list(); render(); setUrl(); if (window.innerWidth < 1000) doc.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
+            h('button', { type: 'button', class: 'rx-open', onclick: () => { openRx(r.id); if (window.innerWidth < 1000) window.scrollTo(0, 0); } },
               h('span', { class: 'rx-t' }, r.t), r.ped && h('span', { class: 'rx-tag' }, 'criança')),
             h('button', { type: 'button', class: 'rx-add', title: on ? 'Remover da receita' : 'Somar à receita aberta', 'aria-label': (on ? 'Remover ' : 'Somar ') + r.t,
               onclick: () => { st.sel = on ? st.sel.filter(x => x !== r.id) : st.sel.concat(r.id); st.edit = null; list(); render(); setUrl(); } }, on ? '−' : '+')));
@@ -128,6 +153,7 @@
       const isInc = (key, it) => st.inc[key] != null ? st.inc[key] : !it.opt;
       function render() {
         doc.innerHTML = '';
+        root.classList.toggle('has-sel', !!st.sel.length);
         if (!st.sel.length) {
           doc.append(h('div', { class: 'rx-blank' }, h('h2', null, 'Escolha um diagnóstico'),
             h('p', null, 'Toque em uma receita para abrir. Use o botão + para somar outra (por exemplo, IVAS + amoxicilina). Itens marcados como opção ficam desmarcados até você incluir.')));
@@ -135,9 +161,20 @@
         }
         const c = CTX(), rs = st.sel.map(id => R.find(r => r.id === id));
         const needKg = rs.some(r => (r.need || '').includes('kg')), needAge = rs.some(r => (r.need || '').includes('age'));
+        // seletor de receita (celular) e somar outra
+        const mkSel = (cls, label, first, onpick) => {
+          const sel = h('select', { class: cls, 'aria-label': label, onchange: e => { const v = e.target.value; if (v) onpick(v); } });
+          if (first) sel.append(h('option', { value: '' }, first));
+          let lc = null, og = null;
+          visible('', '').forEach(r => { if (r.c !== lc) { lc = r.c; og = h('optgroup', { label: catT(r.c) }); sel.append(og); } const o = h('option', { value: r.id }, r.t); if (!first && r.id === st.sel[0]) o.selected = true; og.append(o); });
+          return sel;
+        };
+        const back = h('button', { type: 'button', class: 'rx-btn rx-back', onclick: () => { st.sel = []; list(); render(); setUrl(); window.scrollTo(0, 0); } }, '‹ Lista');
+        doc.append(h('div', { class: 'desc-pick rx-pick' }, back, h('label', { class: 'desc-pl' }, h('span', { class: 'lbl' }, 'Receita'), mkSel('desc-psel', 'Receita', '', id => openRx(id)))));
         // cabeçalho com receitas selecionadas
-        doc.append(h('div', { class: 'rx-sel' }, rs.map(r => h('span', { class: 'rx-chip' }, r.t,
-          st.sel.length > 1 && h('button', { type: 'button', 'aria-label': 'Remover ' + r.t, onclick: () => { st.sel = st.sel.filter(x => x !== r.id); st.edit = null; list(); render(); setUrl(); } }, '×')))));
+        doc.append(h('div', { class: 'rx-sel' }, rs.map(r => h('span', { class: 'rx-chip' + (rs.length === 1 ? ' solo' : '') }, r.t,
+          st.sel.length > 1 && h('button', { type: 'button', 'aria-label': 'Remover ' + r.t, onclick: () => { st.sel = st.sel.filter(x => x !== r.id); st.edit = null; list(); render(); setUrl(); } }, '×'))),
+          mkSel('rx-addsel', 'Somar outra receita', '+ Somar outra receita', id => { if (!st.sel.includes(id)) st.sel = st.sel.concat(id); st.edit = null; list(); render(); setUrl(); })));
         if (needKg || needAge) {
           const p = D.S.patient;
           const fk = h('label', { class: 'pf' }, h('span', null, 'Peso'), h('span', { class: 'pfin' }, h('input', { inputmode: 'decimal', value: p.kg || '', 'aria-label': 'Peso', oninput: e => { p.kg = e.target.value; D.S.vals = {}; D.savePatient(); paper(); } }), h('span', { class: 'u' }, 'kg')));
@@ -173,8 +210,8 @@
                 const cb = h('input', { type: 'checkbox', 'aria-label': 'Incluir ' + val(x.it.n, c2), onchange: e => { st.inc[x.key] = e.target.checked; paper(); } }); cb.checked = on;
                 pp.append(h('label', { class: 'rx-it' + (on ? '' : ' off') }, cb,
                   h('span', { class: 'rx-num' }, on ? n + '.' : ''),
-                  h('span', { class: 'rx-body' }, h('span', { class: 'rx-n' }, val(x.it.n, c2), h('span', { class: 'rx-qt' }, val(x.it.q, c2)), x.it.opt && h('span', { class: 'rx-opt' }, 'opção')),
-                    h('span', { class: 'rx-p' }, val(x.it.p, c2)))));
+                  h('span', { class: 'rx-body' }, h('span', { class: 'rx-n' }, ...rich(x.it.n, c2, x.key + ':n', h), h('span', { class: 'rx-qt' }, ...rich(x.it.q, c2, x.key + ':q', h)), x.it.opt && h('span', { class: 'rx-opt' }, 'opção')),
+                    h('span', { class: 'rx-p' }, ...rich(x.it.p, c2, x.key + ':p', h)))));
               });
             });
             if (comp.ori.length) pp.append(h('div', { class: 'rx-ori' }, h('b', null, 'ORIENTAÇÕES: '), comp.ori.join(' ')));
@@ -194,7 +231,11 @@
         function fb(t, done) { const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = t; document.body.append(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { } ta.remove(); }
         paper();
       }
-      chips(); list(); render();
+      chips(); list();
+      if (!st.sel.length) {
+        let last = null; try { last = localStorage.getItem('drb_rx_last'); } catch (e) { }
+        if (!st.cat && last && R.find(r => r.id === last)) openRx(last); else openFirst();
+      } else render();
       return root;
     }
   };

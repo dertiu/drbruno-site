@@ -7,7 +7,7 @@
       { id: 'med', c: '#e9b766', title: 'Medicações e infusões' },
       { id: 'rx', c: '#e6a3c4', title: 'Receitas prontas' },
       { id: 'cir', c: '#ee9474', title: 'Cirurgia e trauma' },
-      { id: 'desc', c: '#e8c48a', title: 'Descrições cirúrgicas' },
+      { id: 'desc', c: '#e8c48a', title: 'Descrições cirúrgicas' }, { id: 'aih', c: '#a8c8e8', title: 'SIGTAP e AIH' },
       { id: 'pront', c: '#d9b8a0', title: 'Prontuário e textos prontos' },
       { id: 'ped', c: '#71cbe3', title: 'Pediatria e emergência' },
       { id: 'esc', c: '#a9cf7c', title: 'Escores clínicos' },
@@ -69,6 +69,7 @@
     chev: '<path d="M9 6l6 6-6 6"/>',
     home: '<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
     reset: '<path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5"/>',
     down: '<path d="M12 4v12M6 11l6 6 6-6M5 21h14"/>'
   };

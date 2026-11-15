@@ -101,7 +101,7 @@
   }
   const dropIf = (lines, keep, rx) => lines.filter((l, i) => i === keep || !rx.test(l));
   const addOnce = (lines, rx, o) => rx.test(lines.join('\n')) ? lines : insertOpt(lines, o);
-  const APF = l => /ap[eê]ndice/i.test(l) && /(identificad|edemac|hiperem|inflam|aument|necros|perfur|fase|grau|compat|supurad|calibre|bloqueio)/i.test(l);
+  const APF = l => /ap[eê]ndice/i.test(l) && /(identificad|edemac|hiperem|inflam|aument|necros|perfur|fase|grau|compat|supurad|calibre|bloqueio|apendicite)/i.test(l);
   const DESCR = /purulent|\bpus\b|abscesso|bloqueio|necros|perfura|fezes em cavidade|l[ií]quido (livre|claro)|desserosid|fibrina (em|aderida)|presen[cç]a de fibrina/i;
   const ACTION = /^\s*(drenagem|lavagem|colet|passagem|coloca|posiciona|aspira|realizad|isolamento|ligadura|sec[cç]|dissec|retirad|envi|identifica[dç][ao]s? (áreas|[aá]rea) de perfura[cç][aã]o em ceco)/i;
   const LOWRM = /drenagem de abscesso|lavagem|cultura|colet(ad|a)[oa]? (de )?l[ií]quido|\bdrenos?\b|penrose|sulctor|suctor/i;
@@ -126,7 +126,7 @@
     const low = vl ? ['1', '2'].indexOf(v) >= 0 : ['1', '2'].indexOf(v) >= 0;
     let ls = f.s.split('\n').filter(x => tidy(x));
     const k = setFinding(ls, APF, (vl ? GV : GF)[v]);
-    ls = ls.filter((l, i) => i === k || !(DESCR.test(l) && !ACTION.test(l)));
+    ls = ls.map((l, i) => i !== k && DESCR.test(l) && !ACTION.test(l) && /^\s*invent[áa]rio/i.test(l) ? 'Inventário da cavidade' : l).filter((l, i) => i === k || !(DESCR.test(l) && !ACTION.test(l)));
     const k2 = ls.indexOf((vl ? GV : GF)[v]) >= 0 ? ls.indexOf((vl ? GV : GF)[v]) : ls.findIndex(l => l.indexOf((vl ? GV : GF)[v]) >= 0);
     if (low) ls = dropIf(ls, k2, LOWRM);
     if (hi) { ls = addOnce(ls, /lavagem/i, O.lavagem); if (!/cultura/i.test(ls.join(' '))) { const j = ls.findIndex(l => l.indexOf((vl ? GV : GF)[v]) >= 0); ls.splice(j + 1, 0, O.cultura.x); } }
@@ -161,7 +161,7 @@
       { k: 'q', l: 'Achado', o: [['elet', 'Sem inflamação', 'colelitíase, paredes finas'], ['aguda', 'Colecistite aguda', 'paredes espessadas e edemaciadas'], ['gang', 'Gangrenosa', 'necrose de parede'], ['dif', 'Escleroatrófica', 'aderências firmes, dissecção difícil']], tf: cvlTf },
       { k: 'dr', l: 'Dreno', o: [['sem', 'Sem dreno'], ['com', 'Com dreno']], tf: (f, v) => drTf(f, v, 'vb') }] },
     hing: { t: 'Herniorrafia inguinal', d: { ld: 'D', sx: 'H', rec: 'pri', dr: 'sem' }, ax: [
-      { k: 'ld', l: 'Lado', o: [['D', 'Direita'], ['E', 'Esquerda'], ['B', 'Bilateral']], can: (a, b) => a !== 'B' && b !== 'B', tf: (f, v, mv) => { if (mv && mv !== v) ['dx', 'cp', 'cr', 's'].forEach(k => { f[k] = swapSide(f[k]); }); } },
+      { k: 'ld', l: 'Lado', o: [['D', 'Direita'], ['E', 'Esquerda'], ['B', 'Bilateral']], can: (a, b) => a !== 'B' && b !== 'B', tf: (f, v, mv) => { if (mv && mv !== v) ['dx', 'cp', 'cr', 's'].forEach(k => { f[k] = swapSide(f[k]); }); else if (!mv) { const w = v === 'D' ? 'direita' : 'esquerda'; f.s = f.s.replace(/___\s*\(\s*(direita|esquerda|indireta)[^)]*\)/gi, m => /^___\s*\(\s*(direita|esquerda)\s*\//i.test(m) ? w : m).replace(/(regi[aã]o inguinal|inguinotomia) ___/gi, '$1 ' + w); } } },
       { k: 'sx', l: 'Paciente', o: SEXO },
       { k: 'rec', l: 'Hérnia', o: [['pri', 'Primária'], ['rec', 'Recidivada']] },
       { k: 'dr', l: 'Dreno', o: [['sem', 'Sem dreno'], ['com', 'Com dreno']], tf: (f, v) => drTf(f, v, 'hing') }] },
@@ -205,6 +205,8 @@
   }
   const DEST = [['RECO', 'a RECO'], ['RPA', 'a RPA'], ['UTI', 'a UTI'], ['Enfermaria', 'a enfermaria']];
 
+  const UP = t => String(t || '').toLocaleUpperCase('pt-BR');
+  const same = (a, b) => UP(tidy(a)) === UP(tidy(b));
   const tidy = s => String(s || '').replace(/\s+/g, ' ').trim();
 
   function load(cb) {
@@ -231,6 +233,18 @@
     }
   };
 
+  const nrm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // códigos SIGTAP de cada família conforme os eixos escolhidos (o modelo pode ter sido adaptado de outra fase, lado etc.)
+  const FSG = {
+    hing: ax => ax.rec === 'rec' ? '0407040110' : ax.ld === 'B' ? '0407040099' : '0407040102',
+    apend: () => '0407020039', apendvl: () => '0407020047', cvl: () => '0407030034'
+  };
+  const FSET = { hing: ['0407040110', '0407040099', '0407040102'] };
+  function famSg(fm, ax, sg) {
+    const fn = FSG[fm]; if (!fn) return sg;
+    const main = fn(ax || {}), drop = FSET[fm] || [main];
+    return [main].concat(sg.filter(c => c !== main && drop.indexOf(c) < 0));
+  }
   function build(h, root, side, doc, sub) {
     const DATA = window.DRB_DESC, CATS = DATA.cats;
     const all = () => loadMine().map(m => Object.assign({ mine: true, c: 'my' }, m)).concat(DATA.m);
@@ -282,7 +296,8 @@
     const mark = () => root.classList.toggle('has-sel', !!st.sel);
 
     function fresh(m) {
-      return { an: m.an || '', dx: m.dx || '', cp: m.cp || m.t, cr: m.cr || m.cp || m.t, tipo: m.tipo || tipoDe(m), rel: m.rel || 'Procedimento sem intercorrências.', s: (m.s || []).join('\n'), num: true, ld: m.ld || '', on: {}, base: (m.s || []).join(' ') };
+      const up = (m.s || []).length > 2 && (m.s || []).join(' ').replace(/[^A-Za-zÀ-ú]/g, '').replace(/[^a-zà-ú]/g, '').length < 0.05 * (m.s || []).join('').length;
+      return { up, an: m.an || '', dx: m.dx || '', cp: m.cp || m.t, cr: m.cr || m.cp || m.t, tipo: m.tipo || tipoDe(m), rel: m.rel || 'Procedimento sem intercorrências.', s: (m.s || []).join('\n'), num: true, ld: m.ld || '', on: {}, base: (m.s || []).join(' '), sg: (m.sg || []).slice(), cid: m.cid || '', sgOn: m.sgOn !== false, cp0: m.cp || m.t, cr0: m.cr || m.cp || m.t };
     }
     function render() {
       doc.innerHTML = '';
@@ -298,7 +313,9 @@
       if (F && !st.ax) { st.ax = Object.assign({}, F.d); F.ax.forEach(a => { const v = (m.x || {})[a.k]; if (v) st.ax[a.k] = v; }); }
       if (!st.f) {
         st.f = fresh(m); st.f.ad = [];
-        if (F) F.ax.forEach(a => { const mv = (m.x || {})[a.k] || ''; if (mv !== st.ax[a.k] && a.tf) { a.tf(st.f, st.ax[a.k], mv); st.f.ad.push(a.l.split(' (')[0].toLowerCase()); } });
+        if (F) F.ax.forEach(a => { const mv = (m.x || {})[a.k] || ''; if (mv !== st.ax[a.k] && a.tf) { a.tf(st.f, st.ax[a.k], mv); if (!(a.k === 'ld' && !mv)) st.f.ad.push(a.l.split(' (')[0].toLowerCase()); } });
+        if (st.f.up) st.f.s = UP(st.f.s);
+        if (F) { st.f.sg = famSg(m.fm, st.ax, st.f.sg); st.f.cp0 = st.f.cp; st.f.cr0 = st.f.cr; }
         st.f.gen = st.f.s;
       }
       const f = st.f;
@@ -349,27 +366,73 @@
       const optBox = ops.length && h('div', { class: 'desc-opts' }, h('span', { class: 'lbl' }, 'Marque o que foi feito ou encontrado para incluir na descrição'),
         h('div', { class: 'desc-optl' }, ops.map(o => { const c = h('input', { type: 'checkbox', onchange: e => {
           let ls = f.s.split('\n');
-          if (e.target.checked) { ls = insertOpt(ls.filter(x => tidy(x)), o); f.on[o.id] = 1; } else { ls = ls.filter(x => tidy(x) !== o.x); delete f.on[o.id]; }
+          const ox = f.up ? UP(o.x) : o.x;
+          if (e.target.checked) { ls = insertOpt(ls.filter(x => tidy(x)), Object.assign({}, o, { x: ox })); f.on[o.id] = 1; } else { ls = ls.filter(x => !same(x, o.x)); delete f.on[o.id]; }
           f.s = ls.join('\n'); ta.value = f.s; grow(); chk();
-          if (e.target.checked) { const p = f.s.indexOf(o.x); try { ta.setSelectionRange(p, p + o.x.length); } catch (x) { } }
-        } }); c.checked = f.s.split('\n').some(x => tidy(x) === o.x); return h('label', { class: 'desc-opt', title: o.x }, c, h('span', null, o.l)); })));
+          if (e.target.checked) { const p = f.s.indexOf(ox); try { ta.setSelectionRange(p, p + ox.length); } catch (x) { } }
+        } }); c.checked = f.s.split('\n').some(x => same(x, o.x)); return h('label', { class: 'desc-opt', title: o.x }, c, h('span', null, o.l)); })));
       const destBox = h('div', { class: 'desc-dest' }, h('span', { class: 'hint' }, 'Destino:'), DEST.map(([l, x]) => h('button', { type: 'button', class: 'rx-cat', onclick: () => { f.rel = 'Procedimento sem intercorrências, paciente encaminhado para ' + x + ' aos cuidados da equipe anestésica.'; relF.querySelector('textarea').value = f.rel; chk(); } }, l)));
       const numB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.num = e.target.checked; } }), 'Numerar os passos ao copiar');
       numB.firstChild.checked = f.num;
       const warn = h('div');
+      const fillP = D.fillPanel({ get: () => f.s, set: t => { f.s = t; ta.value = t; grow(); chk(true); } });
       const relF = h('label', { class: 'fld full' }, h('span', { class: 'lbl' }, 'Relatório da cirurgia (intercorrências e destino)'), h('textarea', { class: 'desc-rel', rows: 3, oninput: e => { f.rel = e.target.value; chk(); } }, f.rel));
       const form = h('div', { class: 'panel desc-form' },
-        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Os campos com ___ precisam ser completados (lado, número do dreno, volume…).'), ta, numB, warn);
-      const dataP = h('div', { class: 'panel desc-form' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Dados do relatório'), h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox));
-      function chk() {
-        const n = ((f.s + ' ' + f.cp + ' ' + f.cr + ' ' + f.rel).match(/_{3,}/g) || []).length;
+        h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Descrição cirúrgica'), fillP, optBox || '', h('p', { class: 'hint' }, 'Um passo por linha. Edite à vontade.'), ta, numB, warn);
+      /* SIGTAP: procedimentos da descrição, cirurgias múltiplas e CID */
+      const S = D.sig;
+      const sgBox = h('div', { class: 'dsg' });
+      const sideW = t => /bilateral/i.test(t) ? '' : /direit/i.test(t) ? ' À DIREITA' : /esquerd/i.test(t) ? ' À ESQUERDA' : '';
+      const sgName = () => !f.sg.length ? '' : f.sg.length > 1 ? S.label(S.MULT) : S.label(f.sg[0]);
+      function applySig() {
+        if (!S || !S.ready) return;
+        if (f.sgOn && f.sg.length) { const n = sgName(); f.cp = n; f.cr = n + (f.sg.length === 1 && !/BILATERAL/.test(n) ? (m.fm === 'hing' && st.ax ? ({ D: ' À DIREITA', E: ' À ESQUERDA' }[st.ax.ld] || '') : sideW(f.cr0)) : ''); }
+        else { f.cp = f.cp0; f.cr = f.cr0; }
+        dataP.querySelectorAll('input[data-k=cp],input[data-k=cr]').forEach(i => { i.value = f[i.dataset.k]; });
+      }
+      function sgDraw() {
+        sgBox.innerHTML = '';
+        if (!S) return;
+        if (!S.ready) { sgBox.append(h('p', { class: 'hint' }, 'Carregando os códigos SIGTAP…')); S.load(err => { if (!err && sgBox.isConnected) { if (f.sgOn && !f.sgDone) { f.sgDone = true; applySig(); } sgDraw(); } }); return; }
+        if (f.sgOn && !f.sgDone) { f.sgDone = true; applySig(); }
+        const chips = h('div', { class: 'dsg-chips' }, f.sg.map((c, i) => h('div', { class: 'dsg-chip' }, h('code', null, S.fmt(c)), h('span', null, (S.by[c] || {}).n || 'código não encontrado na tabela'),
+          h('button', { type: 'button', 'aria-label': 'Tirar ' + S.fmt(c), onclick: () => { f.sg.splice(i, 1); if (!f.sg.length) f.cid = ''; applySig(); sgDraw(); } }, '×'))));
+        const pick = S.picker(h, c => { if (f.sg.indexOf(c) < 0) f.sg.push(c); applySig(); sgDraw(); }, { ph: f.sg.length ? 'Adicionar outro procedimento (nome ou código)' : 'Buscar o procedimento SIGTAP (nome ou código)' });
+        const multN = f.sg.length > 1 ? h('div', { class: 'alert info sg-mult' }, u.icon('alert'), h('span', null, 'Mais de um procedimento: na AIH vai ', h('b', null, S.label(S.MULT)), ', e a descrição lista o código e o nome de cada um.')) : '';
+        const onB = h('label', { class: 'desc-chk' }, h('input', { type: 'checkbox', onchange: e => { f.sgOn = e.target.checked; applySig(); } }), 'Usar o código e o nome SIGTAP em Cirurgia proposta e realizada');
+        onB.firstChild.checked = f.sgOn;
+        // CID principal compatível com o 1º procedimento
+        const first = S.by[f.sg[0]] || { d: [] };
+        const cidLbl = h('span', { class: 'lbl' }, 'CID principal' + (f.cid ? ': ' + S.fmtCid(f.cid) + ' ' + S.cidName(f.cid) : ''));
+        const cidIn = h('input', { type: 'search', class: 'fillp-in', placeholder: first.d.length ? 'Filtrar os ' + first.d.length + ' CID compatíveis' : 'Digite o CID ou a doença', oninput: () => cidRes() });
+        const cres = h('div', { class: 'sg-res' });
+        function cidRes() {
+          cres.innerHTML = '';
+          const within = first.d.length ? first.d : null;
+          let q = cidIn.value.trim(), rs;
+          if (!q && within) { const w = nrm(f.dx + ' ' + f.cr0).split(/[^a-z0-9]+/).filter(x => x.length > 3 && !/^(cirurg|aguda$|para$|com$)/.test(x)); rs = S.searchCid('', within).map(x => ({ x, n: w.filter(t => x.k.indexOf(t) >= 0).length })).sort((a, b) => b.n - a.n).map(o => o.x); }
+          else rs = q ? S.searchCid(q, within) : [];
+          rs.slice(0, q ? 10 : 5).forEach(x => cres.append(h('button', { type: 'button', class: 'sg-opt' + (f.cid === x.c ? ' on' : ''), onclick: () => { f.cid = f.cid === x.c ? '' : x.c; sgDraw(); } }, h('code', null, S.fmtCid(x.c)), h('span', null, x.n))));
+        }
+        const cidF = f.sg.length ? h('div', { class: 'fld full' }, cidLbl, cidIn, cres) : '';
+        const aihB = f.sg.length ? h('button', { type: 'button', class: 'rx-btn' }, u.icon('copy'), 'Copiar texto da AIH') : '';
+        if (aihB) aihB.onclick = () => S.copy(S.aihText(f.sg, f.cid), aihB, 'Copiar texto da AIH');
+        const sigL = h('a', { class: 'hint', href: '#/sigtap' + (f.sg[0] ? '/' + f.sg[0] : '') }, 'Abrir na tabela SIGTAP');
+        sgBox.append(h('span', { class: 'lbl' }, 'Procedimentos SIGTAP (competência ' + S.v.slice(4) + '/' + S.v.slice(0, 4) + ')'), chips, pick, multN, f.sg.length ? onB : '', cidF, h('div', { class: 'sg-row' }, aihB, sigL));
+        if (f.sg.length) cidRes();
+      }
+      const dataP = h('div', { class: 'panel desc-form' }, h('h3', { class: 'sec', style: 'border:0;padding:0;margin:0 0 4px' }, 'Dados do relatório'), sgBox, h('div', { class: 'fgrid' }, inp('an', 'Tipo de anestesia', 'Geral, raquianestesia, local…'), inp('dx', 'Diagnóstico pré-operatório', 'Ex.: apendicite aguda'), inp('cp', 'Cirurgia proposta'), inp('cr', 'Cirurgia realizada'), tipo, relF, destBox));
+      function chk(now) {
+        if (now === true) fillP.now(); else fillP.refresh();
+        const n = ((f.cp + ' ' + f.cr + ' ' + f.rel).match(/_{3,}/g) || []).length;
         warn.innerHTML = '';
-        if (n) warn.append(h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, n === 1 ? 'Falta completar 1 campo marcado com ___.' : 'Faltam completar ' + n + ' campos marcados com ___.')));
+        if (n) warn.append(h('div', { class: 'alert warn' }, u.icon('alert'), h('span', null, n === 1 ? 'Falta completar 1 campo ___ nos dados do relatório.' : 'Faltam completar ' + n + ' campos ___ nos dados do relatório.')));
       }
       const steps = () => f.s.split('\n').map(tidy).filter(Boolean);
       const body = () => steps().map((x, i) => (f.num ? (i + 1) + '. ' : '') + x).join('\n');
+      const sgLines = () => { const S = D.sig, L = []; if (!f.sg.length || !S || !S.ready) return L; if (f.cid) L.push('CID principal: ' + S.fmtCid(f.cid) + ' ' + S.cidName(f.cid)); if (f.sg.length > 1) { L.push('Procedimentos realizados (SIGTAP):'); f.sg.forEach((c, i) => L.push((i + 1) + '. ' + S.label(c))); } else if (!f.sgOn) L.push('Procedimento SIGTAP: ' + S.label(f.sg[0])); return L; };
       const full = () => [
-        f.an && 'Tipo de anestesia: ' + tidy(f.an), f.dx && 'Diagnóstico pré-operatório: ' + tidy(f.dx), f.cp && 'Cirurgia proposta: ' + tidy(f.cp), f.cr && 'Cirurgia realizada: ' + tidy(f.cr),
+        f.an && 'Tipo de anestesia: ' + tidy(f.an), f.dx && 'Diagnóstico pré-operatório: ' + tidy(f.dx), f.cp && 'Cirurgia proposta: ' + tidy(f.cp), f.cr && 'Cirurgia realizada: ' + tidy(f.cr), ...sgLines(),
         'Cirurgia tipo: ' + f.tipo, f.rel && 'Relatório da cirurgia: ' + tidy(f.rel)].filter(Boolean).concat(['', 'Descrição cirúrgica:', body()]).join('\n');
       const copyBtn = (label, get, cls) => {
         const b = h('button', { type: 'button', class: cls || 'copy' }, u.icon('copy'), label);
@@ -382,19 +445,20 @@
       function fb(t, done) { const x = h('textarea', { style: 'position:fixed;opacity:0' }); x.value = t; document.body.append(x); x.select(); try { document.execCommand('copy'); done(); } catch (e) { } x.remove(); }
       const acts = h('div', { class: 'rx-actions' },
         copyBtn('Copiar relatório', full, 'copy rx-copy'),
-        copyBtn('Copiar descrição', body));
+        copyBtn('Copiar descrição', () => { const S = D.sig; return f.sg.length > 1 && S && S.ready ? ['Procedimentos realizados (SIGTAP):'].concat(f.sg.map((c, i) => (i + 1) + '. ' + S.label(c)), ['', body()]).join('\n') : body(); }));
       const acts2 = h('div', { class: 'rx-actions desc-more' },
         h('button', { type: 'button', class: 'rx-btn', onclick: () => { st.f = null; render(); } }, 'Restaurar o modelo'),
         h('button', { type: 'button', class: 'rx-btn', onclick: saveMy }, m.mine ? 'Atualizar meu modelo' : 'Salvar em Meus modelos'),
         m.mine && h('button', { type: 'button', class: 'rx-btn adm-del', onclick: () => { if (!confirm('Excluir “' + m.t + '” de Meus modelos?')) return; saveMine(loadMine().filter(x => x.id !== m.id)); st.sel = null; chips(); list(); render(); setUrl(); } }, 'Excluir meu modelo'));
       function saveMy() {
         const l = loadMine();
-        const rec = { bc: m.bc || m.c, id: m.mine ? m.id : 'meu-' + Date.now().toString(36), t: m.mine ? m.t : (prompt('Nome do seu modelo:', m.t) || '').trim(), a: 'Meu modelo', base: m.mine ? m.base : m.id, an: f.an, dx: f.dx, cp: f.cp, cr: f.cr, tipo: f.tipo, rel: f.rel, s: steps() };
+        const rec = { bc: m.bc || m.c, id: m.mine ? m.id : 'meu-' + Date.now().toString(36), t: m.mine ? m.t : (prompt('Nome do seu modelo:', m.t) || '').trim(), a: 'Meu modelo', base: m.mine ? m.base : m.id, an: f.an, dx: f.dx, cp: f.sgOn ? f.cp0 : f.cp, cr: f.sgOn ? f.cr0 : f.cr, tipo: f.tipo, rel: f.rel, s: steps(), sg: f.sg.slice(), cid: f.cid, sgOn: f.sgOn };
         if (!rec.t) return;
         const i = l.findIndex(x => x.id === rec.id); if (i >= 0) l[i] = rec; else l.unshift(rec);
         saveMine(l); st.sel = rec.id; st.f = fresh(rec); chips(); list(); render(); setUrl();
       }
       doc.append(head, famBox, form, dataP, acts, acts2);
+      sgDraw();
       requestAnimationFrame(grow); chk();
     }
     chips(); list();
@@ -412,7 +476,9 @@
     ['abd', 'Laparotomia e intestino', 'lise de bridas, enterectomia, peritoneostomia'], ['colon', 'Cólon, reto e estomias', 'colectomias, Hartmann, retossigmoidectomia'],
     ['procto', 'Proctologia', 'hemorroidectomia, abscesso perianal, cisto pilonidal'], ['pele', 'Pele, partes moles e abscessos', 'debridamento, lipoma, drenagem de abscesso'],
     ['cp', 'Cabeça e pescoço', 'tireoidectomia, submandibular, esvaziamento'], ['torac', 'Torácica e via aérea', 'traqueostomia, drenagem, lobectomia'],
-    ['onco', 'Oncologia, ginecologia e urologia', 'histerectomia, nefrectomia, Whipple'], ['proc', 'Procedimentos à beira do leito', 'cateter central, portocath, paracentese, toracocentese']
+    ['onco', 'Oncologia e ginecologia', 'histerectomia, Whipple, exenteração'], ['proc', 'Procedimentos à beira do leito', 'cateter central, PAI, portocath, paracentese, gastrostomia'],
+    ['uro', 'Urologia', 'duplo J, ureterolitotripsia, vasectomia, torção testicular, prostatectomia'], ['vasc', 'Vascular e amputações', 'amputações, pé diabético, safenectomia, pseudoaneurisma'],
+    ['ped', 'Cirurgia pediátrica', 'piloromiotomia, cateter 4 Fr, drenagem torácica'], ['plast', 'Plástica e face', 'osteossíntese de órbita'], ['tx', 'Transplante e captação', 'captação de fígado']
   ].map(([c, t, d]) => ({ id: 'desc-' + c, g: 'desc', title: t, desc: 'Descrições: ' + d, kw: 'descrição cirúrgica ' + t + ' ' + d, href: '#/descricoes/' + ({ apend: 'f:apend', vb: 'f:cvl', hing: 'f:hing', parede: 'f:humb' }[c] || 'c:' + c) }));
   // a busca do topo também encontra cada modelo (carrega os dados na primeira vez que a busca é usada)
   D.onSearch = (D.onSearch || []).concat(done => load(err => {
