@@ -1152,8 +1152,8 @@ const state = {
   verFeitas: false,
   verTodasConf: false,
   verConfRecentes: false,
-  gd: { modeloId: '', q: '', pq: '', sel: {}, mle: {}, criarPasta: true, resultados: [], rodando: false },
-  mleRefs: {},
+  gd: { modeloId: '', q: '', pq: '', sel: {}, campos: {}, criarPasta: true, resultados: [], rodando: false },
+  camposProc: {}, formCampos: null,
   view: 'painel',
   dados: {},
   agenda: [],
@@ -2037,12 +2037,28 @@ function renderGerador(it, q) {
   inp.addEventListener('input', () => { renderGerador(it, inp.value); const n = $('#modelo-q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); });
 }
 
-/* ---------- MLE: folhas do comprovante e da decisão ao gerar ---------- */
+/* ---------- Campos que o modelo pede ao gerar (folhas, valores, endereço, frase do caso, trechos [[ ]]) ---------- */
 function ehModeloMle(md) { return !!md && /\bMLE\b|LEVANTAMENTO|RECEBER OS HONORARIOS/.test(chave(md.nome)); }
 function ehFormularioMle(md) { return ehModeloMle(md) && /FORMULARIO/.test(chave(md.nome)); }
 function ehEprocM(m) { return sistemaDe(m).tipo === 'EPROC'; }
+// o que perguntar: vem do servidor (lido do texto do modelo); sem isso, pelo nome (MLE)
+function camposDoModelo(md) {
+  if (!md) return null;
+  if (md.campos && Array.isArray(md.campos.c)) return { c: md.campos.c.slice(), t: (md.campos.t || []).slice(), m: md.campos.m || '' };
+  if (ehModeloMle(md)) return { c: ehFormularioMle(md) ? ['comp', 'valor'] : ['comp', 'dec', 'valor'], t: [], m: '' };
+  return null;
+}
+function precisaCampos(cm) { return !!cm && (cm.c.length > 0 || cm.t.length > 0); }
+function juntarCampos(a, b) {
+  if (!b) return a;
+  const c = a.c.slice();
+  b.c.forEach(k => { if (c.indexOf(k) < 0) c.push(k); });
+  const ordem = ['comp', 'dec', 'valor', 'hon', 'endereco', 'motivo'];
+  return { c: ordem.filter(k => c.indexOf(k) >= 0), t: a.t, m: a.m || b.m };
+}
 // o outro documento do par (petição <-> formulário), começando pelo mais provável
 function parMle(md, m) {
+  if (!ehModeloMle(md)) return [];
   const form = ehFormularioMle(md);
   const n40 = /N40/.test(chave(md.nome)) || ehNucleo(m);
   const cands = modelosVisiveis(state.modelos).filter(x => x.id !== md.id && ehModeloMle(x) && ehFormularioMle(x) !== form && !/^COPIA DE/.test(chave(x.nome)));
@@ -2051,38 +2067,78 @@ function parMle(md, m) {
   const nota = x => (/N40/.test(chave(x.nome)) === n40 ? 4 : 0) + (/BASE/.test(chave(x.nome)) ? 1 : 0) - (sobra(x) ? 2 : 0);
   return cands.sort((a, b) => nota(b) - nota(a));
 }
-function mleGuardado(m) { return (state.mleRefs || {})[digitos(m['PROCESSO'])] || {}; }
-function guardarMle(m, v) { state.mleRefs = state.mleRefs || {}; state.mleRefs[digitos(m['PROCESSO'])] = v; }
-function camposMleHtml(m, v, pre) {
-  const ev = ehEprocM(m);
-  return '<div class="form-grid">' +
-    '<div class="campo"><label for="' + pre + 'comp">' + (ev ? 'Evento do comprovante de depósito' : 'Fl. do comprovante de depósito') + '</label><input id="' + pre + 'comp" value="' + esc(v.comp || '') + '" placeholder="' + (ev ? 'ex.: 50' : 'ex.: 86') + '" inputmode="numeric" autocomplete="off"></div>' +
-    '<div class="campo"><label for="' + pre + 'dec">' + (ev ? 'Evento da decisão' : 'Fl. da decisão') + '</label><input id="' + pre + 'dec" value="' + esc(v.dec || '') + '" placeholder="' + (ev ? 'ex.: 62' : 'ex.: 129') + '" inputmode="numeric" autocomplete="off"></div>' +
-    '<div class="campo largo"><label for="' + pre + 'valor">Valor depositado</label><input id="' + pre + 'valor" value="' + esc(v.valor != null ? v.valor : (m['HONORARIOS'] || '')) + '" placeholder="ex.: 15 UFESP ou R$ 4.000,00" autocomplete="off"></div>' +
-    '</div>';
+// valores lembrados por processo enquanto o app está aberto (gerou a petição, o formulário já vem preenchido)
+function camposGuardados(m) { return (state.camposProc || {})[digitos(m['PROCESSO'])] || {}; }
+function guardarCampos(m, v) {
+  state.camposProc = state.camposProc || {};
+  const k = digitos(m['PROCESSO']), atual = state.camposProc[k] || {};
+  ['comp', 'dec', 'valor', 'hon', 'endereco', 'motivo'].forEach(x => { if (v[x] != null) atual[x] = v[x]; });
+  state.camposProc[k] = atual;
 }
-function lerCamposMle(pre) {
-  const val = id => (($('#' + pre + id) || {}).value || '').trim();
-  return { comp: val('comp'), dec: val('dec'), valor: val('valor') };
+function enderecoAgenda(m) {
+  const s = slotDoProcesso(m, state.agenda) || (state.agenda || []).filter(a => chave(a.nome) && chave(a.nome) === chave(periciadoDe(m))).pop();
+  return s && s.local && chave(s.local) !== 'CONSULTORIO' ? s.local : '';
+}
+function camposHtml(m, cm, v, pre) {
+  const ev = ehEprocM(m);
+  const inp = (k, rot, val, ph, extra) => '<div class="campo' + (extra || '') + '"><label for="' + pre + k + '">' + esc(rot) + '</label><input id="' + pre + k + '" value="' + esc(val || '') + '" placeholder="' + esc(ph) + '" autocomplete="off"' + (k === 'comp' || k === 'dec' ? ' inputmode="numeric"' : '') + '></div>';
+  const F = {
+    comp: () => inp('comp', ev ? 'Evento do comprovante de depósito' : 'Fl. do comprovante de depósito', v.comp, ev ? 'ex.: 50' : 'ex.: 86'),
+    dec: () => inp('dec', ev ? 'Evento da decisão' : 'Fl. da decisão', v.dec, ev ? 'ex.: 62' : 'ex.: 129'),
+    valor: () => inp('valor', 'Valor depositado', v.valor != null ? v.valor : m['HONORARIOS'], 'ex.: 15 UFESP ou R$ 4.000,00'),
+    hon: () => inp('hon', 'Honorários citados no texto', v.hon != null ? v.hon : m['HONORARIOS'], 'ex.: R$ 1.200,00'),
+    endereco: () => inp('endereco', 'Endereço da perícia domiciliar', v.endereco != null ? v.endereco : enderecoAgenda(m), 'Rua, número, bairro, cidade/SP', ' largo'),
+    motivo: () => '<div class="campo largo"><label for="' + pre + 'motivo">Frase sobre o caso (substitui a que começa com "Trata-se de")</label><textarea id="' + pre + 'motivo" rows="3" placeholder="' + esc(cm.m ? 'No modelo: ' + cm.m : 'Trata-se de...') + '">' + esc(v.motivo || '') + '</textarea></div>'
+  };
+  let h = '<div class="form-grid">' + cm.c.map(k => F[k] ? F[k]() : '').join('');
+  cm.t.forEach((tx, i) => {
+    const val = v.trechos && v.trechos[i] != null ? v.trechos[i] : tx;
+    h += '<div class="campo largo"><label for="' + pre + 't' + i + '">Completar: [[' + esc(tx.length > 50 ? tx.slice(0, 50) + '...' : tx) + ']]</label>' +
+      (tx.length > 60 ? '<textarea id="' + pre + 't' + i + '" rows="3">' + esc(val) + '</textarea>' : '<input id="' + pre + 't' + i + '" value="' + esc(val) + '" autocomplete="off">') + '</div>';
+  });
+  return h + '</div>';
+}
+function lerCampos(pre, cm) {
+  const val = id => { const el = $('#' + pre + id); return el ? el.value.trim() : null; };
+  const v = {};
+  cm.c.forEach(k => { v[k] = val(k) || ''; });
+  if (cm.t.length) v.trechos = cm.t.map((x, i) => val('t' + i) || '');
+  return v;
+}
+function dicaCampos(m, cm) {
+  const ev = ehEprocM(m), partes = [];
+  if (cm.c.indexOf('comp') >= 0 || cm.c.indexOf('dec') >= 0) partes.push((ev ? 'o número do evento' : 'a folha') + ' de cada peça (o app escreve ' + (ev ? '"evento 50"' : '"fls. 86"') + ' no lugar certo)');
+  if (cm.c.indexOf('valor') >= 0 || cm.c.indexOf('hon') >= 0) partes.push('o valor');
+  if (cm.c.indexOf('endereco') >= 0) partes.push('o endereço da perícia');
+  if (cm.c.indexOf('motivo') >= 0) partes.push('a frase sobre este caso');
+  if (cm.t.length) partes.push('os trechos entre [[ ]]');
+  return 'Informe ' + partes.join(', ').replace(/, ([^,]*)$/, ' e $1') + '. Esses trechos saem sem realce amarelo. O que ficar em branco continua em amarelo para conferir.';
 }
 
-function renderFormMle(it, md) {
-  const m = it.m, ev = ehEprocM(m), par = parMle(md, m), v = mleGuardado(m);
+function renderFormCampos(it, md, juntoId) {
+  const m = it.m, par = parMle(md, m);
+  if (juntoId === undefined) juntoId = par.length ? par[0].id : '';
+  const junto = juntoId ? state.modelos.find(x => x.id === juntoId) : null;
+  const cm = juntarCampos(camposDoModelo(md) || { c: [], t: [], m: '' }, junto ? camposDoModelo(junto) : null);
+  state.formCampos = { id: md.id, cm: cm };
+  const v = Object.assign({}, camposGuardados(m));
   $('#modal-titulo').textContent = 'Gerar documento';
   let h = '<div class="gerado"><span class="tipo-arq doc">DOCS</span><div><b>' + esc(md.nome) + '</b><small>' + esc((m['REQUERENTE'] || '') + ' · ' + formatarCNJ(m['PROCESSO'])) + '</small></div></div>' +
-    '<p class="dica-gerador">Informe ' + (ev ? 'o número do evento' : 'a folha') + ' de cada peça nos autos. O app escreve no lugar certo (' + (ev ? '"evento 50"' : '"fls. 86"') + ') e o documento sai sem realce amarelo nesses trechos. Deixe em branco o que o modelo não cita.</p>' +
-    camposMleHtml(m, v, 'mle-');
-  if (par.length) h += '<div class="campo" style="margin-top:12px"><label for="mle-junto">Gerar junto</label><select id="mle-junto"><option value="">Só este documento</option>' +
-    par.map((x, i) => '<option value="' + esc(x.id) + '"' + (i === 0 ? ' selected' : '') + '>' + esc(x.nome) + '</option>').join('') + '</select></div>';
+    '<p class="dica-gerador">' + esc(dicaCampos(m, cm)) + '</p>' + camposHtml(m, cm, v, 'cg-');
+  if (par.length) h += '<div class="campo" style="margin-top:12px"><label for="cg-junto">Gerar junto</label><select id="cg-junto"><option value="">Só este documento</option>' +
+    par.map(x => '<option value="' + esc(x.id) + '"' + (x.id === juntoId ? ' selected' : '') + '>' + esc(x.nome) + '</option>').join('') + '</select></div>';
   $('#modal-corpo').innerHTML = h;
-  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" data-acao="mle-gerar" data-id="' + esc(md.id) + '">Gerar</button><span class="esp"></span><button type="button" class="btn pequeno" data-acao="doc-gerar">Voltar aos modelos</button>';
-  const c = $('#mle-comp'); if (c && !c.value) c.focus();
+  $('#modal-rodape').innerHTML = '<button type="button" class="btn primario" data-acao="campos-gerar" data-id="' + esc(md.id) + '">Gerar</button><span class="esp"></span><button type="button" class="btn pequeno" data-acao="doc-gerar">Voltar aos modelos</button>';
+  const sel = $('#cg-junto');
+  if (sel) sel.addEventListener('change', () => { guardarCampos(m, lerCampos('cg-', cm)); renderFormCampos(it, md, sel.value); });
+  const primeiro = document.querySelector('#modal-corpo .form-grid input, #modal-corpo .form-grid textarea');
+  if (primeiro && !primeiro.value) primeiro.focus();
 }
 
-async function gerarDocumento(it, id, mle, juntoId) {
+async function gerarDocumento(it, id, campos, juntoId) {
   const md = state.modelos.find(x => x.id === id);
   if (!md) return;
-  if (ehModeloMle(md) && mle === undefined) { renderFormMle(it, md); return; }
+  if (campos === undefined && (precisaCampos(camposDoModelo(md)) || parMle(md, it.m).length)) { renderFormCampos(it, md); return; }
   const ids = [id].concat(juntoId && juntoId !== id ? [juntoId] : []);
   const nomes = ids.map(x => (state.modelos.find(y => y.id === x) || {}).nome || 'documento');
   $('#modal-corpo').innerHTML = '<p class="carregando">Gerando ' + nomes.map(n => '"' + esc(n) + '"').join(' e ') + '... pode levar alguns segundos.</p>';
@@ -2092,7 +2148,11 @@ async function gerarDocumento(it, id, mle, juntoId) {
   for (const x of ids) {
     try {
       const corpo = { aba: it.aba, linha: it.linha, processoEsperado: it.m['PROCESSO'], modeloId: x, criarPasta: true };
-      if (mle) corpo.mle = mle;
+      if (campos) {
+        corpo.campos = Object.assign({}, campos);
+        if (x !== id) delete corpo.campos.trechos; // os trechos [[ ]] são do modelo escolhido
+        corpo.mle = { comp: campos.comp || '', dec: campos.dec || '', valor: campos.valor || '' }; // servidor da Versão 15 antiga
+      }
       const j = await api('gerarDoc', corpo);
       if (!j.ok) throw new Error(erroApi(j, 'Erro ao gerar o documento'));
       feitos.push(j);
@@ -2116,7 +2176,7 @@ async function gerarDocumento(it, id, mle, juntoId) {
   }
   if (erro) h += '<div class="alerta-box vermelho" style="cursor:default"><span>⚠️</span><span>' + esc(erro) + '</span></div>';
   h += conferir.length ? '<div class="alerta-box" style="cursor:default"><span>🖍️</span><span>Confira antes de protocolar: <b>' + esc(conferir.join(', ')) + '</b>. Esses trechos estão marcados em amarelo no documento; tire o realce depois de conferir.</span></div>'
-    : '<p class="vazio">Preenchido' + (mle ? ', sem trechos em amarelo' : '') + '. Revise no Docs e baixe em PDF.</p>';
+    : '<p class="vazio">Preenchido' + (campos ? ', sem trechos em amarelo' : '') + '. Revise no Docs e baixe em PDF.</p>';
   $('#modal-corpo').innerHTML = h;
   $('#modal-rodape').innerHTML = (feitos.length === 1 ? '<a class="btn primario" href="' + esc(ult.url) + '" target="_blank" rel="noopener">' + ic('externo') + 'Abrir no Docs</a><a class="btn" href="' + esc(linkPdf(ult.id)) + '" target="_blank" rel="noopener">PDF</a><button type="button" class="btn" data-acao="doc-ver-ultimo">Visualizar aqui</button>' : '') +
     '<span class="esp"></span><button type="button" class="btn pequeno" data-acao="doc-gerar">Gerar outro</button>';
@@ -3183,11 +3243,12 @@ function renderDocumentos() {
     h += '<h3 class="sub">Outros processos</h3><input type="search" id="gd-pq" class="busca-modelo" placeholder="Buscar por nome ou número para incluir..." value="' + esc(gd.pq) + '" autocomplete="off">' +
       (outros.length || marcadosFora.length ? '<div class="arquivos">' + marcadosFora.concat(outros).map(linhaSel).join('') + '</div>' : '');
     const n = Object.keys(gd.sel).filter(k => gd.sel[k]).length;
-    if (ehModeloMle(modelo)) {
+    const cmLote = camposDoModelo(modelo);
+    if (precisaCampos(cmLote)) {
       const marcados = lista.filter(it => gd.sel[it.linha]);
-      h += '<h3 class="sub">Folhas para o MLE</h3>' + (marcados.length
-        ? '<p class="dica" style="margin:0 0 8px">Informe a folha (e-SAJ) ou o evento (eproc) do comprovante de depósito e da decisão de cada processo. Em branco, o trecho fica em amarelo para conferir.</p>' +
-          marcados.map(it => '<div class="mle-lote" data-gd-mle="' + it.linha + '"><b>' + esc(it.m['REQUERENTE']) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (sistemaDe(it.m).tipo || 'sistema?')) + '</small>' + camposMleHtml(it.m, Object.assign({}, mleGuardado(it.m), (gd.mle || {})[it.linha] || {}), 'gdm' + it.linha + '-') + '</div>').join('')
+      h += '<h3 class="sub">Dados para preencher</h3>' + (marcados.length
+        ? '<p class="dica" style="margin:0 0 8px">' + esc(dicaCampos(marcados[0].m, cmLote)) + '</p>' +
+          marcados.map(it => '<div class="campos-lote" data-gd-campos="' + it.linha + '"><b>' + esc(it.m['REQUERENTE']) + '</b><small>' + esc(formatarCNJ(it.m['PROCESSO']) + ' · ' + (sistemaDe(it.m).tipo || 'sistema?')) + '</small>' + camposHtml(it.m, cmLote, Object.assign({}, camposGuardados(it.m), (gd.campos || {})[it.linha] || {}), 'gdc' + it.linha + '-') + '</div>').join('')
         : '<p class="vazio">Marque os processos acima.</p>');
     }
     h += '<label class="check" style="margin-top:14px"><input type="checkbox" id="gd-pasta"' + (gd.criarPasta ? ' checked' : '') + '> Criar a pasta do periciado no Drive se ainda não existir</label>' +
@@ -3203,7 +3264,8 @@ function renderDocumentos() {
   const cp = $('#gd-pasta');
   if (cp) cp.addEventListener('change', () => { gd.criarPasta = cp.checked; });
   document.querySelectorAll('[data-gd-linha]').forEach(cb => cb.addEventListener('change', () => { gd.sel[cb.dataset.gdLinha] = cb.checked; render(); }));
-  document.querySelectorAll('[data-gd-mle]').forEach(bl => bl.addEventListener('input', () => { gd.mle = gd.mle || {}; gd.mle[bl.dataset.gdMle] = lerCamposMle('gdm' + bl.dataset.gdMle + '-'); }));
+  const cmL = camposDoModelo(modelo);
+  document.querySelectorAll('[data-gd-campos]').forEach(bl => bl.addEventListener('input', () => { gd.campos = gd.campos || {}; gd.campos[bl.dataset.gdCampos] = lerCampos('gdc' + bl.dataset.gdCampos + '-', cmL); }));
 }
 
 function renderResultadosGd() {
@@ -3231,9 +3293,14 @@ async function gerarLote() {
     x.status = 'gerando'; renderResultadosGd();
     try {
       const corpo = { aba: 'PERICIAS', linha: x.it.linha, processoEsperado: x.it.m['PROCESSO'], modeloId: gd.modeloId, criarPasta: gd.criarPasta };
-      if (ehModeloMle(state.modelos.find(md => md.id === gd.modeloId))) {
-        corpo.mle = Object.assign({ valor: x.it.m['HONORARIOS'] || '' }, mleGuardado(x.it.m), (gd.mle || {})[x.it.linha] || {});
-        guardarMle(x.it.m, corpo.mle);
+      const cmG = camposDoModelo(state.modelos.find(md => md.id === gd.modeloId));
+      if (precisaCampos(cmG)) {
+        const padrao = { valor: x.it.m['HONORARIOS'] || '', hon: x.it.m['HONORARIOS'] || '', endereco: enderecoAgenda(x.it.m), trechos: cmG.t.slice() };
+        const todos = Object.assign(padrao, camposGuardados(x.it.m), (gd.campos || {})[x.it.linha] || {});
+        corpo.campos = { trechos: todos.trechos };
+        cmG.c.forEach(k => { corpo.campos[k] = todos[k] || ''; }); // só o que este modelo pede
+        corpo.mle = { comp: corpo.campos.comp || '', dec: corpo.campos.dec || '', valor: corpo.campos.valor || '' };
+        guardarCampos(x.it.m, corpo.campos);
       }
       const j = await api('gerarDoc', corpo);
       if (!j.ok) throw new Error(erroApi(j, 'Erro ao gerar'));
@@ -3244,7 +3311,7 @@ async function gerarLote() {
   }
   gd.rodando = false;
   gd.sel = {};
-  gd.mle = {};
+  gd.campos = {};
   const ok = gd.resultados.filter(x => x.status === 'ok').length;
   toast(ok + ' de ' + gd.resultados.length + ' documento(s) gerado(s)', { erro: ok < gd.resultados.length });
   if (state.view === 'documentos') render();
@@ -3671,7 +3738,7 @@ document.addEventListener('click', ev => {
     case 'gd-modelo': {
       const gd = state.gd;
       if (gd.rodando) break;
-      gd.modeloId = ds.id; gd.pq = ''; gd.sel = {}; gd.mle = {}; gd.resultados = [];
+      gd.modeloId = ds.id; gd.pq = ''; gd.sel = {}; gd.campos = {}; gd.resultados = [];
       const md = state.modelos.find(x => x.id === ds.id);
       processosParaModelo(md, ativos()).forEach(it => { gd.sel[it.linha] = true; });
       render();
@@ -3735,12 +3802,12 @@ document.addEventListener('click', ev => {
     case 'doc-enviar': { const inp = $('#docs-file'); if (inp) inp.click(); break; }
     case 'doc-gerar': { const it = fichaItem(); if (it) abrirGerador(it); break; }
     case 'modelo-gerar': { const it = fichaItem(); if (it) gerarDocumento(it, ds.id); break; }
-    case 'mle-gerar': {
-      const it = fichaItem();
-      if (!it) break;
-      const v = lerCamposMle('mle-');
-      guardarMle(it.m, v);
-      gerarDocumento(it, ds.id, v, ($('#mle-junto') || {}).value || '');
+    case 'campos-gerar': {
+      const it = fichaItem(), fc = state.formCampos;
+      if (!it || !fc) break;
+      const v = lerCampos('cg-', fc.cm);
+      guardarCampos(it.m, v);
+      gerarDocumento(it, ds.id, v, ($('#cg-junto') || {}).value || '');
       break;
     }
     case 'pasta-criar': {
