@@ -1,0 +1,27 @@
+{
+  // Configuração do Cloudflare Workers para brunomichels.com.br
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "drbruno-site",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    // estas rotas passam primeiro pelo servidor (login e proteção do código)
+    "run_worker_first": ["/api/*", "/calculadoras", "/calculadoras/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "drbruno",
+      // troque pelo ID do banco criado no painel do Cloudflare (Storage & Databases > D1)
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  // limpeza diária de sessões vencidas (04:00 em Brasília)
+  "triggers": { "crons": ["0 7 * * *"] },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "preview_urls": false
+}

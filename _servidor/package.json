@@ -1,0 +1,15 @@
+{
+  "name": "drbruno-site-servidor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && wrangler dev",
+    "deploy": "node build.mjs && wrangler deploy"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "javascript-obfuscator": "^5.10.1",
+    "wrangler": "^4.162.0"
+  }
+}

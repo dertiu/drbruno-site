@@ -550,6 +550,8 @@
     if (favs.length) nav.append(sideGroup_({ id: 'fav', title: 'Favoritos', c: 'var(--read)' }, favs, true));
     let lastSec = null;
     D.groups.forEach(g => { const ts = D.sorted(g.id); if (!ts.length) return; if (g.s && g.s !== lastSec) { lastSec = g.s; nav.append(h('div', { class: 'side-sec' }, D.sections[g.s] || '')); } nav.append(sideGroup_(g, ts)); });
+    const hk = window.DRB_HOOKS || {};
+    if (hk.sideHead) el.append(hk.sideHead()); // conta do usuário (versão com login)
     el.append(nav);
     const foot = h('div', { class: 'side-f' },
       h('button', { type: 'button', class: 'sl', onclick: () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; u.SAVE('drb_theme', S.theme); setTheme(); sideRefresh(sideKeyT, sideKeyG); } }, icon(S.theme === 'dark' ? 'sun' : 'moon', false, 18), S.theme === 'dark' ? 'Tema claro' : 'Tema escuro'),
