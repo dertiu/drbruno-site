@@ -162,6 +162,7 @@ A página tem duas abas: **Gerar documentos** e **Modelos**.
 2. Escolha o modelo. O app marca os processos que precisam dele agora (ex.: perícias futuras do Núcleo para AGENDAMENTO N40; MLE a peticionar para PETICAO MLE). Dá para desmarcar ou buscar outros.
 3. Gerar: cria um documento por processo na pasta de cada periciado (cria a pasta se faltar), com links para abrir e baixar em PDF.
 - O formulário MLE recebe o número do processo e o valor nominal do depósito, e o não comparecimento recebe a data da perícia. Modelos do Núcleo mantêm o endereçamento original.
+- **MLE (petição e formulário)**: ao escolher um modelo com MLE, LEVANTAMENTO ou RECEBER OS HONORARIOS no nome, o app pede a folha (e-SAJ) ou o evento (eproc) do comprovante de depósito e da decisão, e o valor depositado (já vem com os honorários da planilha). Na ficha dá para gerar junto o outro documento do par (petição com o formulário). O servidor (Versão 15) escreve "fls. 86" ou "evento 50" conforme o SISTEMA, decide qual trecho é do comprovante e qual é da decisão pela palavra mais próxima antes dele (depósito/comprovante ou decisão/despacho), acerta "de fls."/"do evento" e "às fls."/"no evento", e esses trechos saem sem amarelo. Em branco, continuam marcados para conferir. Na geração em lote, cada processo marcado ganha os mesmos campos. Modelos novos também podem usar {{FL_COMPROVANTE}}, {{FL_DECISAO}} e {{VALOR_DEPOSITO}}.
 
 ### Modelos
 - Lista todos os modelos da pasta Arquivos base, por grupo, com quantos processos precisam de cada um agora.
