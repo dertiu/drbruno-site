@@ -96,10 +96,15 @@ const MIGRATIONS = [
   CREATE INDEX IF NOT EXISTS subs_user ON subscriptions(user_id);`
 ];
 
-let ready = null;
-export function ensureSchema(env) {
-  if (!ready) ready = migrate(env).catch(e => { ready = null; throw e; });
-  return ready;
+/* Nunca guardar uma Promise entre pedidos: se o pedido que criou a Promise termina antes dela
+   (por exemplo, o navegador desiste de um ícone), ela nunca termina e todos os pedidos seguintes
+   daquele servidor dão erro 500. Cada pedido roda a própria conferência (é rápida e repetível:
+   só CREATE ... IF NOT EXISTS) até que uma termine. */
+let pronto = false;
+export async function ensureSchema(env) {
+  if (pronto) return;
+  await migrate(env);
+  pronto = true;
 }
 async function migrate(env) {
   let v = 0;

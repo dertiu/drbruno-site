@@ -69,11 +69,13 @@ const MIGRATIONS = [
   );`
 ];
 
-let ready = null;
-export function ensureSchemaP(env) {
+/* sem Promise guardada entre pedidos (veja ensureSchema em ../db.js) */
+let pronto = false;
+export async function ensureSchemaP(env) {
   if (!env.DBP) throw new Error('Banco do /pericias (DBP) não configurado');
-  if (!ready) ready = migrate(env).catch(e => { ready = null; throw e; });
-  return ready;
+  if (pronto) return;
+  await migrate(env);
+  pronto = true;
 }
 async function migrate(env) {
   let v = 0;
