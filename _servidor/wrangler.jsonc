@@ -15,16 +15,20 @@
     {
       "binding": "DB",
       "database_name": "drbruno",
-      // troque pelo ID do banco criado no painel do Cloudflare (Storage & Databases > D1)
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "9ac81953-42d1-49b4-8dba-5a01c78e86b2"
     },
     {
       // banco separado do /pericias (usuários da equipe, sessões e registro)
       "binding": "DBP",
       "database_name": "drbruno_pericias",
-      "database_id": "00000000-0000-0000-0000-000000000001"
+      "database_id": "af000d02-6578-4f18-8d56-9f7f0e671ea4"
     }
   ],
+  // configurações que não são segredo (os segredos ficam no painel do Cloudflare: SEGREDO_SITE)
+  "vars": {
+    // endereço do Apps Script da planilha de perícias; sozinho não serve para nada sem a assinatura do site
+    "PERICIAS_GAS_URL": "https://script.google.com/macros/s/AKfycbxdYxLIQNJuQEgIYvz3RdlwitgR_7aUYoywhYoB0abE4oigpZttzAEdwUeNfpWTmoc4/exec"
+  },
   // limpeza diária de sessões vencidas (04:00 em Brasília)
   "triggers": { "crons": ["0 7 * * *"] },
   "observability": { "enabled": true },

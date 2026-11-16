@@ -17,6 +17,12 @@ def adm(path, body=None, c=None):
     h=dict(H); h['Cookie']='__Host-drb='+c
     return (requests.post(B+'/api/'+path,data=json.dumps(body),headers=h) if body is not None else requests.get(B+'/api/'+path,headers=h)).json()
 
+async def esperar_visivel(pg, sel, seg=40):
+    for _ in range(seg*2):
+        if await pg.is_visible(sel): return True
+        await pg.wait_for_timeout(500)
+    raise TimeoutError('não apareceu: '+sel)
+
 async def app_flow(br):
     C=admin_cookie()
     ctx=await br.new_context(viewport={'width':390,'height':844}, device_scale_factor=2, is_mobile=True, has_touch=True)
@@ -24,7 +30,7 @@ async def app_flow(br):
     pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.on('console', lambda m: errs.append(m.text) if m.type=='error' else None)
     await pg.goto(B+'/calculadoras/'); await pg.wait_for_selector('.gt-card')
-    await pg.wait_for_selector('text=Entrar como visitante')
+    await esperar_visivel(pg, 'text=Entrar como visitante')
     await pg.screenshot(path=OUT+'01-entrada-celular.png')
     chk(await pg.is_visible('text=Criar conta'),'tela de entrada com visitante, entrar e criar conta')
     await pg.click('text=Entrar como visitante')
@@ -145,8 +151,9 @@ async def main():
             await c.close()
         # entrada no desktop
         c=await br.new_context(viewport={'width':1280,'height':860}); pg=await c.new_page()
-        adm('admin/config',{'config':{'visitante':True}},C); await asyncio.sleep(21)
-        await pg.goto(B+'/calculadoras/'); await pg.wait_for_selector('text=Entrar como visitante'); await pg.screenshot(path=OUT+'09-entrada-desktop.png')
+        C=admin_cookie()  # sessão nova: as entradas no painel acima passam do limite de aparelhos e derrubam a antiga
+        r=adm('admin/config',{'config':{'visitante':True}},C); chk(r.get('ok'),'visitante religado'); await asyncio.sleep(21)
+        await pg.goto(B+'/calculadoras/'); await esperar_visivel(pg, 'text=Entrar como visitante'); await pg.screenshot(path=OUT+'09-entrada-desktop.png')
         await c.close()
         await br.close()
     bad=[m for c,m in res if not c]; print('\n%d ok, %d falharam'%(len(res)-len(bad),len(bad))); sys.exit(1 if bad else 0)

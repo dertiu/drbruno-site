@@ -46,8 +46,11 @@ function appSoSite_() {
   return PropertiesService.getScriptProperties().getProperty('SO_SITE') === '1';
 }
 
-// 1) Rode UMA vez (escolha appCriarChaveSite no seletor de funções e clique em Executar).
-//    Copie o valor que aparece no Registro de execução para o segredo PERICIAS_CHAVE do Cloudflare.
+// 1) Chave do site. Jeito normal: Configurações do projeto (engrenagem à esquerda) > Propriedades do script >
+//    Adicionar propriedade do script: nome PROXY_CHAVE, valor = o PROXY_CHAVE calculado a partir do SEGREDO_SITE
+//    do Cloudflare. Salvar.
+//    Jeito alternativo: rodar appCriarChaveSite UMA vez e copiar o valor do Registro de execução para um
+//    segredo PERICIAS_CHAVE no Cloudflare (ele passa a valer no lugar do derivado do SEGREDO_SITE).
 function appCriarChaveSite() {
   const props = PropertiesService.getScriptProperties();
   let k = props.getProperty('PROXY_CHAVE');

@@ -1,12 +1,13 @@
 /* Senhas, sessões e regras de acesso */
 import { randomToken, sha256hex, clientIp, clientPlace, clientUa, DAY } from './util.js';
 import { hashSenha, conferirSenha, problemaSenha } from './comum/senha.js';
+import { segredos } from './comum/segredos.js';
 import { audit } from './db.js';
 
-/* ---------- senhas (ver comum/senha.js): calculadoras usam SENHA_PEPPER e SENHA_ITERACOES ---------- */
-const cfgSenha = env => ({ pepper: env && env.SENHA_PEPPER, iter: env && env.SENHA_ITERACOES });
-export const hashPassword = (pw, env) => hashSenha(pw, cfgSenha(env));
-export const checkPassword = (pw, stored, env) => conferirSenha(pw, stored, cfgSenha(env));
+/* ---------- senhas (ver comum/senha.js): pimenta das calculadoras sai do SEGREDO_SITE (comum/segredos.js) ---------- */
+const cfgSenha = async env => ({ pepper: (await segredos(env || {})).senhaPepper, iter: env && env.SENHA_ITERACOES });
+export const hashPassword = async (pw, env) => hashSenha(pw, await cfgSenha(env));
+export const checkPassword = async (pw, stored, env) => conferirSenha(pw, stored, await cfgSenha(env));
 export const passwordProblem = problemaSenha;
 
 /* ---------- sessões em cookie seguro (HttpOnly, inacessível ao JavaScript) ---------- */

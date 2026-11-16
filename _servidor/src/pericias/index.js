@@ -8,10 +8,11 @@ import { json, fail, readJson, HttpError, randomToken, sha256hex, safeEqual, cli
 import { hashSenha, conferirSenha, problemaSenha } from '../comum/senha.js';
 import { ensureSchemaP, getSettingsP, saveSettingsP, auditP, hitP } from './db.js';
 import { newSecret, checkTotp, otpauthUri, newBackupCodes, normBackup } from './totp.js';
+import { segredos, codigoConfiguracao, apagarCodigoConfiguracao } from '../comum/segredos.js';
 
 const COOKIE = '__Secure-pericias';
 const te = new TextEncoder();
-const cfgSenha = env => ({ pepper: env.PERICIAS_PEPPER, iter: env.SENHA_ITERACOES });
+const cfgSenha = async env => ({ pepper: (await segredos(env)).periciasPepper, iter: env.SENHA_ITERACOES });
 
 // arquivos que qualquer um pode baixar: a casca da tela de entrada (sem dados nem lógica do app)
 const PUBLICO = /^\/pericias\/(?:|index\.html|entrar\.js|entrar\.css|tema\.js|app\.css|logo-128\.webp|logo-192\.png|manifest\.webmanifest|eproc-atalho\.user\.js)$/;
@@ -126,7 +127,7 @@ async function nextStep(env, req, u, st) {
   return json({ ok: true, etapa: 'pronto', usuario: pub(u) }, 200, { 'Set-Cookie': cookie });
 }
 
-async function backupHash(env, code) { return sha256hex((env.PERICIAS_PEPPER || '') + '|' + normBackup(code)); }
+async function backupHash(env, code) { return sha256hex((await segredos(env)).periciasPepper + '|' + normBackup(code)); }
 async function makeBackup(env) {
   const codes = newBackupCodes();
   const hashes = [];
@@ -152,7 +153,7 @@ async function hmacHex(key, msg) {
 }
 async function assinado(env, user, acao) {
   const p = { u: user.chave, p: user.papel, a: acao, t: String(Date.now()), n: randomToken(12) };
-  p.s = await hmacHex(env.PERICIAS_CHAVE, [p.u, p.p, p.a, p.t, p.n].join('|'));
+  p.s = await hmacHex((await segredos(env)).periciasChave, [p.u, p.p, p.a, p.t, p.n].join('|'));
   return env.PERICIAS_GAS_URL + (env.PERICIAS_GAS_URL.includes('?') ? '&' : '?') + new URLSearchParams(p).toString();
 }
 async function chamarGas(target, body) {
@@ -170,7 +171,7 @@ async function proxy(req, env, ctx, url, s) {
   const acao = url.searchParams.get('acao') || '';
   if (!/^[a-zA-Z]{2,30}$/.test(acao) || acao === 'login' || acao === 'logout') return fail('Ação inválida.', 400);
   if (SO_PERITO.has(acao) && s.user.papel !== 'perito') return fail('Sem permissão.', 403);
-  if (!env.PERICIAS_GAS_URL || !env.PERICIAS_CHAVE) return fail('Servidor da planilha não configurado (PERICIAS_GAS_URL e PERICIAS_CHAVE).', 503);
+  if (!env.PERICIAS_GAS_URL || !(await segredos(env)).periciasChave) return fail('Servidor da planilha não configurado: falta o segredo SEGREDO_SITE no Cloudflare.', 503);
   const len = Number(req.headers.get('Content-Length') || 0);
   if (len > 30 * 1024 * 1024) return fail('Arquivo grande demais.', 413);
   const leitura = LEITURAS.has(acao);
@@ -192,7 +193,7 @@ async function proxy(req, env, ctx, url, s) {
 /* alterações feitas direto na planilha (fora do app): no máximo uma consulta por minuto ao Apps Script,
    para todos os aparelhos juntos. Se a planilha mudou sem passar pelo app, avisa os aparelhos. */
 async function conferirPlanilha(env, user) {
-  if (!env.PERICIAS_GAS_URL || !env.PERICIAS_CHAVE) return;
+  if (!env.PERICIAS_GAS_URL || !(await segredos(env)).periciasChave) return;
   const t = Date.now();
   const teste = env.PERICIAS_SYNC_TESTE === '1'; // só nos testes: confere a planilha a cada 2 s em vez de 60 s
   const r = await env.DBP.prepare("UPDATE p_settings SET value = ?1 WHERE key = 'carimbo_em' AND CAST(value AS INTEGER) < ?2").bind(String(t), t - (teste ? 2000 : 60000)).run();
@@ -224,7 +225,7 @@ async function conta(req, env, ctx, url, st) {
 
   if (path === 'eu' && m === 'GET') {
     const out = { ok: true, logado: !!s, usuario: s ? pub(s.user) : null, config: { contato_whatsapp: st.contato_whatsapp, exigir_2fa: st.exigir_2fa, sessao_dias: st.sessao_dias, sessao_max_dias: st.sessao_max_dias } };
-    if (!s) out.setup = !!env.PERICIAS_SETUP_CODE && (await users0()) === 0;
+    if (!s) out.setup = !!(await codigoConfiguracao(env.PERICIAS_SETUP_CODE, env.DBP, 'p_settings')) && (await users0()) === 0;
     return json(out);
   }
 
@@ -235,13 +236,13 @@ async function conta(req, env, ctx, url, st) {
     const cc = req.cf && req.cf.country;
     if (st.so_brasil && cc && cc !== 'BR') { await auditP(env, req, null, 'login recusado fora do Brasil', null, login + ' (' + cc + ')'); return fail('Acesso permitido só a partir do Brasil.', 403); }
     const u = validLogin(login) ? await env.DBP.prepare(`SELECT ${USER}, u.pass, u.totp_secret, u.totp_last, u.backup FROM p_users u WHERE u.login = ?1`).bind(login).first() : null;
-    const chk = await conferirSenha(body.senha, u && u.pass, cfgSenha(env));
+    const chk = await conferirSenha(body.senha, u && u.pass, await cfgSenha(env));
     if (!u || !chk.ok) {
       if (u) await auditP(env, req, null, 'senha errada', u.id, login);
       return fail(u && !u.pass ? 'Esta conta ainda não tem senha. Use o link de convite que você recebeu.' : 'Usuário ou senha incorretos.', 401);
     }
     if (u.status !== 'ativo') { await auditP(env, req, u, 'tentou entrar com a conta bloqueada', u.id, null); return fail('Conta bloqueada. Fale com o administrador.', 403); }
-    if (chk.rehash) await env.DBP.prepare('UPDATE p_users SET pass = ?1 WHERE id = ?2').bind(await hashSenha(body.senha, cfgSenha(env)), u.id).run();
+    if (chk.rehash) await env.DBP.prepare('UPDATE p_users SET pass = ?1 WHERE id = ?2').bind(await hashSenha(body.senha, await cfgSenha(env)), u.id).run();
     return await nextStep(env, req, u, st);
   }
 
@@ -275,7 +276,7 @@ async function conta(req, env, ctx, url, st) {
     const pp = problemaSenha(body.senha); if (pp) return fail(pp);
     if (tk.status !== 'ativo') return fail('Conta bloqueada. Fale com o administrador.', 403);
     await env.DBP.batch([
-      env.DBP.prepare('UPDATE p_users SET pass = ?1, pass_changed_at = ?2 WHERE id = ?3').bind(await hashSenha(body.senha, cfgSenha(env)), Date.now(), tk.id),
+      env.DBP.prepare('UPDATE p_users SET pass = ?1, pass_changed_at = ?2 WHERE id = ?3').bind(await hashSenha(body.senha, await cfgSenha(env)), Date.now(), tk.id),
       env.DBP.prepare('UPDATE p_tickets SET used = 1 WHERE user_id = ?1 AND kind IN (\'convite\', \'senha\')').bind(tk.id),
       env.DBP.prepare('DELETE FROM p_sessions WHERE user_id = ?1').bind(tk.id)
     ]);
@@ -285,10 +286,11 @@ async function conta(req, env, ctx, url, st) {
   }
 
   if (path === 'configurar' && m === 'POST') {
-    if (!env.PERICIAS_SETUP_CODE) return fail('Defina o segredo PERICIAS_SETUP_CODE no Cloudflare.', 403);
+    const codigoCfg = await codigoConfiguracao(env.PERICIAS_SETUP_CODE, env.DBP, 'p_settings');
+    if (!codigoCfg) return fail('Falta o código de configuração (segredo PERICIAS_SETUP_CODE ou linha codigo_configuracao no banco).', 403);
     if ((await users0()) > 0) return fail('O administrador já foi criado.', 409);
     const r = await hitP(env, 'setup:' + ip, 8, 3600000); if (!r.ok) throw tooMany(r);
-    const a = te.encode(String(body.codigo || '')), c = te.encode(String(env.PERICIAS_SETUP_CODE));
+    const a = te.encode(String(body.codigo || '')), c = te.encode(codigoCfg);
     if (a.length !== c.length || !safeEqual(a, c)) return fail('Código de configuração incorreto.', 401);
     const nome = clean(body.nome, 80), login = normLogin(body.login), chave = normChave(body.chave || login);
     if (nome.length < 2) return fail('Digite seu nome.');
@@ -297,8 +299,9 @@ async function conta(req, env, ctx, url, st) {
     const pp = problemaSenha(body.senha); if (pp) return fail(pp);
     const t = Date.now();
     const id = (await env.DBP.prepare("INSERT INTO p_users (chave, login, nome, papel, admin, pass, created_at, pass_changed_at) VALUES (?1, ?2, ?3, 'perito', 1, ?4, ?5, ?5)")
-      .bind(chave, login, nome, await hashSenha(body.senha, cfgSenha(env)), t).run()).meta.last_row_id;
+      .bind(chave, login, nome, await hashSenha(body.senha, await cfgSenha(env)), t).run()).meta.last_row_id;
     await auditP(env, req, { id, nome }, 'criou o administrador', id, 'usuário da planilha: ' + chave);
+    await apagarCodigoConfiguracao(env.DBP, 'p_settings');
     const u = await env.DBP.prepare(`SELECT ${USER}, u.pass, u.totp_secret, u.totp_last, u.backup FROM p_users u WHERE u.id = ?1`).bind(id).first();
     return await nextStep(env, req, u, st);
   }
@@ -357,11 +360,11 @@ async function conta(req, env, ctx, url, st) {
   if (path === 'senha' && m === 'POST') {
     const r = await hitP(env, 'pw:' + me.id, 10, 3600000); if (!r.ok) throw tooMany(r);
     const u = await env.DBP.prepare('SELECT pass FROM p_users WHERE id = ?1').bind(me.id).first();
-    if (!(await conferirSenha(body.atual, u && u.pass, cfgSenha(env))).ok) return fail('A senha atual não confere.', 401);
+    if (!(await conferirSenha(body.atual, u && u.pass, await cfgSenha(env))).ok) return fail('A senha atual não confere.', 401);
     const pp = problemaSenha(body.nova); if (pp) return fail(pp);
     if (body.nova === body.atual) return fail('A nova senha precisa ser diferente da atual.');
     await env.DBP.batch([
-      env.DBP.prepare('UPDATE p_users SET pass = ?1, pass_changed_at = ?2 WHERE id = ?3').bind(await hashSenha(body.nova, cfgSenha(env)), Date.now(), me.id),
+      env.DBP.prepare('UPDATE p_users SET pass = ?1, pass_changed_at = ?2 WHERE id = ?3').bind(await hashSenha(body.nova, await cfgSenha(env)), Date.now(), me.id),
       env.DBP.prepare('DELETE FROM p_sessions WHERE user_id = ?1 AND id != ?2').bind(me.id, s.id)
     ]);
     await auditP(env, req, me, 'trocou a senha', me.id, null);
@@ -398,7 +401,7 @@ async function conta(req, env, ctx, url, st) {
   if (path === '2fa/desativar' && m === 'POST') {
     if (st.exigir_2fa) return fail('As duas etapas são obrigatórias para todos. O administrador pode mudar isso nos ajustes.', 403);
     const u = await env.DBP.prepare('SELECT pass FROM p_users WHERE id = ?1').bind(me.id).first();
-    if (!(await conferirSenha(body.senha, u && u.pass, cfgSenha(env))).ok) return fail('Senha incorreta.', 401);
+    if (!(await conferirSenha(body.senha, u && u.pass, await cfgSenha(env))).ok) return fail('Senha incorreta.', 401);
     await env.DBP.prepare('UPDATE p_users SET totp_secret = NULL, totp_on = 0, totp_last = NULL, backup = NULL WHERE id = ?1').bind(me.id).run();
     await auditP(env, req, me, 'desativou as duas etapas', me.id, null);
     return json({ ok: true });

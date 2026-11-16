@@ -3,6 +3,7 @@ import { json, fail, readJson, HttpError, normEmail, validEmail, onlyDigits, cle
 import { getSettings, audit, hit } from './db.js';
 import { hashPassword, checkPassword, passwordProblem, createSession, enforceDeviceLimit, getSession, accessOf, grant, describeGrant, clearCookie } from './auth.js';
 import { adminApi } from './admin.js';
+import { codigoConfiguracao, apagarCodigoConfiguracao } from './comum/segredos.js';
 
 const te = new TextEncoder();
 const fmtDate = ms => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -37,7 +38,7 @@ async function me(env, s, st, extraHeaders, status = 200) {
     config: publicConfig(st, env),
     agora: Date.now()
   };
-  if (!s || !s.user) out.setup = (await needsSetup(env)) && !!env.ADMIN_SETUP_CODE;
+  if (!s || !s.user) out.setup = (await needsSetup(env)) && !!(await codigoConfiguracao(env.ADMIN_SETUP_CODE, env.DB, 'settings'));
   return json(out, status, extraHeaders);
 }
 
@@ -262,11 +263,12 @@ export async function api(req, env, ctx, url) {
     }
 
     if (path === '/api/configurar' && method === 'POST') {
-      if (!env.ADMIN_SETUP_CODE) return fail('Defina o segredo ADMIN_SETUP_CODE no Cloudflare para criar o administrador.', 403);
+      const codigoCfg = await codigoConfiguracao(env.ADMIN_SETUP_CODE, env.DB, 'settings');
+      if (!codigoCfg) return fail('Falta o código de configuração (segredo ADMIN_SETUP_CODE ou linha codigo_configuracao no banco).', 403);
       if (!(await needsSetup(env))) return fail('O administrador já foi criado. Use Entrar.', 409);
       const r = await hit(env, 'setup:' + ip, 8, 3600000); if (!r.ok) throw tooMany(r);
       const b = await readJson(req);
-      const a = te.encode(String(b.codigo || '')), c = te.encode(String(env.ADMIN_SETUP_CODE));
+      const a = te.encode(String(b.codigo || '')), c = te.encode(codigoCfg);
       if (a.length !== c.length || !safeEqual(a, c)) return fail('Código de configuração incorreto.', 401);
       const email = normEmail(b.email);
       if (!validEmail(email)) return fail('Digite um e-mail válido.');
@@ -279,6 +281,7 @@ export async function api(req, env, ctx, url) {
       else id = (await env.DB.prepare("INSERT INTO users (email, name, crm, crm_uf, whatsapp, pass, role, created_at, last_login_at, last_seen_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'admin', ?7, ?7, ?7)")
         .bind(email, p.name, p.crm, p.crm_uf, p.whatsapp, hash, t).run()).meta.last_row_id;
       adminExists = true;
+      await apagarCodigoConfiguracao(env.DB, 'settings');
       await audit(env, req, { id, name: p.name }, 'criou o administrador', id, null);
       if (s) await env.DB.prepare('DELETE FROM sessions WHERE id = ?1').bind(s.id).run();
       const { cookie } = await createSession(env, req, 'user', id);
