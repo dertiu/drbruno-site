@@ -79,7 +79,7 @@ async function migrate(env) {
 
 /* ---------- ajustes (editáveis no painel de usuários) ---------- */
 export const DEFAULTS_P = {
-  exigir_2fa: true,          // todos precisam da verificação em duas etapas
+  exigir_2fa: false,         // ligado: todos precisam da verificação em duas etapas (por enquanto, só login e senha)
   sessao_dias: 7,            // sem usar por N dias, pede login de novo
   sessao_max_dias: 30,       // mesmo usando, pede login de novo depois de N dias
   max_aparelhos: 3,

@@ -46,14 +46,16 @@ print('== primeiro administrador')
 adm = S()
 r = post(adm, 'configurar', {'codigo': 'errado', 'nome': 'Bruno', 'login': 'bruno', 'senha': 'SenhaForte2026'}); chk(r.status_code == 401, 'código errado recusado')
 r = post(adm, 'configurar', {'codigo': 'pericias-teste-123', 'nome': 'Dr. Bruno Thomás Michels', 'login': 'Bruno.Michels', 'chave': 'bruno', 'senha': 'SenhaForte2026'})
-j = r.json(); chk(r.ok and j['etapa'] == 'cadastrar' and len(j['segredo']) == 32, 'pede para cadastrar as duas etapas (obrigatórias)')
-sec_adm = j['segredo']
-r = post(adm, 'entrar/codigo', {'ticket': j['ticket'], 'codigo': '000000'}); chk(r.status_code == 401, 'código errado')
-r = post(adm, 'entrar/codigo', {'ticket': j['ticket'], 'codigo': totp(sec_adm)}); j = r.json()
-chk(r.ok and j['etapa'] == 'pronto' and len(j['recuperacao']) == 10, 'duas etapas ativadas, 10 códigos de recuperação')
-rec_adm = j['recuperacao']
+j = r.json(); chk(r.ok and j['etapa'] == 'pronto', 'padrão: entra só com login e senha (duas etapas opcionais)')
 sc = r.headers.get('Set-Cookie', '')
 chk('Path=/pericias' in sc and 'HttpOnly' in sc and 'SameSite=Strict' in sc and 'Secure' in sc, 'cookie só vale em /pericias, HttpOnly, Strict')
+chk(adm.get(B + '/pericias/conta/2fa/estado').json()['ativo'] is False, 'duas etapas desligadas no início')
+r = post(adm, '2fa/iniciar', {}); j = r.json(); sec_adm = j['segredo']
+r = post(adm, '2fa/ativar', {'ticket': j['ticket'], 'codigo': '000000'}); chk(r.status_code == 401, 'código errado')
+r = post(adm, '2fa/ativar', {'ticket': j['ticket'], 'codigo': totp(sec_adm)}); j = r.json()
+chk(r.ok and len(j['recuperacao']) == 10, 'quem quiser liga as duas etapas em Minha conta (10 códigos de recuperação)')
+rec_adm = j['recuperacao']
+r = post(adm, 'admin/ajustes', {'ajustes': {'exigir_2fa': True}}); chk(r.json()['ajustes']['exigir_2fa'] is True, 'administrador pode tornar obrigatórias')
 j = adm.get(B + '/pericias/conta/eu').json(); chk(j['logado'] and j['usuario']['chave'] == 'bruno' and j['usuario']['admin'] and j['usuario']['login'] == 'bruno.michels', 'sessão do administrador')
 r = post(S(), 'configurar', {'codigo': 'pericias-teste-123', 'nome': 'X', 'login': 'x', 'senha': 'SenhaForte2026'}); chk(r.status_code == 409, 'segundo administrador pelo código: recusado')
 chk(adm.get(B + '/pericias/app.js').status_code == 200 and adm.get(B + '/pericias/config.js').status_code == 200, 'com login, app.js e config.js liberados')

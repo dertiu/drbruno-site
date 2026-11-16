@@ -57,7 +57,7 @@
       nl.forEach(x => lista.append(h('a', { class: 'pf-item link', href: '#usuarios/' + x.id }, h('div', null, h('b', null, x.nome), h('small', null, x.login + ' · planilha: ' + x.chave), h('div', { class: 'pf-chips' }, situacao(x))), h('span', { class: 'pf-seta' }, '›'))));
     });
     v.append(card('Nova conta',
-      h('p', { class: 'pf-dica' }, 'Só você cria contas. A pessoa recebe um link para criar a própria senha (você não fica sabendo dela) e, no primeiro acesso, ativa as duas etapas no celular.'),
+      h('p', { class: 'pf-dica' }, 'Só você cria contas. A pessoa recebe um link para criar a própria senha (você não fica sabendo dela).'),
       h('div', { class: 'pf-grade' },
         campo('Nome de exibição', f.nome), campo('Login', f.login, 'O que a pessoa digita para entrar. Ela pode mudar depois.'),
         campo('Usuário na planilha', f.chave, 'Nome usado no histórico e nas tarefas. Para quem já usava o app, coloque o mesmo usuário de antes. Não muda depois.'),
