@@ -1,5 +1,7 @@
 # App Perícias: instalação e atualização
 
+> **Versão no site (Cloudflare):** o login passa a ser feito pelo site, com contas criadas pelo administrador, verificação em duas etapas e página Minha conta. O Apps Script recebe os pedidos assinados pelo site. Instalação, ajuste do `AppPericias.gs` e segredos: `_servidor/LEIA-ME.md`, seção "/pericias". O que está abaixo continua valendo para a planilha, o Drive e o app.
+
 O app tem duas partes:
 
 1. **Tela do app** (esta pasta `pericias/`): arquivos estáticos publicados pelo GitHub Pages em brunomichels.com.br/pericias.

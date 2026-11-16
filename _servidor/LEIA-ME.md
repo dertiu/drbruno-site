@@ -1,6 +1,11 @@
 # Servidor do site (Cloudflare Workers + D1)
 
-Esta pasta transforma o site em uma versão protegida, com login, cadastro, códigos de acesso e painel de administração. Ela não é publicada pelo GitHub Pages (pastas que começam com `_` ficam de fora), então o site atual continua funcionando como está até a migração.
+Esta pasta transforma o site em uma versão protegida. São duas áreas **totalmente separadas**, cada uma com seu banco, seu cookie, seus usuários e seu painel:
+
+- **/calculadoras**: login, cadastro aberto, visitante, códigos de acesso e painel em `/painel/`.
+- **/pericias**: área privada do perito e da equipe, sem cadastro aberto (só o administrador cria contas), com verificação em duas etapas e repasse assinado ao Apps Script da planilha. Ver a seção "/pericias" abaixo.
+
+A pasta não é publicada pelo GitHub Pages (pastas que começam com `_` ficam de fora), então o site atual continua funcionando como está até a migração.
 
 ## Como funciona
 
@@ -22,6 +27,10 @@ _servidor/
   src/admin.js       API do painel
   src/auth.js        senhas, sessões, regra de acesso, concessão de acesso
   src/db.js          tabelas (criadas sozinhas), ajustes, registro, limite de tentativas
+  src/comum/senha.js cálculo das senhas (cada área usa a sua pimenta)
+  src/pericias/      /pericias: sessões, duas etapas (totp.js), contas, painel e repasse ao Apps Script
+  apps-script/       bloco para colar no AppPericias.gs (pedidos assinados pelo site)
+  web/pericias/      entrada (entrar.js), Minha conta e administração (perfil/)
   web/calculadoras/  gate.js, gate.css, sw.js (offline)
   web/painel/        painel de administração
   web/well-known/    vira /.well-known/ (assetlinks.json do app Android)
@@ -41,18 +50,24 @@ printf 'ADMIN_SETUP_CODE=codigo-teste-123\nSENHA_PEPPER=qualquer-texto-longo\n' 
 npm run dev                      # http://localhost:8787
 python3 testes/api_test.py       # com o banco local zerado: rm -rf .wrangler/state/v3/d1
 python3 testes/ui_test.py        # precisa de: pip install playwright requests
+node testes/gas_simulado.mjs &   # Apps Script simulado para o /pericias
+python3 testes/pericias_api_test.py
+python3 testes/pericias_ui_test.py
 ```
+
+Para o /pericias, o `.dev.vars` também precisa de `PERICIAS_SETUP_CODE=pericias-teste-123`, `PERICIAS_PEPPER=...`, `PERICIAS_CHAVE=chave-de-teste-0123456789abcdef0123456789abcdef` e `PERICIAS_GAS_URL=http://127.0.0.1:8898/exec`.
 
 `OFUSCAR=0 npm run build` gera o `app.js` só compactado (útil para achar erros).
 
 ## Publicar no Cloudflare
 
-1. Criar o banco: Storage & Databases > D1 > Create, nome `drbruno`. Copiar o ID para `database_id` no `wrangler.jsonc`.
+1. Criar os dois bancos: Storage & Databases > D1 > Create, nomes `drbruno` (calculadoras) e `drbruno_pericias` (perícias). Copiar os IDs para os dois `database_id` no `wrangler.jsonc`.
 2. Workers & Pages > Create > Import a repository > este repositório. Em Advanced settings: Root directory `_servidor`, Build command `npm ci && npm run build`, Deploy command `npx wrangler deploy`. O nome do Worker precisa ser `drbruno-site`.
-3. Settings > Variables and Secrets, como **Secret**: `ADMIN_SETUP_CODE` e `SENHA_PEPPER` (texto longo aleatório; nunca mude depois, ou as senhas param de funcionar).
-4. Abrir `https://drbruno-site.<sua-conta>.workers.dev/painel/` e criar o administrador com o código de configuração.
-5. Domínio: adicionar `brunomichels.com.br` ao Cloudflare (trocar os DNS no Registro.br) e, no Worker, Settings > Domains & Routes > Add > Custom domain (`brunomichels.com.br` e `www.brunomichels.com.br`).
-6. Só depois que o domínio abrir pelo Cloudflare: GitHub > Settings > Pages > desligar, e Settings > General > Change visibility > Private.
+3. Settings > Variables and Secrets, como **Secret**: `ADMIN_SETUP_CODE`, `SENHA_PEPPER`, `PERICIAS_SETUP_CODE`, `PERICIAS_PEPPER`, `PERICIAS_GAS_URL` e `PERICIAS_CHAVE` (ver tabela abaixo). As duas pimentas são textos longos aleatórios e diferentes entre si; nunca mude depois, ou as senhas param de funcionar.
+4. Fazer o ajuste do Apps Script (seção "/pericias" abaixo).
+5. Abrir `https://drbruno-site.<sua-conta>.workers.dev/painel/` e criar o administrador das calculadoras. Abrir `.../pericias/`, tocar em "Configurar o primeiro administrador" e criar a conta do perito (usuário na planilha: `bruno`).
+6. Domínio: adicionar `brunomichels.com.br` ao Cloudflare (trocar os DNS no Registro.br) e, no Worker, Settings > Domains & Routes > Add > Custom domain (`brunomichels.com.br` e `www.brunomichels.com.br`).
+7. Só depois que o domínio abrir pelo Cloudflare: GitHub > Settings > Pages > desligar, e Settings > General > Change visibility > Private. No Apps Script, rodar `appSoSiteLigar` (desliga o login antigo).
 
 ## Segredos e variáveis (Settings > Variables and Secrets)
 
@@ -61,7 +76,59 @@ python3 testes/ui_test.py        # precisa de: pip install playwright requests
 | `ADMIN_SETUP_CODE` | código para criar o primeiro administrador em `/painel/` (pode apagar depois) |
 | `SENHA_PEPPER` | segredo misturado às senhas; protege as senhas mesmo se o banco vazar |
 | `SENHA_ITERACOES` | força do cálculo da senha. Plano gratuito: deixe vazio (20000). Plano pago: `100000`. As senhas antigas são refeitas sozinhas no próximo login |
+| `PERICIAS_SETUP_CODE` | código para criar o primeiro administrador do /pericias (pode apagar depois) |
+| `PERICIAS_PEPPER` | pimenta das senhas do /pericias (diferente da `SENHA_PEPPER`); também protege os códigos de recuperação |
+| `PERICIAS_GAS_URL` | endereço do Apps Script (o que termina em `/exec`, hoje em `pericias/config.js`). Fica só no Cloudflare: o navegador não vê mais |
+| `PERICIAS_CHAVE` | chave que assina os pedidos ao Apps Script. É o valor que `appCriarChaveSite` mostra no Apps Script |
 | `RESEND_API_KEY` e `EMAIL_FROM` | opcional: "Esqueci a senha" manda o link por e-mail (conta em resend.com, com o domínio verificado). Sem isso, a pessoa pede pelo WhatsApp e você gera o link na página do usuário |
+
+## /pericias
+
+### Como funciona
+- **Dados continuam na planilha.** O navegador fala só com o site (`/pericias/api`). O site confere a sessão e repassa ao Apps Script com uma assinatura (HMAC-SHA256 com `PERICIAS_CHAVE`) que diz quem é o usuário, o perfil (perito ou assistente) e a ação. A assinatura vale 5 minutos e uma vez só. O Apps Script recusa qualquer pedido sem assinatura válida (depois de `appSoSiteLigar`), então o endereço antigo do Apps Script não serve mais para nada sozinho.
+- **Login:** só o administrador cria contas (painel em Minha conta > Usuários). A pessoa recebe um link de convite (72 h), cria a própria senha e cadastra o aplicativo autenticador no celular. Ao entrar: login + senha + código de 6 números. Ganha 10 códigos de recuperação para o caso de perder o celular.
+- **Cada um muda o seu:** nome de exibição, login, e-mail, WhatsApp, senha, celular das duas etapas, códigos de recuperação; vê e desconecta os aparelhos e a atividade da conta.
+- **Usuário na planilha** (`chave`): o nome usado no HISTORICO e nas tarefas. Não muda depois de criado, mesmo que a pessoa troque o login. Para quem já usava o app, crie a conta com o mesmo usuário de antes.
+- **Administrador:** cria contas, troca perfil (perito/assistente), gera links de nova senha, zera as duas etapas (celular perdido), bloqueia, desconecta aparelhos, exclui. Ajustes: duas etapas obrigatórias (padrão ligado), dias sem uso até pedir login (7), dias máximos de sessão (30), aparelhos por conta (3), só Brasil, WhatsApp para "Esqueci a senha". Registro de tudo por 2 anos (entradas, senhas e códigos errados, ações que alteram a planilha, painel).
+- **Proteções extras:** cookie `__Secure-pericias` só para `/pericias` (HttpOnly, SameSite=Strict), política de segurança de conteúdo restrita (sem código embutido, sem iframes), `app.js` e `config.js` só depois do login, `app.js` embaralhado, `config.js` publicado sem o endereço do Apps Script, `LEIA-ME.md` fora do ar, limite de tentativas (8 senhas por login a cada 15 min, 5 códigos por tentativa de login).
+- **O app (`pericias/app.js`) funciona dos dois jeitos:** sem `SITE` em `config.js` (GitHub Pages, como antes) e com `SITE: true` (o build liga sozinho). Pode ir para o `main` sem quebrar a versão atual.
+
+### Apps Script (fazer antes de trocar o domínio)
+O ajuste aceita o app antigo e o site ao mesmo tempo; o app antigo só para quando você rodar `appSoSiteLigar`.
+
+1. Planilha > Extensões > Apps Script > arquivo `AppPericias`.
+2. Cole todo o conteúdo de `_servidor/apps-script/AppPericias-site.gs` no **fim** do arquivo.
+3. Faça 3 trocas no `AppPericias`:
+   - Em `doPost`: `saida = appRotear_(req);` vira `saida = appRotear_(req, e);`
+   - O começo de `appRotear_`:
+     ```js
+     function appRotear_(req) {
+       if (req.acao === 'login') return appLogin_(req.usuario, req.senha);
+       const usuario = appValidarSessao_(req.token);
+       if (!usuario) return { ok: false, erro: 'SESSAO' };
+     ```
+     vira
+     ```js
+     function appRotear_(req, e) {
+       const doSite = appUsuarioSite_(req, e);
+       if (!doSite && appSoSite_()) return { ok: false, erro: 'SESSAO' };
+       if (!doSite && req.acao === 'login') return appLogin_(req.usuario, req.senha);
+       const usuario = doSite || appValidarSessao_(req.token);
+       if (!usuario) return { ok: false, erro: 'SESSAO' };
+     ```
+   - A linha do `appPapel_`:
+     ```js
+     function appPapel_(usuario) { return APP_ADMINS.indexOf(String(usuario || '').toLowerCase()) >= 0 ? 'perito' : 'assistente'; }
+     ```
+     vira
+     ```js
+     function appPapel_(usuario) { const u = String(usuario || '').toLowerCase(); return APP_PAPEL_SITE[u] || (APP_ADMINS.indexOf(u) >= 0 ? 'perito' : 'assistente'); }
+     ```
+4. Salve. No seletor de funções, escolha `appCriarChaveSite` e clique em Executar. Copie o valor do registro para o segredo `PERICIAS_CHAVE` do Cloudflare.
+5. Implantar > Gerenciar implantações > lápis > Versão: **Nova versão** > Implantar (a URL continua a mesma).
+6. Depois que o /pericias estiver funcionando pelo site: rode `appSoSiteLigar`. Para voltar atrás numa emergência: `appSoSiteDesligar`.
+
+O teste `testes/gas_simulado.mjs` aplica exatamente essas 3 trocas sobre o código original e carrega o bloco acima, então se o texto do `AppPericias` mudar, o teste avisa.
 
 ## Cobrar assinatura
 
@@ -81,4 +148,4 @@ O app instalável já funciona (Android e iPhone, pelo navegador: "Instalar" ou 
 
 Faz: o código não fica público (nem no GitHub depois de privado, nem no site sem login); o que vai para o navegador é embaralhado; cada conta tem limite de aparelhos (o mais antigo sai); toda entrada, senha errada, código e ação do painel fica registrada com local aproximado; acesso pode ser retirado a qualquer momento e o aparelho apaga o código na próxima conexão; limite de tentativas contra chute de senha e de código; senhas guardadas com PBKDF2 + sal + pimenta; cookie de sessão HttpOnly, Secure e SameSite; bloqueio de envios vindos de outros sites.
 
-Não faz: impedir 100% que alguém com acesso legítimo copie o que roda no navegador dele. O embaralhamento torna isso trabalhoso e o registro mostra quem acessou.
+Não faz: impedir 100% que alguém com acesso legítimo copie o que roda no navegador dele. No /pericias, também não protege a planilha e o Drive em si: quem tem acesso de edição pela conta Google continua vendo tudo por lá. O embaralhamento torna isso trabalhoso e o registro mostra quem acessou.

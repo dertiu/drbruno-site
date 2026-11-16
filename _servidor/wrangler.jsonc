@@ -9,7 +9,7 @@
     "binding": "ASSETS",
     "not_found_handling": "404-page",
     // estas rotas passam primeiro pelo servidor (login e proteção do código)
-    "run_worker_first": ["/api/*", "/calculadoras", "/calculadoras/*"]
+    "run_worker_first": ["/api/*", "/calculadoras", "/calculadoras/*", "/pericias", "/pericias/*"]
   },
   "d1_databases": [
     {
@@ -17,6 +17,12 @@
       "database_name": "drbruno",
       // troque pelo ID do banco criado no painel do Cloudflare (Storage & Databases > D1)
       "database_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      // banco separado do /pericias (usuários da equipe, sessões e registro)
+      "binding": "DBP",
+      "database_name": "drbruno_pericias",
+      "database_id": "00000000-0000-0000-0000-000000000001"
     }
   ],
   // limpeza diária de sessões vencidas (04:00 em Brasília)

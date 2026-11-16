@@ -2,10 +2,13 @@
    - /api/*            login, cadastro, visitante, códigos e painel
    - /calculadoras/*   o código das calculadoras só é entregue a quem tem acesso
    - /painel/          painel de administração
-   - o resto do site (página inicial, /pericias etc.) é servido como antes, sem passar por aqui */
+   - /pericias/*       área privada do perito, separada (ver pericias/index.js)
+   - o resto do site (página inicial etc.) é servido como antes, sem passar por aqui */
 import { ensureSchema, getSettings, cleanup } from './db.js';
 import { api } from './api.js';
 import { getSession, accessOf } from './auth.js';
+import { pericias } from './pericias/index.js';
+import { ensureSchemaP, cleanupP } from './pericias/db.js';
 
 // arquivos das calculadoras que qualquer um pode baixar (não contêm a lógica nem o conteúdo)
 const PUBLIC_CALC = /^\/calculadoras\/(?:|index\.html|gate\.js|gate\.css|sw\.js|style\.css|manifest\.webmanifest|icon[\w.-]*\.(?:svg|png)|fonts\/[\w.-]+)$/;
@@ -58,6 +61,7 @@ export default {
         await ensureSchema(env);
         return withHeaders(await api(req, env, ctx, url), { 'X-Robots-Tag': 'noindex' });
       }
+      if (url.pathname === '/pericias' || url.pathname.startsWith('/pericias/')) return await pericias(req, env, ctx, url);
       if (url.pathname === '/calculadoras' || url.pathname.startsWith('/calculadoras/')) {
         await ensureSchema(env);
         return await calculadoras(req, env, ctx, url);
@@ -71,5 +75,6 @@ export default {
   async scheduled(event, env, ctx) {
     await ensureSchema(env);
     ctx.waitUntil(cleanup(env));
+    if (env.DBP) { await ensureSchemaP(env); ctx.waitUntil(cleanupP(env)); }
   }
 };

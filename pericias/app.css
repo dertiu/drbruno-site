@@ -731,3 +731,5 @@ dialog::backdrop{background:rgba(5,12,22,.55)}
 .campos-lote{border:1px solid var(--linha);border-radius:12px;padding:10px 12px;margin-bottom:8px}
 .campos-lote>b{display:block}
 .campos-lote>small{display:block;color:var(--suave);margin-bottom:8px}
+.link-conta{color:inherit;text-decoration:none;font-weight:700}
+.link-conta:hover{text-decoration:underline}

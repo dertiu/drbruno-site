@@ -1086,6 +1086,9 @@ if (typeof document === 'undefined') {
    ================================================================ */
 const CFG = window.PERICIAS_CONFIG || {};
 const API = CFG.API || '';
+// SITE: versão no Cloudflare. O login é feito pelo próprio site (cookie seguro) e os pedidos vão para /pericias/api,
+// que repassa ao Apps Script com assinatura. Sem SITE, funciona como antes (login direto no Apps Script).
+const SITE = !!CFG.SITE;
 const UFESP = Number(CFG.UFESP) || 0;
 const CONFERIR_DIAS = Math.max(1, Math.round(Number(CFG.CONFERIR_DIAS) || 7)); // meta: conferir nos autos a cada N dias
 const CONFERIR_LIMITE = Math.max(CONFERIR_DIAS + 1, Math.round(Number(CFG.CONFERIR_LIMITE) || 15)); // nunca passar de N dias sem conferir
@@ -1184,7 +1187,7 @@ const API_LEITURAS = ['inicial', 'me', 'docs', 'modelos', 'historico', 'gestao',
 // ações que copiam ou criam arquivos no Drive podem passar de 1 minuto
 const API_DEMORADAS = ['gerarDoc', 'upload', 'modeloCriar', 'modeloDuplicar', 'pastaCriar', 'discordRotina'];
 async function api(acao, extra) {
-  if (!API || API.indexOf('COLE_AQUI') === 0) throw new Error('Falta colar a URL do Apps Script em config.js');
+  if (!SITE && (!API || API.indexOf('COLE_AQUI') === 0)) throw new Error('Falta colar a URL do Apps Script em config.js');
   const leitura = API_LEITURAS.indexOf(acao) >= 0;
   const limite = API_DEMORADAS.indexOf(acao) >= 0 ? 300000 : 90000;
   const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -1192,14 +1195,20 @@ async function api(acao, extra) {
   let r, j;
   try {
     try {
-      r = await fetch(API, { method: 'POST', redirect: 'follow', signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao, token: state.token }, extra || {})) });
+      r = SITE
+        ? await fetch('/pericias/api?acao=' + encodeURIComponent(acao), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao }, extra || {})) })
+        : await fetch(API, { method: 'POST', redirect: 'follow', signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao, token: state.token }, extra || {})) });
     } catch (e) {
       if (e && e.name === 'AbortError') throw new Error('O servidor demorou demais para responder. ' + (leitura ? 'Tente de novo em instantes.' : 'A alteração pode ter sido gravada: toque em Atualizar e confira antes de repetir.'));
       throw new Error('Sem conexão com o servidor.' + (leitura ? '' : ' Toque em Atualizar e confira se a alteração foi gravada.'));
     }
     try { j = await r.json(); } catch (e) { throw new Error(e && e.name === 'AbortError' ? 'O servidor demorou demais para responder. Toque em Atualizar e confira.' : 'Resposta inválida do servidor.'); }
   } finally { if (timer) clearTimeout(timer); }
-  if (j && j.erro === 'SESSAO') { sair(false); throw new Error('Sessão expirada. Entre novamente.'); }
+  if (SITE && r.status === 401) { sair(false); throw new Error('Sessão expirada. Entre novamente.'); }
+  if (j && j.erro === 'SESSAO') {
+    if (SITE) throw new Error('A planilha recusou o acesso do site. Confira se a chave PERICIAS_CHAVE do Cloudflare é igual à PROXY_CHAVE do Apps Script.');
+    sair(false); throw new Error('Sessão expirada. Entre novamente.');
+  }
   return j;
 }
 
@@ -1216,9 +1225,28 @@ function toast(msg, op) {
 
 /* ---------- LOGIN ---------- */
 function mostrarLogin() { $('#tela-app').hidden = true; $('#tela-login').hidden = false; }
-function mostrarApp() { $('#tela-login').hidden = true; $('#tela-app').hidden = false; $('#nav-user').textContent = state.user; }
+function nomeExibicao() { return SITE ? (state.nome || state.user) : state.user; }
+function nomeDe(u) { const x = (state.usuarios || []).find(y => y.u === u); return x && x.nome ? x.nome : u; }
+// "Dr. Bruno Thomás Michels" vira "Dr. Bruno"; "Ana Paula Souza" vira "Ana"
+function nomeSaudacao() {
+  if (!SITE) return state.user;
+  const p = String(nomeExibicao() || '').trim().split(/\s+/);
+  return /^dra?\.?$/i.test(p[0]) && p[1] ? p[0] + ' ' + p[1] : p[0];
+}
+function mostrarNavUser() {
+  const el = $('#nav-user');
+  if (!SITE) { el.textContent = state.user; return; }
+  el.innerHTML = '<a href="/pericias/perfil/" class="link-conta" title="Minha conta">' + esc(nomeExibicao()) + '</a>';
+}
+function mostrarApp() { $('#tela-login').hidden = true; $('#tela-app').hidden = false; mostrarNavUser(); }
 
 function sair(avisarServidor) {
+  if (SITE) { // a sessão fica num cookie do site; ao sair, volta para a tela de entrada
+    const ir = () => location.replace('/pericias/');
+    if (avisarServidor) fetch('/pericias/conta/sair', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(ir, ir);
+    else ir();
+    return;
+  }
   if (avisarServidor && state.token) api('logout').catch(() => {});
   state.token = ''; state.dados = {}; state.agenda = []; state.livres = []; state.papel = 'assistente'; state.gestao = null; state.docs = {};
   apagar('pericias_token');
@@ -1227,6 +1255,7 @@ function sair(avisarServidor) {
 }
 
 $('#form-login').addEventListener('submit', async ev => {
+  if (SITE) return; // no site, quem cuida do login é o entrar.js
   ev.preventDefault();
   const btn = $('#lg-btn'), msg = $('#lg-msg');
   msg.textContent = ''; btn.disabled = true; btn.textContent = 'Entrando...';
@@ -1285,9 +1314,9 @@ function aplicarInicial(j) {
   state.canais = j.canais || [];
   state.tarefas = j.tarefas || [];
   state.verificados = j.verificados || {};
-  state.usuarios = j.usuarios || [];
+  state.usuarios = SITE && state.equipe ? state.equipe : (j.usuarios || []); // no site, a equipe vem das contas do site
   state.hora = j.hora || '';
-  $('#nav-user').textContent = state.user;
+  mostrarNavUser();
   $('#sync').textContent = state.hora ? 'Atualizado às ' + state.hora : '';
   if (j.ms) state.tempos = j.ms; // tempo gasto pelo servidor em cada parte (para diagnóstico)
   render();
@@ -1336,6 +1365,7 @@ function renderNav() {
   $('#nav-itens').innerHTML = vs.map(v => btn(v, NAV_PRINCIPAIS.indexOf(v.id) < 0)).join('') +
     '<button type="button" class="mais-btn' + (noMais ? ' ativa' : '') + '" data-acao="nav-mais" aria-haspopup="true">' + ic('mais') + '<span>' + (noMais ? esc((vs.find(v => v.id === state.view) || {}).rot || 'Mais') : 'Mais') + '</span></button>';
   $('#nav-mais').innerHTML = vs.filter(v => NAV_PRINCIPAIS.indexOf(v.id) < 0).map(v => btn(v, false)).join('') +
+    (SITE ? '<button type="button" class="item-tema" data-acao="conta">' + ic('ajustes') + '<span>Minha conta</span></button>' : '') +
     '<button type="button" class="item-tema" data-acao="tema">' + ic(temaAtual() === 'escuro' ? 'sol' : 'lua') + '<span>' + (temaAtual() === 'escuro' ? 'Usar tema claro' : 'Usar tema escuro') + '</span></button>';
   atualizarBotaoTema();
 }
@@ -1553,7 +1583,7 @@ function renderPainel() {
   const c = ctxPainel(), P = painelAtual(), ed = !!state.painelEdit;
   const hr = new Date().getHours();
   const resumo = [c.agHoje.length ? plN(c.agHoje.length, 'perícia hoje', 'perícias hoje') : 'nenhuma perícia hoje', c.prox7.length ? plN(c.prox7.length, 'prazo nos próximos 7 dias', 'prazos nos próximos 7 dias') : 'nenhum prazo nos próximos 7 dias'];
-  let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(state.user) + '</h2><p>' + esc(fmtExtenso(c.hoje)) + ' · ' + esc(resumo.join(' e ')) + '</p></div>' +
+  let h = '<div class="saudacao"><div><h2>' + (hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite') + ', ' + esc(nomeSaudacao()) + '</h2><p>' + esc(fmtExtenso(c.hoje)) + ' · ' + esc(resumo.join(' e ')) + '</p></div>' +
     (ed ? '' : '<div class="acoes"><button type="button" class="btn" data-acao="painel-editar">' + ic('ajustes') + 'Personalizar</button></div>') + '</div>';
   if (ed) h += '<div class="painel-edicao" role="region" aria-label="Personalizar o painel"><div><b>Personalizando o seu painel</b><span>Setas mudam a ordem, a lista escolhe o tamanho e as opções de cada bloco, ✕ tira o bloco. ' +
     (state.prefsServidor === false ? 'Por enquanto fica salvo só neste aparelho.' : 'Fica salvo no seu usuário e vale nos seus aparelhos.') + '</span></div>' +
@@ -3121,7 +3151,7 @@ function tarefaHtml(t) {
   const proc = x.processo ? ativos().find(i => digitos(i.m['PROCESSO']) === digitos(x.processo)) : null;
   const podeExcluir = x.por === state.user || state.papel === 'perito';
   return '<div class="tarefa"><button type="button" class="check-t" data-acao="t-feita" data-id="' + esc(x.id) + '" aria-label="Marcar como feita" title="Marcar como feita"></button><div class="meio">' +
-    '<b>' + esc(t.titulo) + '</b><small>' + (proc ? esc(proc.m['REQUERENTE'] + ' · ' + formatarCNJ(proc.m['PROCESSO']) + ' · ') : (x.processo ? esc(x.processo + ' · ') : '')) + 'de ' + esc(x.por) + ' para ' + esc(x.para === 'assistentes' ? 'assistentes' : x.para) + ' · ' + esc(String(x.criada).slice(0, 10)) + '</small>' +
+    '<b>' + esc(t.titulo) + '</b><small>' + (proc ? esc(proc.m['REQUERENTE'] + ' · ' + formatarCNJ(proc.m['PROCESSO']) + ' · ') : (x.processo ? esc(x.processo + ' · ') : '')) + 'de ' + esc(nomeDe(x.por)) + ' para ' + esc(x.para === 'assistentes' ? 'assistentes' : nomeDe(x.para)) + ' · ' + esc(String(x.criada).slice(0, 10)) + '</small>' +
     '<div class="chips">' + pz + quem + '<span class="chip">Atribuída</span></div></div>' +
     '<div class="acoes-t">' + (proc ? '<button type="button" class="btn pequeno" data-acao="ficha" data-aba="PERICIAS" data-linha="' + proc.linha + '">Abrir</button>' : '') +
     (podeExcluir ? '<button type="button" class="btn pequeno icone perigo" data-acao="t-excluir" data-id="' + esc(x.id) + '" title="Excluir tarefa" aria-label="Excluir tarefa">' + ic('fechar') + '</button>' : '') + '</div></div>';
@@ -3134,7 +3164,7 @@ function abrirNovaTarefa(processo) {
   $('#modal-titulo').textContent = 'Nova tarefa';
   $('#modal-corpo').innerHTML = '<div class="form-grid">' +
     '<div class="campo largo"><label for="nt-texto">O que fazer</label><textarea id="nt-texto" placeholder="Ex.: Ligar para o periciando e confirmar o endereço da perícia domiciliar"></textarea></div>' +
-    '<div class="campo"><label for="nt-para">Para</label><select id="nt-para"><option value="assistentes">Assistentes (qualquer um)</option>' + outros.map(u => '<option value="' + esc(u.u) + '"' + (u.u === state.user ? '' : '') + '>' + esc(u.u) + ' (' + u.papel + ')</option>').join('') + '</select></div>' +
+    '<div class="campo"><label for="nt-para">Para</label><select id="nt-para"><option value="assistentes">Assistentes (qualquer um)</option>' + outros.map(u => '<option value="' + esc(u.u) + '"' + (u.u === state.user ? '' : '') + '>' + esc(u.nome || u.u) + ' (' + u.papel + ')</option>').join('') + '</select></div>' +
     '<div class="campo"><label for="nt-prazo">Prazo</label><input id="nt-prazo" type="date"></div>' +
     '<div class="campo largo"><label for="nt-proc">Processo (opcional)</label><input id="nt-proc" list="dl-nt-proc" autocomplete="off" value="' + esc(processo || '') + '" placeholder="Digite número ou nome"><datalist id="dl-nt-proc">' + ativos().map(it => '<option value="' + esc(it.m['PROCESSO']) + '" label="' + esc(it.m['REQUERENTE']) + '">').join('') + '</datalist></div>' +
     (temCanal ? '<label class="check"><input type="checkbox" id="nt-avisar" checked> Avisar no #tarefas-assistente do Discord</label>' : '') + '</div>';
@@ -3698,6 +3728,7 @@ document.addEventListener('click', ev => {
     case 'arq': state.arquivo = ds.aba; render(); break;
     case 'nav-mais': { const p = $('#nav-mais'); p.hidden = !p.hidden; break; }
     case 'tema': aplicarTema(temaAtual() === 'escuro' ? 'claro' : 'escuro'); break;
+    case 'conta': location.href = '/pericias/perfil/'; break;
     case 't-nova': abrirNovaTarefa(''); break;
     case 'ficha-tarefa': { const it = fichaItem(); abrirNovaTarefa(it && it.aba === 'PERICIAS' ? it.m['PROCESSO'] : ''); break; }
     case 't-escopo': state.tEscopo = ds.k; render(); break;
@@ -3871,7 +3902,12 @@ setInterval(() => {
 /* ================= INÍCIO ================= */
 async function iniciar() {
   const v = location.hash.slice(1);
-  if (v) state.view = v;
+  if (v && !/^definir=/.test(v)) state.view = v;
+  if (SITE) { // o entrar.js só carrega o app depois do login e deixa os dados da sessão aqui
+    const s = window.PERICIAS_SESSAO || {};
+    state.token = 'site'; state.user = s.chave || ''; state.nome = s.nome || ''; state.papel = s.papel || 'assistente';
+    state.equipe = s.equipe || null;
+  }
   if (!state.token) { mostrarLogin(); return; }
   mostrarApp();
   renderNav();

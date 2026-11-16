@@ -1,47 +1,13 @@
 /* Senhas, sessões e regras de acesso */
-import { b64url, unb64url, randomToken, sha256hex, safeEqual, clientIp, clientPlace, clientUa, DAY } from './util.js';
+import { randomToken, sha256hex, clientIp, clientPlace, clientUa, DAY } from './util.js';
+import { hashSenha, conferirSenha, problemaSenha } from './comum/senha.js';
 import { audit } from './db.js';
 
-/* ---------- senhas: PBKDF2-SHA256 com sal aleatório e "pimenta" secreta ----------
-   SENHA_ITERACOES: força do cálculo. No plano gratuito do Cloudflare (10 ms de CPU por acesso) o padrão é 20000;
-   no plano pago, use 100000 (máximo do Workers). Senhas antigas são refeitas sozinhas no próximo login.
-   SENHA_PEPPER: segredo extra guardado só no Cloudflare; sem ele, um banco vazado não serve para descobrir senhas. */
-const MAX_ITER = 100000;
-const te = new TextEncoder();
-const iterOf = env => Math.max(10000, Math.min(MAX_ITER, Number(env && env.SENHA_ITERACOES) || 20000));
-async function material(pw, env, peppered) {
-  if (!peppered) return te.encode(pw);
-  const k = await crypto.subtle.importKey('raw', te.encode(env.SENHA_PEPPER), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return new Uint8Array(await crypto.subtle.sign('HMAC', k, te.encode(pw)));
-}
-async function pbkdf2(raw, salt, iter) {
-  const key = await crypto.subtle.importKey('raw', raw, 'PBKDF2', false, ['deriveBits']);
-  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256));
-}
-export async function hashPassword(pw, env) {
-  const salt = crypto.getRandomValues(new Uint8Array(16)), iter = iterOf(env), pep = !!(env && env.SENHA_PEPPER);
-  return `${pep ? 'pbkdf2p' : 'pbkdf2'}$${iter}$${b64url(salt)}$${b64url(await pbkdf2(await material(String(pw), env, pep), salt, iter))}`;
-}
-/* devolve { ok, rehash }: rehash = a senha está certa, mas foi guardada com proteção mais fraca que a atual */
-export async function checkPassword(pw, stored, env) {
-  const parts = String(stored || '').split('$');
-  const valid = parts.length === 4 && (parts[0] === 'pbkdf2' || parts[0] === 'pbkdf2p');
-  const pep = valid && parts[0] === 'pbkdf2p';
-  if (pep && !(env && env.SENHA_PEPPER)) return { ok: false, rehash: false };
-  const iter = valid ? Math.min(Number(parts[1]) || MAX_ITER, MAX_ITER) : iterOf(env);
-  const salt = valid ? unb64url(parts[2]) : new Uint8Array(16);
-  const got = await pbkdf2(await material(String(pw || ''), env, pep), salt, iter); // roda mesmo sem conta, para não revelar quais e-mails existem
-  if (!valid) return { ok: false, rehash: false };
-  const ok = safeEqual(got, unb64url(parts[3]));
-  return { ok, rehash: ok && (iter < iterOf(env) || (!pep && !!(env && env.SENHA_PEPPER))) };
-}
-export function passwordProblem(pw) {
-  pw = String(pw || '');
-  if (pw.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.';
-  if (pw.length > 200) return 'Senha longa demais.';
-  if (/^(\d)\1+$/.test(pw) || ['12345678', '123456789', '1234567890', 'senha123', 'password', 'abcdefgh'].includes(pw.toLowerCase())) return 'Escolha uma senha menos óbvia.';
-  return '';
-}
+/* ---------- senhas (ver comum/senha.js): calculadoras usam SENHA_PEPPER e SENHA_ITERACOES ---------- */
+const cfgSenha = env => ({ pepper: env && env.SENHA_PEPPER, iter: env && env.SENHA_ITERACOES });
+export const hashPassword = (pw, env) => hashSenha(pw, cfgSenha(env));
+export const checkPassword = (pw, stored, env) => conferirSenha(pw, stored, cfgSenha(env));
+export const passwordProblem = problemaSenha;
 
 /* ---------- sessões em cookie seguro (HttpOnly, inacessível ao JavaScript) ---------- */
 export const COOKIE = '__Host-drb';
