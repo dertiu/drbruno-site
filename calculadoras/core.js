@@ -26,7 +26,7 @@
       ped: [['Emergência', ['pedone', 'pedkit', 'pedhid']], ['Avaliação', ['pedsv', 'pedvit', 'westley', 'apgar']], ['Receitas', ['ped-rx']]],
       lab: [['Renal e eletrólitos', ['repos', 'nacorr', 'clcr']], ['Exames', ['gaso', 'lab', 'liquidos']], ['Medidas e conversões', ['imc', 'qtc', 'conv']]],
       vent: [['Ventilação e oxigênio', ['vent', 'oxig', 'o2cil']], ['Fluidos', ['fluid', 'mant']]],
-      cir: [['Abdome agudo', ['alvarado', 'toquio', 'ranson', 'bisap']], ['Trauma', ['choque', 'queimados', 'tmt', 'rts']], ['Perioperatório', ['rcri', 'profilaxia', 'posop', 'sedproc']]],
+      cir: [['Abdome agudo', ['alvarado', 'toquio', 'ranson', 'bisap']], ['Trauma', ['choque', 'queimados', 'tmt', 'rts']], ['Perioperatório', ['rcri', 'profilaxia', 'posop', 'sedproc']], ['Agendamento', ['agend', 'agend-chefes']]],
       desc: [['Modelos', ['descricoes']], ['Por área', null]],
       aih: [['', null]],
       pront: [['Modelos', ['prontuario', 'handover']], ['Por tipo', null]],
@@ -416,10 +416,14 @@
         case 'date':
           return h('label', { class: fc(), for: id }, h('span', { class: 'lbl' }, f.label),
             h('input', { id, type: 'date', value: raw[f.id] || '', oninput: e => set(e.target.value) }));
-        case 'txt':
+        case 'txt': {
+          // f.list: sugestões (datalist); f.im: teclado do celular (tel, numeric, email)
+          const lst = typeof f.list === 'function' ? f.list() : f.list;
           return h('label', { class: fc(), for: id }, h('span', { class: 'lbl' }, f.label),
-            h('input', { id, type: 'text', autocomplete: 'off', placeholder: f.ph || '', value: raw[f.id] || '', oninput: e => set(e.target.value) }),
+            h('input', { id, type: 'text', autocomplete: 'off', inputmode: f.im || null, list: lst && lst.length ? id + '_l' : null, placeholder: f.ph || '', value: raw[f.id] || '', oninput: e => set(e.target.value) }),
+            lst && lst.length && h('datalist', { id: id + '_l' }, lst.map(x => h('option', { value: x }))),
             f.hint && h('span', { class: 'fh' }, f.hint));
+        }
         case 'sel': {
           const s = h('select', { id, onchange: e => set(e.target.value) });
           let og = null, cur = null;
@@ -525,6 +529,8 @@
         else fallbackCopy(text, done);
       };
       el.append(b);
+      // t.share: também abre o WhatsApp com o texto pronto (a pessoa escolhe o grupo ou contato)
+      if (t && t.share) el.append(h('a', { class: 'copy wa', href: 'https://wa.me/?text=' + encodeURIComponent(text), target: '_blank', rel: 'noopener' }, 'Enviar pelo WhatsApp'));
     }
   }
   D.renderResult = renderResult;
