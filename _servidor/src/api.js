@@ -3,7 +3,7 @@ import { json, fail, readJson, HttpError, normEmail, validEmail, onlyDigits, cle
 import { getSettings, audit, hit } from './db.js';
 import { hashPassword, checkPassword, passwordProblem, createSession, enforceDeviceLimit, getSession, accessOf, grant, describeGrant, clearCookie } from './auth.js';
 import { adminApi } from './admin.js';
-import { codigoConfiguracao, apagarCodigoConfiguracao } from './comum/segredos.js';
+import { codigoConfiguracao, apagarCodigoConfiguracao, normCodigo } from './comum/segredos.js';
 
 const te = new TextEncoder();
 const fmtDate = ms => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -263,12 +263,12 @@ export async function api(req, env, ctx, url) {
     }
 
     if (path === '/api/configurar' && method === 'POST') {
-      const codigoCfg = await codigoConfiguracao(env.ADMIN_SETUP_CODE, env.DB, 'settings');
-      if (!codigoCfg) return fail('Falta o código de configuração (segredo ADMIN_SETUP_CODE ou linha codigo_configuracao no banco).', 403);
       if (!(await needsSetup(env))) return fail('O administrador já foi criado. Use Entrar.', 409);
+      const codigoCfg = await codigoConfiguracao(env.ADMIN_SETUP_CODE, env.DB, 'settings');
+      if (!codigoCfg) return fail('Falta o código de configuração no servidor.', 403);
       const r = await hit(env, 'setup:' + ip, 8, 3600000); if (!r.ok) throw tooMany(r);
       const b = await readJson(req);
-      const a = te.encode(String(b.codigo || '')), c = te.encode(codigoCfg);
+      const a = te.encode(normCodigo(b.codigo)), c = te.encode(normCodigo(codigoCfg));
       if (a.length !== c.length || !safeEqual(a, c)) return fail('Código de configuração incorreto.', 401);
       const email = normEmail(b.email);
       if (!validEmail(email)) return fail('Digite um e-mail válido.');

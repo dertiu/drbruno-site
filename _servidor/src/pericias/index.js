@@ -8,7 +8,7 @@ import { json, fail, readJson, HttpError, randomToken, sha256hex, safeEqual, cli
 import { hashSenha, conferirSenha, problemaSenha } from '../comum/senha.js';
 import { ensureSchemaP, getSettingsP, saveSettingsP, auditP, hitP } from './db.js';
 import { newSecret, checkTotp, otpauthUri, newBackupCodes, normBackup } from './totp.js';
-import { segredos, codigoConfiguracao, apagarCodigoConfiguracao } from '../comum/segredos.js';
+import { segredos, codigoConfiguracao, apagarCodigoConfiguracao, normCodigo } from '../comum/segredos.js';
 
 const COOKIE = '__Secure-pericias';
 const te = new TextEncoder();
@@ -286,11 +286,11 @@ async function conta(req, env, ctx, url, st) {
   }
 
   if (path === 'configurar' && m === 'POST') {
-    const codigoCfg = await codigoConfiguracao(env.PERICIAS_SETUP_CODE, env.DBP, 'p_settings');
-    if (!codigoCfg) return fail('Falta o código de configuração (segredo PERICIAS_SETUP_CODE ou linha codigo_configuracao no banco).', 403);
     if ((await users0()) > 0) return fail('O administrador já foi criado.', 409);
+    const codigoCfg = await codigoConfiguracao(env.PERICIAS_SETUP_CODE, env.DBP, 'p_settings');
+    if (!codigoCfg) return fail('Falta o código de configuração no servidor.', 403);
     const r = await hitP(env, 'setup:' + ip, 8, 3600000); if (!r.ok) throw tooMany(r);
-    const a = te.encode(String(body.codigo || '')), c = te.encode(codigoCfg);
+    const a = te.encode(normCodigo(body.codigo)), c = te.encode(normCodigo(codigoCfg));
     if (a.length !== c.length || !safeEqual(a, c)) return fail('Código de configuração incorreto.', 401);
     const nome = clean(body.nome, 80), login = normLogin(body.login), chave = normChave(body.chave || login);
     if (nome.length < 2) return fail('Digite seu nome.');

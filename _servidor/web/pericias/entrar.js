@@ -147,7 +147,7 @@ function telaConfigurar() {
     senha: inp({ id: 'en-cf-senha', type: 'password', autocomplete: 'new-password' })
   };
   const btn = h('button', { class: 'btn primario', type: 'submit' }, 'Criar administrador');
-  tela(h('p', { class: 'en-texto' }, 'Primeiro acesso: crie a conta do perito. O código de configuração é o segredo PERICIAS_SETUP_CODE definido no Cloudflare.'),
+  tela(h('p', { class: 'en-texto' }, 'Primeiro acesso: crie a conta do perito. Use o código de configuração do /pericias (vale uma vez só).'),
     h('form', { class: 'en-form', onsubmit: ev => {
       ev.preventDefault(); msg.textContent = '';
       ocupado(btn, async () => {

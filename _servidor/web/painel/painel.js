@@ -159,7 +159,7 @@
         try { const j = await api('configurar', { nome: f.nome.value, email: f.email.value, senha: f.senha.value, whatsapp: f.whatsapp.value, codigo: f.codigo.value }); ME = j; app(); toast('Administrador criado.', 'ok'); }
         catch (x) { err.hidden = false; err.textContent = x.message; }
       });
-    } }, h('p', { class: 'pn-p' }, 'Primeiro acesso: crie a conta de administrador. O código de configuração é o segredo ADMIN_SETUP_CODE definido no Cloudflare.'),
+    } }, h('p', { class: 'pn-p' }, 'Primeiro acesso: crie a conta de administrador. Use o código de configuração das calculadoras (vale uma vez só).'),
       fld('Nome completo', f.nome), fld('E-mail', f.email), fld('Senha (mínimo 8 caracteres)', f.senha), fld('WhatsApp (opcional)', f.whatsapp), fld('Código de configuração', f.codigo), err, go));
   }
   async function boot() {

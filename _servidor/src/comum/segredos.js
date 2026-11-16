@@ -35,6 +35,8 @@ export async function codigoConfiguracao(envValor, db, tabela) {
     return r && r.value ? String(r.value) : '';
   } catch (e) { return ''; }
 }
+/* compara sem diferenciar maiúsculas, espaços e hífens (8KFW-UMX9-KC9P = 8kfw umx9 kc9p) */
+export const normCodigo = v => String(v || '').toUpperCase().replace(/[\s-]/g, '');
 export async function apagarCodigoConfiguracao(db, tabela) {
   try { await db.prepare(`DELETE FROM ${tabela} WHERE key = 'codigo_configuracao'`).run(); } catch (e) { }
 }
