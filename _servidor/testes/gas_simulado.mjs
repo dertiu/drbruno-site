@@ -27,7 +27,7 @@ function doPost(e) {
 }
 
 function appRotear_(req) {
-  if (req.acao === 'login') return appLogin_(req.usuario, req.senha);
+  if (req.acao === 'login') return appLogin_(req.usuario, req.senha, req.comInicial);
   const usuario = appValidarSessao_(req.token);
   if (!usuario) return { ok: false, erro: 'SESSAO' };
   switch (req.acao) {
@@ -43,23 +43,8 @@ function appRotear_(req) {
 
 function appPapel_(usuario) { return APP_ADMINS.indexOf(String(usuario || '').toLowerCase()) >= 0 ? 'perito' : 'assistente'; }
 `;
-/* as 3 trocas, exatamente como no LEIA-ME */
-export const TROCAS = [
-  ['    saida = appRotear_(req);', '    saida = appRotear_(req, e);'],
-  [`function appRotear_(req) {
-  if (req.acao === 'login') return appLogin_(req.usuario, req.senha);
-  const usuario = appValidarSessao_(req.token);
-  if (!usuario) return { ok: false, erro: 'SESSAO' };`,
-  `function appRotear_(req, e) {
-  const doSite = appUsuarioSite_(req, e);
-  if (!doSite && appSoSite_()) return { ok: false, erro: 'SESSAO' };
-  if (!doSite && req.acao === 'login') return appLogin_(req.usuario, req.senha);
-  const usuario = doSite || appValidarSessao_(req.token);
-  if (!usuario) return { ok: false, erro: 'SESSAO' };
-  if (doSite && req.acao === 'carimbo') return appCarimbo_();`],
-  [`function appPapel_(usuario) { return APP_ADMINS.indexOf(String(usuario || '').toLowerCase()) >= 0 ? 'perito' : 'assistente'; }`,
-    `function appPapel_(usuario) { const u = String(usuario || '').toLowerCase(); return APP_PAPEL_SITE[u] || (APP_ADMINS.indexOf(u) >= 0 ? 'perito' : 'assistente'); }`]
-];
+/* as trocas, exatamente as de apps-script/trocas.json */
+export const TROCAS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'apps-script', 'trocas.json'), 'utf8')).trocas.map(t => [t.de, t.para]);
 
 let codigo = ORIGINAL;
 for (const [a, b] of TROCAS) {

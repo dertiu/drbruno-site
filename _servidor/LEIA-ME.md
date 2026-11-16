@@ -55,32 +55,33 @@ python3 testes/pericias_api_test.py
 python3 testes/pericias_ui_test.py
 ```
 
-Para o /pericias, o `.dev.vars` também precisa de `PERICIAS_SETUP_CODE=pericias-teste-123`, `PERICIAS_PEPPER=...`, `PERICIAS_CHAVE=chave-de-teste-0123456789abcdef0123456789abcdef` e `PERICIAS_GAS_URL=http://127.0.0.1:8898/exec` (no `.dev.vars` ele vale no lugar do endereço real que está em `wrangler.jsonc`). Os testes usam os segredos separados; no Cloudflare basta o `SEGREDO_SITE` (ver abaixo).
+Para o /pericias, o `.dev.vars` também precisa de `PERICIAS_SETUP_CODE=pericias-teste-123`, `PERICIAS_PEPPER=...`, `PERICIAS_CHAVE=chave-de-teste-0123456789abcdef0123456789abcdef` e `PERICIAS_GAS_URL=http://127.0.0.1:8898/exec` (no `.dev.vars` ele vale no lugar do endereço real que está em `wrangler.jsonc`). Os testes usam os segredos separados; no Cloudflare o próprio site gera os dele (ver abaixo).
 
 `OFUSCAR=0 npm run build` gera o `app.js` só compactado (útil para achar erros).
 
 ## Publicar no Cloudflare
 
-Já feito: os dois bancos D1 existem (`drbruno` e `drbruno_pericias`, IDs no `wrangler.jsonc`) e cada um tem a linha `codigo_configuracao` (código para criar o primeiro administrador, apagada sozinha depois do uso). O endereço do Apps Script está em `vars` no `wrangler.jsonc` (não é segredo: sem a assinatura do site ele não aceita nada depois de `appSoSiteLigar`).
+Já feito: os três bancos D1 existem (`drbruno`, `drbruno_pericias` e `drbruno_cofre`, IDs no `wrangler.jsonc`). Os dois primeiros têm a linha `codigo_configuracao` (código para criar o primeiro administrador, apagada sozinha depois do uso). O endereço do Apps Script está em `vars` no `wrangler.jsonc`. O Apps Script já está com o bloco novo e as trocas (versão 18 da implantação; a 17 é a anterior).
+
+**Segredos sem digitação:** o site gera o segredo principal na primeira vez e guarda no banco `drbruno_cofre` (`src/comum/segredos.js`). A chave do Apps Script é criada pelo próprio Apps Script e chega ao site pelo pareamento: `appParearSite` manda a chave para `/pericias/conta/parear`, e o site só guarda depois que a planilha aceita um pedido assinado com ela. Ninguém copia segredo.
 
 1. Workers & Pages > Create > Import a repository > este repositório. Nome do Worker: `drbruno-site`. Build command `npm ci && npm run build`, Deploy command `npx wrangler deploy`, Advanced settings > Path (root directory) `_servidor`. Desmarcar builds de branches que não são de produção.
 2. Settings > Build > Branch control: branch de produção `protecao-login` (enquanto o GitHub Pages segue no `main`). Se o primeiro build rodou no `main`, ele falha (o `main` não tem `_servidor`): é normal, basta trocar a branch e fazer um novo push.
-3. Settings > Variables and Secrets > Add > tipo **Secret**: `SEGREDO_SITE` (texto aleatório com 64 caracteres). Nunca mude depois que houver contas.
-4. Apps Script (seção "/pericias" abaixo), com `PROXY_CHAVE` = HMAC-SHA256(SEGREDO_SITE, "chave-apps-script") em hexadecimal.
-5. Abrir `https://drbruno-site.<sua-conta>.workers.dev/painel/` e criar o administrador das calculadoras. Abrir `.../pericias/`, tocar em "Configurar o primeiro administrador" e criar a conta do perito (usuário na planilha: `bruno`).
-6. Domínio: adicionar `brunomichels.com.br` ao Cloudflare (trocar os DNS no Registro.br). Conferir se os registros de e-mail (MX, TXT) vieram. Apagar os registros que apontam para o GitHub (A do domínio, CNAME do `www`) e, no Worker, Settings > Domains & Routes > Add > Custom domain (`brunomichels.com.br` e `www.brunomichels.com.br`).
-7. Só depois que o domínio abrir pelo Cloudflare: juntar `protecao-login` no `main` e trocar a branch de produção para `main`; GitHub > Settings > Pages > desligar, e Settings > General > Change visibility > Private. No Apps Script, rodar `appSoSiteLigar` (desliga o login antigo).
+3. Apps Script: escolher `appParearSite` e Executar (o `APP_SITE_URL` no bloco aponta para o endereço do site). O registro deve mostrar "Site respondeu 200".
+4. Abrir `https://drbruno-site.brunoomichels.workers.dev/painel/` e criar o administrador das calculadoras. Abrir `.../pericias/`, tocar em "Configurar o primeiro administrador" e criar a conta do perito (usuário na planilha: `bruno`).
+5. Domínio: adicionar `brunomichels.com.br` ao Cloudflare (trocar os DNS no Registro.br). Conferir se os registros de e-mail (MX, TXT) vieram. Apagar os registros que apontam para o GitHub (A do domínio, CNAME do `www`) e, no Worker, Settings > Domains & Routes > Add > Custom domain (`brunomichels.com.br` e `www.brunomichels.com.br`).
+6. Só depois que o domínio abrir pelo Cloudflare: juntar `protecao-login` no `main` e trocar a branch de produção para `main`; GitHub > Settings > Pages > desligar, e Settings > General > Change visibility > Private. No Apps Script, rodar `appSoSiteLigar` (desliga o login antigo).
 
-Voltar atrás: até o passo 6 nada muda para quem usa o site. Depois: devolver os DNS ao Registro.br (ou reapontar), `appSoSiteDesligar` no Apps Script, versão anterior em Implantar > Gerenciar implantações, Worker > Deployments > Rollback, bancos D1 > Time Travel (7 dias no plano gratuito), e o zip semanal em Releases (`backup-AAAA-MM-DD`).
+Voltar atrás: até o passo 5 nada muda para quem usa o site. Depois: devolver os DNS ao Registro.br (ou reapontar), `appSoSiteDesligar` no Apps Script, versão anterior em Implantar > Gerenciar implantações, Worker > Deployments > Rollback, bancos D1 > Time Travel (7 dias no plano gratuito), e o zip semanal em Releases (`backup-AAAA-MM-DD`). Nunca apague a linha `SEGREDO_SITE` do banco `drbruno_cofre`: as senhas deixariam de conferir.
 
 ## Segredos e variáveis (Settings > Variables and Secrets)
 
 | Nome | Para quê |
 |---|---|
-| `SEGREDO_SITE` | **o único obrigatório.** Dele saem, cada um diferente: a pimenta das senhas das calculadoras, a pimenta das senhas do /pericias e a chave que assina os pedidos ao Apps Script (`src/comum/segredos.js`). Protege as senhas mesmo se o banco vazar. Nunca mude depois que houver contas |
+| `SEGREDO_SITE` | opcional: só vale se o banco `drbruno_cofre` ainda não tiver o segredo gerado pelo site (o do cofre sempre ganha). Não crie à toa |
 | `SENHA_ITERACOES` | força do cálculo da senha. Plano gratuito: deixe vazio (20000). Plano pago: `100000`. As senhas antigas são refeitas sozinhas no próximo login |
 | `ADMIN_SETUP_CODE`, `PERICIAS_SETUP_CODE` | opcional: código para criar o primeiro administrador. Sem eles, vale a linha `codigo_configuracao` gravada em cada banco |
-| `SENHA_PEPPER`, `PERICIAS_PEPPER`, `PERICIAS_CHAVE` | opcional: se existirem, valem no lugar dos derivados do `SEGREDO_SITE` |
+| `SENHA_PEPPER`, `PERICIAS_PEPPER`, `PERICIAS_CHAVE` | só para testes no computador (`.dev.vars`): valem no lugar dos do cofre |
 | `PERICIAS_GAS_URL` | endereço do Apps Script (o que termina em `/exec`). Já está em `vars` no `wrangler.jsonc`; o navegador não vê mais |
 | `RESEND_API_KEY` e `EMAIL_FROM` | opcional: "Esqueci a senha" manda o link por e-mail (conta em resend.com, com o domínio verificado). Sem isso, a pessoa pede pelo WhatsApp e você gera o link na página do usuário |
 
@@ -109,7 +110,7 @@ O ajuste aceita o app antigo e o site ao mesmo tempo; o app antigo só para quan
 
 1. Planilha > Extensões > Apps Script > arquivo `AppPericias`.
 2. Cole todo o conteúdo de `_servidor/apps-script/AppPericias-site.gs` no **fim** do arquivo.
-3. Faça 3 trocas no `AppPericias`:
+3. Faça as trocas no `AppPericias` (lista exata em `apps-script/trocas.json`; abaixo, a versão original de cada trecho):
    - Em `doPost`: `saida = appRotear_(req);` vira `saida = appRotear_(req, e);`
    - O começo de `appRotear_`:
      ```js
@@ -136,9 +137,10 @@ O ajuste aceita o app antigo e o site ao mesmo tempo; o app antigo só para quan
      ```js
      function appPapel_(usuario) { const u = String(usuario || '').toLowerCase(); return APP_PAPEL_SITE[u] || (APP_ADMINS.indexOf(u) >= 0 ? 'perito' : 'assistente'); }
      ```
-4. Salve (salvar não muda o app em uso: ele roda a versão implantada). Configurações do projeto (engrenagem) > Propriedades do script > Adicionar: `PROXY_CHAVE` com o valor derivado do `SEGREDO_SITE`. (Alternativa: rodar `appCriarChaveSite` e copiar o valor para um segredo `PERICIAS_CHAVE` no Cloudflare.)
+4. Salve (salvar não muda o app em uso: ele roda a versão implantada).
 5. Implantar > Gerenciar implantações > lápis > Versão: **Nova versão** > Implantar (a URL continua a mesma). Se o app antigo der erro depois disso, volte ali e escolha a versão anterior.
-6. Depois que o /pericias estiver funcionando pelo site: rode `appSoSiteLigar`. Para voltar atrás numa emergência: `appSoSiteDesligar`.
+6. Com o site no ar: rode `appParearSite` (liga a planilha ao site, sem copiar chave).
+7. Depois que o /pericias estiver funcionando pelo site: rode `appSoSiteLigar`. Para voltar atrás numa emergência: `appSoSiteDesligar`.
 
 O teste `testes/gas_simulado.mjs` aplica exatamente essas 3 trocas sobre o código original e carrega o bloco acima, então se o texto do `AppPericias` mudar, o teste avisa.
 

@@ -1,0 +1,25 @@
+{
+ "_leia": "Trocas no AppPericias.gs: cada 'de' aparece uma vez só e vira 'para'. O teste gas_simulado.mjs aplica exatamente estas.",
+ "trocas": [
+  {
+   "de": "saida = appRotear_(req);",
+   "para": "saida = appRotear_(req, e);"
+  },
+  {
+   "de": "function appRotear_(req) {",
+   "para": "function appRotear_(req, e) {\n  const doSite = appUsuarioSite_(req, e);\n  if (!doSite && appSoSite_()) return { ok: false, erro: 'SESSAO' };"
+  },
+  {
+   "de": "  if (req.acao === 'login') return appLogin_(",
+   "para": "  if (!doSite && req.acao === 'login') return appLogin_("
+  },
+  {
+   "de": "  const usuario = appValidarSessao_(req.token);\n  if (!usuario) return { ok: false, erro: 'SESSAO' };",
+   "para": "  const usuario = doSite || appValidarSessao_(req.token);\n  if (!usuario) return { ok: false, erro: 'SESSAO' };\n  if (doSite && req.acao === 'carimbo') return appCarimbo_();"
+  },
+  {
+   "de": "function appPapel_(usuario) { return APP_ADMINS.indexOf(String(usuario || '').toLowerCase()) >= 0 ? 'perito' : 'assistente'; }",
+   "para": "function appPapel_(usuario) { const u = String(usuario || '').toLowerCase(); return APP_PAPEL_SITE[u] || (APP_ADMINS.indexOf(u) >= 0 ? 'perito' : 'assistente'); }"
+  }
+ ]
+}
