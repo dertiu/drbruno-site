@@ -93,6 +93,15 @@ Para o /pericias, o `.dev.vars` também precisa de `PERICIAS_SETUP_CODE=pericias
 - **Proteções extras:** cookie `__Secure-pericias` só para `/pericias` (HttpOnly, SameSite=Strict), política de segurança de conteúdo restrita (sem código embutido, sem iframes), `app.js` e `config.js` só depois do login, `app.js` embaralhado, `config.js` publicado sem o endereço do Apps Script, `LEIA-ME.md` fora do ar, limite de tentativas (8 senhas por login a cada 15 min, 5 códigos por tentativa de login).
 - **O app (`pericias/app.js`) funciona dos dois jeitos:** sem `SITE` em `config.js` (GitHub Pages, como antes) e com `SITE: true` (o build liga sozinho). Pode ir para o `main` sem quebrar a versão atual.
 
+### Vários usuários ao mesmo tempo
+- **Sincronia:** com o app na tela, cada aparelho pergunta ao site a cada 5 s se alguém alterou algo (`/pericias/conta/sincronia`). A pergunta não toca na planilha. Só quando outra pessoa mudou algo é que o app busca os dados de novo na planilha, e só a parte necessária (a lista inteira quando um processo foi movido). Com o app em segundo plano, para; ao voltar, confere na hora.
+- **Mudanças feitas direto na planilha** (fora do app): o site consulta a data da última alteração no máximo 1 vez por minuto, para todos os aparelhos juntos (`appCarimbo_`), e avisa os aparelhos.
+- **Quem está onde:** o topo mostra quem está online; a ficha mostra quem está com o mesmo processo aberto e quem está editando os dados dele.
+- **Sem gravar por cima:** ao salvar, o Apps Script confere se cada campo ainda está como a tela mostrava; se alguém mudou antes, não grava, explica o que mudou e atualiza a tela. Gravações entram uma de cada vez (trava do Apps Script).
+- **Ficha presa ao processo:** quando alguém move ou apaga uma linha, as de baixo sobem; a ficha aberta segue o número do processo, não a linha. Se o processo foi para Concluídos, a ficha acompanha e avisa.
+- **Editando enquanto outro muda:** o que você está digitando não é apagado; aparece um aviso na ficha com "Ver versão nova".
+- Custo: com 2 pessoas usando 10 h por dia, cerca de 15 mil consultas leves por dia ao site (o plano gratuito permite 100 mil) e uma consulta por minuto ao Google.
+
 ### Apps Script (fazer antes de trocar o domínio)
 O ajuste aceita o app antigo e o site ao mesmo tempo; o app antigo só para quando você rodar `appSoSiteLigar`.
 
@@ -115,6 +124,7 @@ O ajuste aceita o app antigo e o site ao mesmo tempo; o app antigo só para quan
        if (!doSite && req.acao === 'login') return appLogin_(req.usuario, req.senha);
        const usuario = doSite || appValidarSessao_(req.token);
        if (!usuario) return { ok: false, erro: 'SESSAO' };
+       if (doSite && req.acao === 'carimbo') return appCarimbo_();
      ```
    - A linha do `appPapel_`:
      ```js

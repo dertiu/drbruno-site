@@ -1095,7 +1095,7 @@ const CONFERIR_LIMITE = Math.max(CONFERIR_DIAS + 1, Math.round(Number(CFG.CONFER
 const $ = s => document.querySelector(s);
 const ABAS_PLANILHA = ['PERICIAS', 'CONCLUSOS', 'RENUNCIAS'];
 const TITULO_ABA = { PERICIAS: 'Perícias', CONCLUSOS: 'Concluídos', RENUNCIAS: 'Renúncias' };
-const MSG_CONFLITO = 'A planilha foi alterada por outra pessoa. Atualize e tente de novo.';
+const MSG_CONFLITO = 'Outra pessoa mexeu neste processo antes de você. Atualizei os dados: confira e faça de novo se ainda precisar.';
 
 const ICONES = {
   painel: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -1196,7 +1196,7 @@ async function api(acao, extra) {
   try {
     try {
       r = SITE
-        ? await fetch('/pericias/api?acao=' + encodeURIComponent(acao), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao }, extra || {})) })
+        ? await fetch('/pericias/api?acao=' + encodeURIComponent(acao) + (!leitura && procDoPedido(extra) ? '&proc=' + procDoPedido(extra) : ''), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao }, extra || {})) })
         : await fetch(API, { method: 'POST', redirect: 'follow', signal: ctl ? ctl.signal : undefined, body: JSON.stringify(Object.assign({ acao: acao, token: state.token }, extra || {})) });
     } catch (e) {
       if (e && e.name === 'AbortError') throw new Error('O servidor demorou demais para responder. ' + (leitura ? 'Tente de novo em instantes.' : 'A alteração pode ter sido gravada: toque em Atualizar e confira antes de repetir.'));
@@ -1210,6 +1210,12 @@ async function api(acao, extra) {
     sair(false); throw new Error('Sessão expirada. Entre novamente.');
   }
   return j;
+}
+
+function procDoPedido(x) {
+  if (!x) return '';
+  const p = x.processoEsperado || x.processo || (x.dados && (x.dados['PROCESSO'] || x.dados[cabDe('PERICIAS', 'PROCESSO')])) || '';
+  return String(p).replace(/\D/g, '').slice(0, 25);
 }
 
 function toast(msg, op) {
@@ -1319,6 +1325,8 @@ function aplicarInicial(j) {
   mostrarNavUser();
   $('#sync').textContent = state.hora ? 'Atualizado às ' + state.hora : '';
   if (j.ms) state.tempos = j.ms; // tempo gasto pelo servidor em cada parte (para diagnóstico)
+  state.carregadoEm = Date.now();
+  relocarFicha();
   render();
   atualizarFichaAberta();
 }
@@ -1789,7 +1797,7 @@ async function gravarHeaders(aba, linha, processo, dados, antes, motivo, op) {
       await recarregar(true, LEVE);
       return false;
     }
-    if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || 'Erro ao salvar'));
+    if (!j.ok) { if (j.erro === 'CONFLITO') recarregar(true); throw new Error(j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || 'Erro ao salvar')); }
     const hProc = cabDe(aba, 'PROCESSO');
     const procDepois = Object.prototype.hasOwnProperty.call(dados, hProc) ? dados[hProc] : processo;
     if (!op.semDesfazer && antes) toast(motivo + ': salvo', { acao: { rot: 'Desfazer', fn: () => gravarHeaders(aba, linha, procDepois, antes, null, 'Desfeito', { semDesfazer: true, esperado: dados }) } });
@@ -1809,7 +1817,7 @@ async function mover(aba, it, para, extraNorm) {
   Object.keys(extraNorm || {}).forEach(k => { const h = (state.dados[para] && state.dados[para].cabecalho.find(x => chave(x) === k)); if (h) extra[h] = extraNorm[k]; });
   try {
     const j = await api('mover', { de: aba, para: para, linha: it.linha, processoEsperado: it.m['PROCESSO'], extra: extra });
-    if (!j.ok) throw new Error(j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || 'Erro ao mover'));
+    if (!j.ok) { if (j.erro === 'CONFLITO') recarregar(true); throw new Error(j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || 'Erro ao mover')); }
     fecharFicha();
     const original = {};
     (state.dados[aba] ? state.dados[aba].cabecalho : []).forEach((h, i) => { original[h] = it.v[i] == null ? '' : String(it.v[i]); });
@@ -1829,13 +1837,31 @@ async function desfazerMover(de, linha, proc, para, original) {
 
 /* ================= FICHA DO PROCESSO ================= */
 function abrirFicha(aba, linha, aba2) {
-  state.ficha = { aba: aba, linha: Number(linha), aba2: aba2 || 'acoes', confirma: null, hist: null };
+  const it0 = acharItem(aba, linha);
+  state.ficha = { aba: aba, linha: Number(linha), aba2: aba2 || 'acoes', confirma: null, hist: null, proc: it0 ? digitos(it0.m['PROCESSO']) : '' };
   $('#drawer').hidden = false;
   document.body.style.overflow = 'hidden';
   renderFicha();
 }
 function fecharFicha() { state.ficha = null; $('#drawer').hidden = true; document.body.style.overflow = ''; }
 function atualizarFichaAberta() { if (state.ficha && state.ficha.aba2 !== 'dados') renderFicha(); }
+// quando alguém move ou apaga uma linha, as de baixo sobem: a ficha aberta segue o NÚMERO DO PROCESSO, não a linha
+function relocarFicha() {
+  const f = state.ficha;
+  if (!f || !f.proc) return;
+  const it = acharItem(f.aba, f.linha);
+  if (it && digitos(it.m['PROCESSO']) === f.proc) return;
+  const abas = [f.aba].concat(ABAS_PLANILHA.filter(a => a !== f.aba));
+  for (const aba of abas) {
+    const achado = itens(aba).find(x => digitos(x.m['PROCESSO']) === f.proc);
+    if (achado) {
+      if (aba !== f.aba) toast('Este processo foi movido para ' + (TITULO_ABA[aba] || aba) + '.');
+      f.aba = aba; f.linha = achado.linha; return;
+    }
+  }
+  fecharFicha();
+  toast('O processo que estava aberto saiu da lista (movido ou apagado por outra pessoa).', { erro: true });
+}
 
 function htmlConfirma(c) {
   return '<div class="confirma' + (c.perigo ? ' perigo' : '') + '" id="confirma"><b>' + esc(c.titulo) + '</b><ul>' + c.linhas.map(l => '<li>' + l + '</li>').join('') + '</ul>' +
@@ -1920,6 +1946,7 @@ function renderFicha() {
   if (f.aba2 === 'dados') h += '<footer class="ficha-rodape"><button type="button" class="btn primario" data-acao="salvar-dados">Salvar alterações</button><button type="button" class="btn" data-acao="dados-descartar">Descartar</button></footer>';
   else h += '<footer class="ficha-rodape"><button type="button" class="btn discord" data-acao="ficha-discord">' + ic('discord') + 'Discord</button><button type="button" class="btn" data-acao="ficha-tarefa">' + ic('tarefas') + 'Tarefa</button></footer>';
   $('#ficha').innerHTML = h;
+  mostrarPresenca();
 
   const sel = $('#f-etapa-mudar');
   if (sel) sel.addEventListener('change', () => {
@@ -1952,7 +1979,10 @@ function nomeModeloCurto(n) { return String(n || '').replace(/^MODELO\s+(DE\s+)?
 function fichaItem() { return state.ficha ? acharItem(state.ficha.aba, state.ficha.linha) : null; }
 function chaveDocs(it) { return digitos(it.m['PROCESSO']) || it.aba + ':' + it.linha; }
 function fmtDataHora(ms) { const d = new Date(ms); return fmtData(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
-function erroApi(j, padrao) { return j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || padrao); }
+function erroApi(j, padrao) {
+  if (j.erro === 'CONFLITO' || j.erro === 'CONFLITO_CAMPO') setTimeout(() => recarregar(true), 0); // a tela estava desatualizada: busca a versão nova
+  return j.erro === 'CONFLITO' ? MSG_CONFLITO : (j.erro || padrao);
+}
 
 async function carregarDocs(it, forcar) {
   const k = chaveDocs(it);
@@ -3729,6 +3759,7 @@ document.addEventListener('click', ev => {
     case 'nav-mais': { const p = $('#nav-mais'); p.hidden = !p.hidden; break; }
     case 'tema': aplicarTema(temaAtual() === 'escuro' ? 'claro' : 'escuro'); break;
     case 'conta': location.href = '/pericias/perfil/'; break;
+    case 'ficha-versao-nova': { const a = $('#aviso-sync'); if (a) a.remove(); recarregar(true, LEVE).then(() => renderFicha()); break; }
     case 't-nova': abrirNovaTarefa(''); break;
     case 'ficha-tarefa': { const it = fichaItem(); abrirNovaTarefa(it && it.aba === 'PERICIAS' ? it.m['PROCESSO'] : ''); break; }
     case 't-escopo': state.tEscopo = ds.k; render(); break;
@@ -3894,10 +3925,122 @@ $('#busca-global').addEventListener('keydown', e => {
 // atualiza sozinho a cada 5 minutos se ninguém estiver editando
 setInterval(() => {
   if (!state.token || document.visibilityState !== 'visible' || modal.open || state.ficha) return;
+  if (SITE && Date.now() - (state.carregadoEm || 0) < 10 * 60 * 1000) return;
   const a = document.activeElement;
   if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
   recarregar(true);
 }, 5 * 60 * 1000);
+
+/* ================= SINCRONIA EM TEMPO REAL (versão no site) =================
+   A cada 5 s (só com o app na tela) pergunta ao site se alguém alterou algo. A pergunta é leve: não toca na planilha.
+   Só quando outra pessoa mudou algo é que o app busca os dados de novo na planilha (e só a parte necessária).
+   Também avisa quem está com o mesmo processo aberto, para ninguém editar em cima do outro. */
+const SYNC = { v: null, emCurso: false, pendente: null, presChave: '', presAt: 0, presenca: [] };
+const VERBOS = {
+  salvar: 'atualizou', mover: 'moveu', agendar: 'agendou a perícia de', agendaSalvar: 'mudou a agenda de', agendaConfirmar: 'confirmou o agendamento de',
+  agendaLivres: 'abriu horários na agenda', agendaRemover: 'tirou um horário da agenda', tarefaCriar: 'criou uma tarefa', tarefaStatus: 'atualizou uma tarefa',
+  tarefaExcluir: 'excluiu uma tarefa', verificado: 'conferiu nos autos', pastaCriar: 'criou a pasta de', pastaVincular: 'vinculou a pasta de',
+  gerarDoc: 'gerou documento de', upload: 'enviou arquivo de', modeloSalvar: 'alterou um modelo', modeloCriar: 'criou um modelo', modeloDuplicar: 'duplicou um modelo', modeloExcluir: 'excluiu um modelo'
+};
+// nome curto para avisos: "Dr. Bruno Thomás Michels" vira "Dr. Bruno"; "Ana Paula Souza" vira "Ana"
+function curto(n) { const p = String(n || '').trim().split(/\s+/); return /^dra?\.?$/i.test(p[0]) && p[1] ? p[0] + ' ' + p[1] : p[0]; }
+function procFichaAberta() { const it = fichaItem(); return it ? digitos(it.m['PROCESSO']) : ''; }
+function nomeDoProc(d) {
+  if (!d) return '';
+  for (const aba of ABAS_PLANILHA) { const it = itens(aba).find(x => digitos(x.m['PROCESSO']) === d); if (it) return it.m['REQUERENTE'] || formatarCNJ(it.m['PROCESSO']); }
+  return '';
+}
+function frase(x) {
+  if (x.acao === 'planilha') return 'A planilha foi alterada direto';
+  const quem = curto(x.nome || x.chave || 'Alguém');
+  const verbo = VERBOS[x.acao] || 'fez uma alteração';
+  const alvo = /de$|^atualizou$|^moveu$|^conferiu/.test(verbo) ? nomeDoProc(x.proc) : '';
+  return quem + ' ' + verbo + (alvo ? ' ' + alvo : '');
+}
+function ocupadoDigitando() {
+  if (modal.open) return true;
+  const a = document.activeElement;
+  return !!(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && !a.closest('.busca-global'));
+}
+function aplicarPendente() {
+  const p = SYNC.pendente;
+  if (!p) return;
+  if (carregando) { carregando.then(() => setTimeout(aplicarPendente, 50)); return; }
+  if (ocupadoDigitando()) { $('#sync').textContent = 'Há novidades: atualizo quando você terminar de digitar'; return; }
+  SYNC.pendente = null;
+  recarregar(true, p.full ? null : LEVE).then(() => {
+    const t = $('#toast');
+    if (t && !t.hidden && t.classList.contains('erro')) return; // não cobre um aviso de erro (ex.: "Não salvei")
+    const ult = p.lista[p.lista.length - 1];
+    toast(frase(ult) + (p.lista.length > 1 ? ' (e mais ' + (p.lista.length - 1) + ')' : '') + '. Tela atualizada.');
+  });
+}
+function avisoFichaMudou(x) {
+  const fi = $('#ficha');
+  if (!fi || $('#aviso-sync')) return;
+  const el = document.createElement('div');
+  el.id = 'aviso-sync'; el.className = 'aviso-sync';
+  el.innerHTML = '<span><b>' + esc(frase(x)) + ' agora.</b> O que está nesta tela pode estar desatualizado. Se salvar, o app confere antes e não grava por cima.</span>' +
+    '<button type="button" class="btn pequeno" data-acao="ficha-versao-nova">Ver versão nova</button>';
+  const topo = fi.querySelector('.ficha-topo');
+  if (topo) topo.after(el); else fi.prepend(el);
+}
+function novidades(lista) {
+  const full = lista.some(x => x.acao === 'mover' || x.acao === 'planilha' || !x.proc);
+  SYNC.pendente = { full: !!(SYNC.pendente && SYNC.pendente.full) || full, lista: ((SYNC.pendente && SYNC.pendente.lista) || []).concat(lista) };
+  const f = procFichaAberta();
+  const naFicha = f && lista.filter(x => x.proc === f).pop();
+  if (naFicha && state.ficha.aba2 === 'dados') avisoFichaMudou(naFicha);
+  aplicarPendente();
+}
+function mostrarPresenca() {
+  if (!SITE) return;
+  const outros = SYNC.presenca || [];
+  let on = $('#online');
+  const topo = $('#sync');
+  if (!on && topo) { on = document.createElement('span'); on.id = 'online'; on.className = 'online'; topo.after(on); }
+  const nomes = [...new Set(outros.map(x => curto(x.nome || x.chave)))];
+  if (on) { on.textContent = nomes.length ? nomes.join(', ') + ' online' : ''; on.title = nomes.length ? 'Também com o app aberto agora' : ''; }
+  const fi = $('#ficha');
+  if (!fi || !state.ficha) return;
+  const f = procFichaAberta();
+  const aqui = outros.filter(x => x.proc && x.proc === f);
+  let box = $('#presenca-ficha');
+  if (!aqui.length) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'presenca-ficha'; box.className = 'presenca-ficha'; const t = fi.querySelector('.ficha-topo'); if (t) t.after(box); else fi.prepend(box); }
+  const ed = aqui.filter(x => x.editando);
+  box.classList.toggle('editando', ed.length > 0);
+  box.textContent = ed.length
+    ? ed.map(x => curto(x.nome || x.chave)).join(' e ') + ' está editando os dados deste processo agora. Combine antes de alterar o mesmo campo.'
+    : aqui.map(x => curto(x.nome || x.chave)).join(' e ') + ' também está com este processo aberto.';
+}
+async function sincronizar() {
+  if (!SITE || !state.token || SYNC.emCurso || document.visibilityState !== 'visible') return;
+  SYNC.emCurso = true;
+  try {
+    const ficha = procFichaAberta(), editando = !!(state.ficha && state.ficha.aba2 === 'dados');
+    const chave = ficha + '|' + editando, pres = chave !== SYNC.presChave || Date.now() - SYNC.presAt > 20000;
+    const r = await fetch('/pericias/conta/sincronia', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ v: SYNC.v, ficha: ficha, editando: editando, pres: pres }) });
+    if (r.status === 401) { sair(false); return; }
+    const j = await r.json();
+    if (!j || !j.ok) return;
+    if (pres) { SYNC.presChave = chave; SYNC.presAt = Date.now(); }
+    SYNC.presenca = j.presenca || [];
+    mostrarPresenca();
+    const primeira = SYNC.v == null;
+    SYNC.v = Math.max(SYNC.v || 0, j.v || 0);
+    if (primeira) return;
+    const deOutros = (j.mudancas || []).filter(x => x.chave !== state.user);
+    if (deOutros.length) novidades(deOutros);
+  } catch (e) { /* sem conexão: tenta de novo no próximo ciclo */ } finally { SYNC.emCurso = false; }
+}
+if (SITE) {
+  setInterval(sincronizar, 5000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(); else SYNC.presChave = ''; });
+  window.addEventListener('focus', sincronizar);
+  window.addEventListener('online', sincronizar);
+  document.addEventListener('focusout', () => setTimeout(aplicarPendente, 400));
+}
 
 /* ================= INÍCIO ================= */
 async function iniciar() {
@@ -3911,6 +4054,7 @@ async function iniciar() {
   if (!state.token) { mostrarLogin(); return; }
   mostrarApp();
   renderNav();
+  if (SITE) await sincronizar(); // marca o ponto de partida antes de carregar: nada alterado depois disso passa despercebido
   await recarregar(false);
   if (!state.token) $('#lg-msg').textContent = 'Sessão expirada. Entre novamente.';
 }

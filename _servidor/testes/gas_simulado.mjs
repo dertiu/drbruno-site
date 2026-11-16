@@ -34,7 +34,8 @@ function appRotear_(req) {
     case 'me': return { ok: true, usuario: usuario, papel: appPapel_(usuario) };
     case 'inicial': return appInicial_(usuario);
     case 'gestao': return appPapel_(usuario) === 'perito' ? { ok: true, gestao: true } : { ok: false, erro: 'Sem permissão para a Gestão.' };
-    case 'salvar': return { ok: true, salvo: true, por: usuario };
+    case 'salvar': return appSalvar_(req, usuario);
+    case 'mover': return appMover_(req, usuario);
     case 'upload': return { ok: true, tamanho: String(req.dados || '').length };
     default: return { ok: false, erro: 'Ação desconhecida' };
   }
@@ -54,7 +55,8 @@ export const TROCAS = [
   if (!doSite && appSoSite_()) return { ok: false, erro: 'SESSAO' };
   if (!doSite && req.acao === 'login') return appLogin_(req.usuario, req.senha);
   const usuario = doSite || appValidarSessao_(req.token);
-  if (!usuario) return { ok: false, erro: 'SESSAO' };`],
+  if (!usuario) return { ok: false, erro: 'SESSAO' };
+  if (doSite && req.acao === 'carimbo') return appCarimbo_();`],
   [`function appPapel_(usuario) { return APP_ADMINS.indexOf(String(usuario || '').toLowerCase()) >= 0 ? 'perito' : 'assistente'; }`,
     `function appPapel_(usuario) { const u = String(usuario || '').toLowerCase(); return APP_PAPEL_SITE[u] || (APP_ADMINS.indexOf(u) >= 0 ? 'perito' : 'assistente'); }`]
 ];
@@ -83,25 +85,51 @@ const ctx = {
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ s, setMimeType() { return this; } }) },
   appLogin_: (u, s) => (u === 'antigo' && s === 'senha-antiga' ? { ok: true, token: 'x'.repeat(64), usuario: 'antigo', papel: 'assistente' } : { ok: false, erro: 'Usuário ou senha incorretos.' }),
   appValidarSessao_: t => (t === 'x'.repeat(64) ? 'antigo' : null),
-  appInicial_: u => inicial(u)
+  appInicial_: u => inicial(u),
+  appSalvar_: (req, u) => salvar(req, u),
+  appMover_: (req, u) => mover(req, u),
+  SpreadsheetApp: { getActive: () => ({ getId: () => 'planilha' }) },
+  DriveApp: { getFileById: () => ({ getLastUpdated: () => new Date(planilhaEditadaEm) }) }
 };
+let planilhaEditadaEm = Date.now() - 3600000;
 vm.createContext(ctx);
 vm.runInContext(codigo + '\nthis.doPost = doPost; this.appCriarChaveSite = appCriarChaveSite; this.appSoSiteLigar = appSoSiteLigar; this.appSoSiteDesligar = appSoSiteDesligar;', ctx);
 
-/* dados fictícios para a tela abrir */
+/* dados fictícios, guardados em memória e alterados de verdade (como a planilha) */
+const CAB = ['PROCESSO', 'REQUERENTE', 'REQUERIDA', 'CIDADE', 'FORUM', 'TIPO', 'STATUS', 'SISTEMA', 'PERICIA', 'PRAZOS', 'LAUDO', 'PAGO', 'HONORARIOS', 'PROXIMO PASSO', 'OBSERVACAO'];
+const dia = n => new Date(Date.now() + n * 864e5).toLocaleDateString('pt-BR');
+export const DADOS = {
+  PERICIAS: [
+    ['1000001-11.2026.8.26.0576', 'Paciente Fictício Um', 'INSS', 'SÃO JOSÉ DO RIO PRETO', '1ª VARA CÍVEL', 'AUXÍLIO-ACIDENTE', 'ACEITE', 'EPROC FAZENDA', dia(5), dia(20), '', 'RESERVADO', 'R$ 600,00', 'PERICIA', ''],
+    ['1000002-22.2026.8.26.0576', 'Paciente Fictício Dois', 'Plano de Saúde Exemplo', 'MIRASSOL', '2ª VARA', 'ERRO MÉDICO', 'AGUARDANDO', 'ESAJ', '', dia(3), '', '', 'R$ 3.000,00', 'ACEITE', 'teste'],
+    ['1000003-33.2026.8.26.0576', 'Paciente Fictício Três', 'Município Exemplo', 'BADY BASSITT', 'VARA ÚNICA', 'INTERDIÇÃO', 'ACEITE', 'EPROC CÍVEL', dia(-10), dia(15), 'EM PRODUÇÃO', '', 'R$ 1.200,00', 'LAUDO', '']
+  ],
+  CONCLUSOS: [], RENUNCIAS: []
+};
+const listar = aba => ({ ok: true, aba, cabecalho: CAB, linhas: DADOS[aba].map((v, i) => ({ linha: i + 2, v: v.slice() })) });
+function salvar(req, usuario) {
+  const rows = DADOS[req.aba]; if (!rows) return { ok: false, erro: 'Aba inválida' };
+  const row = rows[Number(req.linha) - 2];
+  if (!row || row[0].trim() !== String(req.processoEsperado || '').trim()) return { ok: false, erro: 'CONFLITO' };
+  const campos = [];
+  for (const [k, v] of Object.entries(req.esperado || {})) { const i = CAB.indexOf(k); if (i >= 0 && String(row[i]).trim() !== String(v || '').trim()) campos.push({ campo: k, atual: row[i] }); }
+  if (campos.length) return { ok: false, erro: 'CONFLITO_CAMPO', campos };
+  for (const [k, v] of Object.entries(req.dados || {})) { const i = CAB.indexOf(k); if (i >= 0) row[i] = String(v); }
+  planilhaEditadaEm = Date.now();
+  return { ok: true, linha: Number(req.linha), por: usuario };
+}
+function mover(req) {
+  const de = DADOS[req.de], para = DADOS[req.para]; const i = Number(req.linha) - 2;
+  if (!de || !para || !de[i] || de[i][0] !== req.processoEsperado) return { ok: false, erro: 'CONFLITO' };
+  para.push(de.splice(i, 1)[0]); planilhaEditadaEm = Date.now();
+  return { ok: true, linha: para.length + 1 };
+}
 function inicial(usuario) {
-  const cab = ['PROCESSO', 'REQUERENTE', 'REQUERIDA', 'CIDADE', 'FORUM', 'TIPO', 'STATUS', 'SISTEMA', 'PERICIA', 'PRAZOS', 'LAUDO', 'PAGO', 'HONORARIOS', 'PROXIMO PASSO', 'OBSERVACAO'];
-  const d = n => { const x = new Date(Date.now() + n * 864e5); return x.toLocaleDateString('pt-BR'); };
-  const linhas = [
-    ['1000001-11.2026.8.26.0576', 'Paciente Fictício Um', 'INSS', 'SÃO JOSÉ DO RIO PRETO', '1ª VARA CÍVEL', 'AUXÍLIO-ACIDENTE', 'ACEITE', 'EPROC FAZENDA', d(5), d(20), '', 'RESERVADO', 'R$ 600,00', 'PERICIA', ''],
-    ['1000002-22.2026.8.26.0576', 'Paciente Fictício Dois', 'Plano de Saúde Exemplo', 'MIRASSOL', '2ª VARA', 'ERRO MÉDICO', 'AGUARDANDO', 'ESAJ', '', d(3), '', '', 'R$ 3.000,00', 'ACEITE', 'teste'],
-    ['1000003-33.2026.8.26.0576', 'Paciente Fictício Três', 'Município Exemplo', 'BADY BASSITT', 'VARA ÚNICA', 'INTERDIÇÃO', 'ACEITE', 'EPROC CÍVEL', d(-10), d(15), 'EM PRODUÇÃO', '', 'R$ 1.200,00', 'LAUDO', '']
-  ].map((v, i) => ({ linha: i + 2, v }));
   return {
     ok: true, usuario, papel: ctx.appPapel_ ? ctx.appPapel_(usuario) : 'assistente',
-    abas: { PERICIAS: { ok: true, aba: 'PERICIAS', cabecalho: cab, linhas }, CONCLUSOS: { ok: true, aba: 'CONCLUSOS', cabecalho: cab, linhas: [] }, RENUNCIAS: { ok: true, aba: 'RENUNCIAS', cabecalho: cab, linhas: [] } },
-    agenda: [], livres: [], atividade: [{ data: d(0) + ' 10:00', usuario, processo: '', acao: 'Teste', detalhe: '' }],
-    tarefas: [], verificados: {}, usuarios: [{ u: 'bruno', papel: 'perito' }], canais: [], hora: '10:00', prefs: {}
+    abas: { PERICIAS: listar('PERICIAS'), CONCLUSOS: listar('CONCLUSOS'), RENUNCIAS: listar('RENUNCIAS') },
+    agenda: [], livres: [], atividade: [{ data: dia(0) + ' 10:00', usuario, processo: '', acao: 'Teste', detalhe: '' }],
+    tarefas: [], verificados: {}, usuarios: [{ u: 'bruno', papel: 'perito' }], canais: [], hora: new Date().toTimeString().slice(0, 5), prefs: {}
   };
 }
 
@@ -109,6 +137,7 @@ export const ultimo = { usuario: null, acao: null };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/estado') { res.end(JSON.stringify({ ultimo, so_site: props.get('SO_SITE') || null })); return; }
+  if (url.pathname === '/editar-planilha') { DADOS.PERICIAS[0][14] = 'editado direto na planilha'; planilhaEditadaEm = Date.now(); res.end('ok'); return; }
   if (url.pathname === '/so-site') { ctx.appSoSiteLigar(); res.end('ok'); return; }
   if (url.pathname === '/so-site-desligar') { ctx.appSoSiteDesligar(); res.end('ok'); return; }
   let body = '';

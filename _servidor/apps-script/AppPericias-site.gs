@@ -36,6 +36,12 @@ function appIgualSeguro_(a, b) {
   return r === 0;
 }
 
+// data da última alteração da planilha (o site consulta no máximo 1 vez por minuto para avisar os aparelhos
+// quando alguém mexe direto na planilha, fora do app)
+function appCarimbo_() {
+  return { ok: true, t: DriveApp.getFileById(SpreadsheetApp.getActive().getId()).getLastUpdated().getTime() };
+}
+
 function appSoSite_() {
   return PropertiesService.getScriptProperties().getProperty('SO_SITE') === '1';
 }

@@ -56,7 +56,17 @@ const MIGRATIONS = [
     ip TEXT, place TEXT, ua TEXT
   );
   CREATE INDEX IF NOT EXISTS p_audit_at ON p_audit(at);
-  CREATE INDEX IF NOT EXISTS p_audit_target ON p_audit(target_id, at);`
+  CREATE INDEX IF NOT EXISTS p_audit_target ON p_audit(target_id, at);`,
+  // sincronia: cada alteração feita pelo app (ou direto na planilha) e quem está com qual processo aberto
+  `CREATE TABLE IF NOT EXISTS p_sync (
+    v INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    chave TEXT, nome TEXT, acao TEXT NOT NULL, proc TEXT
+  );
+  CREATE TABLE IF NOT EXISTS p_presenca (
+    chave TEXT PRIMARY KEY,
+    nome TEXT, proc TEXT, editando INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL
+  );`
 ];
 
 let ready = null;
@@ -139,6 +149,8 @@ export async function cleanupP(env) {
     env.DBP.prepare('DELETE FROM p_sessions WHERE expires_at < ?1 OR max_at < ?1').bind(t),
     env.DBP.prepare('DELETE FROM p_limits WHERE reset_at < ?1').bind(t),
     env.DBP.prepare('DELETE FROM p_tickets WHERE expires_at < ?1 OR used = 1').bind(t - 86400000),
-    env.DBP.prepare('DELETE FROM p_audit WHERE at < ?1').bind(t - 730 * 86400000)
+    env.DBP.prepare('DELETE FROM p_audit WHERE at < ?1').bind(t - 730 * 86400000),
+    env.DBP.prepare('DELETE FROM p_sync WHERE at < ?1').bind(t - 7 * 86400000),
+    env.DBP.prepare('DELETE FROM p_presenca WHERE at < ?1').bind(t - 86400000)
   ]);
 }

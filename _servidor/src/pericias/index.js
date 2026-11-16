@@ -18,6 +18,8 @@ const PUBLICO = /^\/pericias\/(?:|index\.html|entrar\.js|entrar\.css|tema\.js|ap
 // ações do app que só leem (não entram no registro, para não lotar)
 const LEITURAS = new Set(['inicial', 'me', 'docs', 'modelos', 'historico', 'listar', 'agenda', 'atividade', 'discordCanais']);
 const SO_PERITO = new Set(['gestao', 'modeloExcluir']);
+// ações que não mudam o que os outros veem (não disparam atualização nos outros aparelhos)
+const SEM_MUDANCA = new Set(['prefsSalvar', 'gestao', 'discordEnviar', 'discordRotina', 'carimbo']);
 
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
 const HEADERS = {
@@ -148,6 +150,22 @@ async function hmacHex(key, msg) {
   const k = await crypto.subtle.importKey('raw', te.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, te.encode(msg)))].map(b => b.toString(16).padStart(2, '0')).join('');
 }
+async function assinado(env, user, acao) {
+  const p = { u: user.chave, p: user.papel, a: acao, t: String(Date.now()), n: randomToken(12) };
+  p.s = await hmacHex(env.PERICIAS_CHAVE, [p.u, p.p, p.a, p.t, p.n].join('|'));
+  return env.PERICIAS_GAS_URL + (env.PERICIAS_GAS_URL.includes('?') ? '&' : '?') + new URLSearchParams(p).toString();
+}
+async function chamarGas(target, body) {
+  // o Apps Script responde com redirecionamento (302) para o endereço que entrega o resultado; segue à mão
+  let r = await fetch(target, { method: 'POST', body, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'manual' });
+  for (let i = 0; i < 3 && r.status >= 300 && r.status < 400 && r.headers.get('Location'); i++) {
+    r = await fetch(new URL(r.headers.get('Location'), target).toString(), { method: 'GET', redirect: 'manual' });
+  }
+  return r;
+}
+const marcar = (env, quem, acao, proc) => env.DBP.prepare('INSERT INTO p_sync (at, chave, nome, acao, proc) VALUES (?1, ?2, ?3, ?4, ?5)')
+  .bind(Date.now(), quem ? quem.chave : null, quem ? quem.nome : 'Planilha', acao, proc || null).run();
+
 async function proxy(req, env, ctx, url, s) {
   const acao = url.searchParams.get('acao') || '';
   if (!/^[a-zA-Z]{2,30}$/.test(acao) || acao === 'login' || acao === 'logout') return fail('Ação inválida.', 400);
@@ -155,22 +173,44 @@ async function proxy(req, env, ctx, url, s) {
   if (!env.PERICIAS_GAS_URL || !env.PERICIAS_CHAVE) return fail('Servidor da planilha não configurado (PERICIAS_GAS_URL e PERICIAS_CHAVE).', 503);
   const len = Number(req.headers.get('Content-Length') || 0);
   if (len > 30 * 1024 * 1024) return fail('Arquivo grande demais.', 413);
-  const p = { u: s.user.chave, p: s.user.papel, a: acao, t: String(Date.now()), n: randomToken(12) };
-  p.s = await hmacHex(env.PERICIAS_CHAVE, [p.u, p.p, p.a, p.t, p.n].join('|'));
-  const target = env.PERICIAS_GAS_URL + (env.PERICIAS_GAS_URL.includes('?') ? '&' : '?') + new URLSearchParams(p).toString();
-  if (!LEITURAS.has(acao)) ctx.waitUntil(auditP(env, req, s.user, 'app: ' + acao, s.user.id, null));
+  const leitura = LEITURAS.has(acao);
+  const proc = (url.searchParams.get('proc') || '').replace(/\D/g, '').slice(0, 25);
+  if (!leitura) ctx.waitUntil(auditP(env, req, s.user, 'app: ' + acao, s.user.id, proc || null));
   let r;
-  try {
-    // o Apps Script responde com redirecionamento (302) para o endereço que entrega o resultado; segue à mão
-    r = await fetch(target, { method: 'POST', body: req.body, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'manual' });
-    for (let i = 0; i < 3 && r.status >= 300 && r.status < 400 && r.headers.get('Location'); i++) {
-      r = await fetch(new URL(r.headers.get('Location'), target).toString(), { method: 'GET', redirect: 'manual' });
-    }
-  } catch (e) {
-    return fail('A planilha não respondeu. Tente de novo em instantes.', 502);
-  }
+  try { r = await chamarGas(await assinado(env, s.user, acao), req.body); }
+  catch (e) { return fail('A planilha não respondeu. Tente de novo em instantes.', 502); }
   if (!r.ok) return fail('A planilha respondeu com erro ' + r.status + '.', 502);
-  return new Response(r.body, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+  const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+  if (leitura) return new Response(r.body, { status: 200, headers: h });
+  // alteração: se deu certo, registra para os outros aparelhos atualizarem na hora
+  const txt = await r.text();
+  let ok = false; try { ok = JSON.parse(txt).ok === true; } catch (e) { }
+  if (ok && !SEM_MUDANCA.has(acao)) await marcar(env, s.user, acao, proc);
+  return new Response(txt, { status: 200, headers: h });
+}
+
+/* alterações feitas direto na planilha (fora do app): no máximo uma consulta por minuto ao Apps Script,
+   para todos os aparelhos juntos. Se a planilha mudou sem passar pelo app, avisa os aparelhos. */
+async function conferirPlanilha(env, user) {
+  if (!env.PERICIAS_GAS_URL || !env.PERICIAS_CHAVE) return;
+  const t = Date.now();
+  const teste = env.PERICIAS_SYNC_TESTE === '1'; // só nos testes: confere a planilha a cada 2 s em vez de 60 s
+  const r = await env.DBP.prepare("UPDATE p_settings SET value = ?1 WHERE key = 'carimbo_em' AND CAST(value AS INTEGER) < ?2").bind(String(t), t - (teste ? 2000 : 60000)).run();
+  if (!r.meta.changes) {
+    const ex = await env.DBP.prepare("SELECT value FROM p_settings WHERE key = 'carimbo_em'").first();
+    if (ex) return; // outro aparelho conferiu há menos de 1 minuto
+    await env.DBP.prepare("INSERT OR IGNORE INTO p_settings (key, value) VALUES ('carimbo_em', ?1)").bind(String(t)).run();
+  }
+  const res = await chamarGas(await assinado(env, user, 'carimbo'), JSON.stringify({ acao: 'carimbo' }));
+  let j = null; try { j = await res.json(); } catch (e) { }
+  if (!j || !j.ok || !Number(j.t)) return; // Apps Script ainda sem a função carimbo
+  const ant = await env.DBP.prepare("SELECT value FROM p_settings WHERE key = 'carimbo_t'").first();
+  await env.DBP.prepare("INSERT INTO p_settings (key, value) VALUES ('carimbo_t', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(String(j.t)).run();
+  if (!ant || Number(j.t) <= Number(ant.value)) return;
+  // mudança feita pelo app nos últimos 90 s explica a nova data da planilha
+  const rec = await env.DBP.prepare('SELECT MAX(at) AS at FROM p_sync WHERE chave IS NOT NULL').first();
+  if (rec && rec.at && Number(j.t) - rec.at < (teste ? 1500 : 90000)) return;
+  await marcar(env, null, 'planilha', null);
 }
 
 /* ---------- API de conta e painel ---------- */
@@ -275,6 +315,23 @@ async function conta(req, env, ctx, url, st) {
   if (path === 'equipe' && m === 'GET') {
     const rows = (await env.DBP.prepare("SELECT chave AS u, nome, papel FROM p_users WHERE status = 'ativo' ORDER BY nome").all()).results || [];
     return json({ ok: true, usuarios: rows });
+  }
+
+  /* sincronia: chamada leve a cada poucos segundos; não toca na planilha */
+  if (path === 'sincronia' && m === 'POST') {
+    const t = Date.now(), primeira = body.v == null, desde = Math.max(0, Number(body.v) || 0);
+    if (body.pres) {
+      const proc = String(body.ficha || '').replace(/\D/g, '').slice(0, 25) || null;
+      await env.DBP.prepare('INSERT INTO p_presenca (chave, nome, proc, editando, at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(chave) DO UPDATE SET nome = excluded.nome, proc = excluded.proc, editando = excluded.editando, at = excluded.at')
+        .bind(me.chave, me.nome, proc, body.editando ? 1 : 0, t).run();
+    }
+    const [mx, mud, pres] = await env.DBP.batch([
+      env.DBP.prepare('SELECT IFNULL(MAX(v), 0) AS v FROM p_sync'),
+      env.DBP.prepare('SELECT v, at, chave, nome, acao, proc FROM p_sync WHERE v > ?1 ORDER BY v LIMIT 40').bind(desde),
+      env.DBP.prepare('SELECT chave, nome, proc, editando, at FROM p_presenca WHERE at > ?1 AND chave != ?2').bind(t - 35000, me.chave)
+    ]);
+    ctx.waitUntil(conferirPlanilha(env, me).catch(e => console.error('carimbo', e && e.message)));
+    return json({ ok: true, v: mx.results[0].v, mudancas: primeira ? [] : mud.results, presenca: pres.results, agora: t });
   }
 
   if (path === 'perfil' && m === 'POST') {
