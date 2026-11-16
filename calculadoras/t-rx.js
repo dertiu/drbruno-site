@@ -63,6 +63,23 @@
       return m;
     });
   }
+  // de onde sai a dose, para conferir na tela (não entra no texto copiado): "2 gotas/kg por dose, máx. 40 gotas"
+  function base(p) {
+    const out = [], pl = (n, a, b) => (n === 1 ? a : b);
+    String(p || '').replace(/\{([a-z0-9]+)(?::([^}]*))?\}/gi, (m, k, arg) => {
+      const a = (arg || '').split(':'); k = k.toLowerCase();
+      const mx = a[1] ? ', máx. ' + br(a[1]) : '';
+      const f = num(a[0]), fa = br(Math.round(f * 100) / 100), div = f > 0 && f < 1 && Math.abs(1 / f - Math.round(1 / f)) < 0.02 ? ' (peso ÷ ' + Math.round(1 / f) + ')' : '';
+      if (k === 'gt') out.push(fa + ' ' + pl(f, 'gota', 'gotas') + '/kg por dose' + div + (mx ? mx + ' gotas' : ''));
+      else if (k === 'ml') out.push(fa + ' mL/kg por dose' + div + (mx ? mx + ' mL' : ''));
+      else if (k === 'mg') out.push(br(a[0]) + ' mg/kg' + (mx ? mx + ' mg' : ''));
+      else if (k === 'peso' || k === 'ivermectina') out.push('pela faixa de peso');
+      else if (k === 'idade') out.push('pela idade');
+      else if (k === 'dengueped' || k === 'dengueped3' || k === 'litros') out.push('volume pelo peso');
+      return m;
+    });
+    return out.filter((x, i) => out.indexOf(x) === i).join('; ');
+  }
   const KGT = /\{(gt|ml|mg|kg|litros|ivermectina|dengueped|peso|fr)|^peso/im, AGT = /\{idade|^idade/im;
   const needOf = r => { const s = r.it.map(i => i.n + ' ' + i.q + ' ' + i.p + '\n' + (i.se || '')).join(' '); return (KGT.test(s) ? 'kg ' : '') + (AGT.test(s) ? 'age' : ''); };
   // item condicionado à idade ou ao peso ("idade<1", "peso>10"): some quando o dado é conhecido e não cumpre
@@ -239,7 +256,7 @@
                 pp.append(h('label', { class: 'rx-it' + (on ? '' : ' off') }, cb,
                   h('span', { class: 'rx-num' }, on ? n + '.' : ''),
                   h('span', { class: 'rx-body' }, h('span', { class: 'rx-n' }, ...rich(x.it.n, c2, x.key + ':n', h), h('span', { class: 'rx-qt' }, ...rich(x.it.q, c2, x.key + ':q', h)), x.it.opt && h('span', { class: 'rx-opt' }, 'opção')),
-                    h('span', { class: 'rx-p' }, ...rich(x.it.p, c2, x.key + ':p', h)))));
+                    h('span', { class: 'rx-p' }, ...rich(x.it.p, c2, x.key + ':p', h)), base(x.it.p) && h('span', { class: 'rl-base' }, 'Dose: ' + base(x.it.p)))));
               });
             });
             if (comp.ori.length) {
@@ -286,5 +303,5 @@
   links.push({ id: 'ped-rx', g: 'ped', title: 'Receitas pediátricas', desc: 'Receitas de alta com dose calculada pelo peso da criança', kw: 'receita criança pediatria alta', href: '#/receitas/p:c' });
   D.add(tool, ...links);
   R.forEach(r => D.links.push({ id: 'rxl-' + r.id, g: 'rx', title: 'Receita: ' + r.t, desc: r.ped ? 'Receita pediátrica com dose pelo peso' : 'Receita pronta para copiar', kw: 'receita ' + r.kw, href: '#/receitas/' + r.id }));
-  D.rx = { R, CATS, VIA, compose, toText, CTX, fill, needOf };
+  D.rx = { R, CATS, VIA, compose, toText, CTX, fill, needOf, base };
 })();
