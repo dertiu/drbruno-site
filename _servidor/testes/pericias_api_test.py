@@ -152,6 +152,16 @@ r = post(adm, 'admin/excluir', {'id': ana_id, 'confirmar': 'ana.paula'}); chk(r.
 print('== tentativas')
 z = S(); cs = [post(z, 'entrar', {'login': 'carlos', 'senha': 'errada%d' % i}).status_code for i in range(9)]
 chk(cs[-1] == 429, 'bloqueio depois de 8 senhas erradas: %s' % cs[-3:])
+print('== pareamento com a planilha')
+sem_origem = {'Content-Type': 'application/json'}  # o Apps Script (UrlFetchApp) não manda Origin
+r = requests.post(B + '/pericias/conta/parear', data=json.dumps({'chave': 'x' * 40}), headers=sem_origem)
+chk(r.status_code == 403, 'chave que a planilha não tem é recusada')
+r = requests.post(B + '/pericias/conta/parear', data=json.dumps({'chave': 'curta'}), headers=sem_origem)
+chk(r.status_code == 400, 'chave inválida é recusada')
+r = requests.post(B + '/pericias/conta/parear', data=json.dumps({'chave': CHAVE}), headers=sem_origem)
+chk(r.ok and r.json().get('pareado'), 'chave confirmada pela planilha é guardada')
+reg = adm.get(B + '/pericias/conta/admin/registro').json()['registro']; acoes = [x['action'] for x in reg]
+chk('planilha ligada ao site (pareamento)' in acoes and 'pareamento com a planilha recusado' in acoes, 'pareamento no registro')
 print('== sair')
 r = post(adm, 'sair', {}); chk(app(adm, 'inicial').status_code == 401 and adm.get(B + '/pericias/app.js').status_code == 401, 'depois de sair, nada passa')
 print('\n%d ok, %d falharam' % (ok, bad)); sys.exit(1 if bad else 0)

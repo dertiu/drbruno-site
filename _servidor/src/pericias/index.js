@@ -8,7 +8,7 @@ import { json, fail, readJson, HttpError, randomToken, sha256hex, safeEqual, cli
 import { hashSenha, conferirSenha, problemaSenha } from '../comum/senha.js';
 import { ensureSchemaP, getSettingsP, saveSettingsP, auditP, hitP } from './db.js';
 import { newSecret, checkTotp, otpauthUri, newBackupCodes, normBackup } from './totp.js';
-import { segredos, codigoConfiguracao, apagarCodigoConfiguracao, normCodigo } from '../comum/segredos.js';
+import { segredos, guardarNoCofre, codigoConfiguracao, apagarCodigoConfiguracao, normCodigo } from '../comum/segredos.js';
 
 const COOKIE = '__Secure-pericias';
 const te = new TextEncoder();
@@ -151,9 +151,9 @@ async function hmacHex(key, msg) {
   const k = await crypto.subtle.importKey('raw', te.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, te.encode(msg)))].map(b => b.toString(16).padStart(2, '0')).join('');
 }
-async function assinado(env, user, acao) {
+async function assinado(env, user, acao, chave) {
   const p = { u: user.chave, p: user.papel, a: acao, t: String(Date.now()), n: randomToken(12) };
-  p.s = await hmacHex((await segredos(env)).periciasChave, [p.u, p.p, p.a, p.t, p.n].join('|'));
+  p.s = await hmacHex(chave || (await segredos(env)).periciasChave, [p.u, p.p, p.a, p.t, p.n].join('|'));
   return env.PERICIAS_GAS_URL + (env.PERICIAS_GAS_URL.includes('?') ? '&' : '?') + new URLSearchParams(p).toString();
 }
 async function chamarGas(target, body) {
@@ -171,7 +171,7 @@ async function proxy(req, env, ctx, url, s) {
   const acao = url.searchParams.get('acao') || '';
   if (!/^[a-zA-Z]{2,30}$/.test(acao) || acao === 'login' || acao === 'logout') return fail('Ação inválida.', 400);
   if (SO_PERITO.has(acao) && s.user.papel !== 'perito') return fail('Sem permissão.', 403);
-  if (!env.PERICIAS_GAS_URL || !(await segredos(env)).periciasChave) return fail('Servidor da planilha não configurado: falta o segredo SEGREDO_SITE no Cloudflare.', 503);
+  if (!env.PERICIAS_GAS_URL || !(await segredos(env)).periciasChave) return fail('A planilha ainda não foi ligada ao site (falta rodar appParearSite no Apps Script).', 503);
   const len = Number(req.headers.get('Content-Length') || 0);
   if (len > 30 * 1024 * 1024) return fail('Arquivo grande demais.', 413);
   const leitura = LEITURAS.has(acao);
@@ -227,6 +227,28 @@ async function conta(req, env, ctx, url, st) {
     const out = { ok: true, logado: !!s, usuario: s ? pub(s.user) : null, config: { contato_whatsapp: st.contato_whatsapp, exigir_2fa: st.exigir_2fa, sessao_dias: st.sessao_dias, sessao_max_dias: st.sessao_max_dias } };
     if (!s) out.setup = !!(await codigoConfiguracao(env.PERICIAS_SETUP_CODE, env.DBP, 'p_settings')) && (await users0()) === 0;
     return json(out);
+  }
+
+  /* pareamento com o Apps Script: a planilha manda a chave dela (appParearSite) e o site só guarda depois
+     de confirmar, com um pedido assinado com essa chave, que a planilha de verdade aceita a mesma chave */
+  if (path === 'parear' && m === 'POST') {
+    let r = await hitP(env, 'parear:' + ip, 6, 3600000); if (!r.ok) throw tooMany(r);
+    r = await hitP(env, 'parear:todos', 30, 3600000); if (!r.ok) throw tooMany(r);
+    const chave = String((body && body.chave) || '');
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(chave)) return fail('Chave inválida.', 400);
+    if (!env.PERICIAS_GAS_URL || !env.COFRE) return fail('Site sem o banco de segredos configurado.', 503);
+    let j = null;
+    try {
+      const res = await chamarGas(await assinado(env, { chave: 'site', papel: 'perito' }, 'carimbo', chave), JSON.stringify({ acao: 'carimbo' }));
+      j = await res.json();
+    } catch (e) { }
+    if (!j || j.ok !== true || !Number(j.t)) {
+      await auditP(env, req, null, 'pareamento com a planilha recusado', null, null);
+      return fail('A planilha não confirmou a chave.', 403);
+    }
+    await guardarNoCofre(env, 'PERICIAS_CHAVE', chave);
+    await auditP(env, req, null, 'planilha ligada ao site (pareamento)', null, null);
+    return json({ ok: true, pareado: true });
   }
 
   if (path === 'entrar' && m === 'POST') {

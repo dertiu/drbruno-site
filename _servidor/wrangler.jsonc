@@ -22,9 +22,15 @@
       "binding": "DBP",
       "database_name": "drbruno_pericias",
       "database_id": "af000d02-6578-4f18-8d56-9f7f0e671ea4"
+    },
+    {
+      // cofre: o segredo principal (gerado pelo próprio site) e a chave do Apps Script (pareamento)
+      "binding": "COFRE",
+      "database_name": "drbruno_cofre",
+      "database_id": "838db246-576e-4f9c-b0b8-fa37c231286e"
     }
   ],
-  // configurações que não são segredo (os segredos ficam no painel do Cloudflare: SEGREDO_SITE)
+  // configurações que não são segredo (os segredos ficam no banco COFRE, criados pelo próprio site)
   "vars": {
     // endereço do Apps Script da planilha de perícias; sozinho não serve para nada sem a assinatura do site
     "PERICIAS_GAS_URL": "https://script.google.com/macros/s/AKfycbxdYxLIQNJuQEgIYvz3RdlwitgR_7aUYoywhYoB0abE4oigpZttzAEdwUeNfpWTmoc4/exec"
