@@ -21,9 +21,9 @@
     // subgrupos dentro de cada área (ordem de exibição)
     subs: {
       med: [['Doses', ['dose', 'mgkg', 'eletro']], ['Infusões e diluições', ['inf', 'dil', 'gotas']], ['Emergência', ['sri', 'tromb']], ['Diabetes', ['ins', 'cad']]],
-      rx: [['Atalhos', ['receitas', 'rx-ped', 'rx-adulto', 'rx-sc']], ['Por área', null]],
+      rx: [['Atalhos', ['receitas', 'rx-livre', 'rx-ped', 'rx-adulto', 'rx-sc']], ['Por área', null]],
       esc: [['Neurológico', ['gcs', 'nihss', 'abcd2', 'rass']], ['Cardiovascular e trombose', ['heart', 'wellstep', 'perc', 'wellstvp', 'cha', 'hasbled']], ['Infecção e gravidade', ['qsofa', 'sirs', 'sofa', 'news2', 'curb', 'centor']], ['Gastro e fígado', ['blatch', 'child', 'meld']]],
-      ped: [['Emergência', ['pedone', 'pedkit', 'pedhid']], ['Avaliação', ['pedsv', 'pedvit', 'westley', 'apgar']], ['Receitas', ['ped-rx']]],
+      ped: [['Emergência', ['pedone', 'pedkit', 'pedhid']], ['Avaliação', ['pedsv', 'pedvit', 'westley', 'apgar']], ['Receitas', ['ped-rx', 'ped-rx-livre']]],
       lab: [['Renal e eletrólitos', ['repos', 'nacorr', 'clcr']], ['Exames', ['gaso', 'lab', 'liquidos']], ['Medidas e conversões', ['imc', 'qtc', 'conv']]],
       vent: [['Ventilação e oxigênio', ['vent', 'oxig', 'o2cil']], ['Fluidos', ['fluid', 'mant']]],
       cir: [['Abdome agudo', ['alvarado', 'toquio', 'ranson', 'bisap']], ['Trauma', ['choque', 'queimados', 'tmt', 'rts']], ['Perioperatório', ['rcri', 'profilaxia', 'posop', 'sedproc']], ['Agendamento', ['agend', 'agend-chefes']]],

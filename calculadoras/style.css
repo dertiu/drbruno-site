@@ -791,3 +791,31 @@ button.sl .ico{color:var(--muted)}
 .ag-dias button.on{border-color:var(--accent);background:var(--tint);font-weight:700}
 .ag-bar{display:flex;flex-wrap:wrap;gap:8px}
 .ag-chefe .x{align-self:flex-start;border:0;background:transparent;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:15px}
+/* receita livre */
+.rl{display:flex;flex-direction:column;gap:16px}
+.rl-top{display:flex;flex-direction:column;gap:12px}
+.rl-res{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto}
+.rl-dica{color:var(--muted);font-size:15px;padding:4px 2px}
+.rl-add{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;gap:2px 12px;text-align:left;padding:10px 14px;border:1.5px solid var(--line2);border-radius:10px;background:var(--bg);color:var(--text);cursor:pointer;font-size:15.5px}
+.rl-add:hover{border-color:var(--accent)}
+.rl-add-n{font-weight:700}
+.rl-add-d{color:var(--muted);font-size:13.5px;grid-row:2}
+.rl-mais{grid-row:1/3;grid-column:2;align-self:center;font-size:24px;font-weight:700;color:var(--accent)}
+.rl-doc{display:flex;flex-direction:column;gap:12px}
+.rl-it{display:grid;grid-template-columns:26px minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px dashed #d8d4cb}
+.rl-it:last-child{border-bottom:0}
+.rl-l1{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.rl-l1 .rx-n{flex:1 1 200px}
+.rl-paper input,.rl-paper textarea,.rl-paper select{font:inherit;color:#1b1f24;background:#fff;border:1px solid #cfcac0;border-radius:6px;padding:6px 8px}
+.rl-qt{width:110px;font-weight:600;text-transform:uppercase}
+.rl-pos{width:100%;resize:vertical;min-height:52px;text-transform:uppercase;margin-top:4px}
+.rl-man{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 220px}
+.rl-nm-in{flex:1 1 180px;font-weight:800;text-transform:uppercase}
+.rl-via-sel{max-width:150px}
+.rl-x{border:0;background:transparent;color:#8a3b3b;font-size:24px;line-height:1;cursor:pointer;padding:0 4px}
+.rl-varl{display:flex;flex-direction:column;gap:2px;font-size:13px;color:#55606b;margin-top:6px}
+.rl-var{max-width:100%}
+.rl-base{display:block;font-size:13px;color:#55606b;font-style:italic;margin-top:3px}
+.rx-paper .rl-base{font-size:12.5px}
+.rl-warn{color:#9a4b00;font-weight:700;font-style:normal}
+.rl-rec{align-self:flex-start;border:0;background:transparent;color:#0b6c8f;text-decoration:underline;cursor:pointer;font-size:13.5px;padding:2px 0;margin-top:2px}
